@@ -15,11 +15,11 @@ class ExportConfig:
                  base_url: Optional[str] = None,
                  workspace_id: Optional[str] = None,
                  bearer_token: Optional[str] = None,
-                 include_child_workspaces: bool = False,
+                 include_child_workspaces: Optional[bool] = None,
                  child_workspace_data_types: Optional[List[str]] = None,
-                 max_parallel_workspaces: int = 5,
-                 enable_rich_text_extraction: bool = False,
-                 debug_workspace_processing: bool = False,
+                 max_parallel_workspaces: Optional[int] = None,
+                 enable_rich_text_extraction: Optional[bool] = None,
+                 debug_workspace_processing: Optional[bool] = None,
                  load_from_env: bool = True):
         """Initialize export configuration.
         
@@ -75,7 +75,10 @@ class ExportConfig:
                 self.CHILD_WORKSPACE_DATA_TYPES = []
         
         # Maximum number of parallel workers for child workspace processing
-        self.MAX_PARALLEL_WORKSPACES = max_parallel_workspaces or int(getenv("MAX_PARALLEL_WORKSPACES", "5"))
+        if max_parallel_workspaces is not None:
+            self.MAX_PARALLEL_WORKSPACES = max_parallel_workspaces
+        else:
+            self.MAX_PARALLEL_WORKSPACES = int(getenv("MAX_PARALLEL_WORKSPACES", "5"))
         
         # Dynamic workspace ID
         self._workspace_id = self._WORKSPACE_ID

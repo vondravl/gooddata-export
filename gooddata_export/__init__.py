@@ -25,7 +25,7 @@ def export_metadata(
     base_url: str,
     workspace_id: str,
     bearer_token: str,
-    output_dir: str = "output",
+    csv_dir: str = "output/metadata_csv",
     export_formats=None,
     include_child_workspaces: bool = False,
     child_workspace_data_types=None,
@@ -33,7 +33,7 @@ def export_metadata(
     enable_rich_text_extraction: bool = False,
     run_post_export: bool = True,
     debug: bool = False,
-    db_name: str = None
+    db_path: str = "output/db/gooddata_export.db"
 ):
     """Export GoodData metadata to SQLite and/or CSV.
     
@@ -41,7 +41,7 @@ def export_metadata(
         base_url: GoodData API base URL (e.g., "https://your-instance.gooddata.com")
         workspace_id: GoodData workspace ID to export
         bearer_token: API authentication token
-        output_dir: Directory for output files (default: "output")
+        csv_dir: Directory for CSV files (default: "output/metadata_csv")
         export_formats: List of formats to export - ["sqlite"], ["csv"], or ["sqlite", "csv"] (default: both)
         include_child_workspaces: Whether to process child workspaces (default: False)
         child_workspace_data_types: List of data types to fetch from child workspaces
@@ -51,7 +51,7 @@ def export_metadata(
         enable_rich_text_extraction: Whether to extract from rich text widgets (default: False)
         run_post_export: Whether to run post-export SQL processing for duplicate detection (default: True)
         debug: Enable debug logging (default: False)
-        db_name: Custom path for the SQLite database (default: output_dir/db/gooddata_export.db)
+        db_path: Custom path for the SQLite database (default: "output/db/gooddata_export.db")
     
     Returns:
         dict: Export results containing:
@@ -107,8 +107,8 @@ def export_metadata(
     # Call the export function
     return export_all_metadata(
         config=config,
-        output_dir=output_dir,
-        db_name=db_name,
+        csv_dir=csv_dir if "csv" in export_formats else None,
+        db_path=db_path,
         export_formats=export_formats,
         run_post_export=run_post_export
     )

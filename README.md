@@ -29,6 +29,38 @@ pip install git+<repository-url>
 
 ## Quick Start
 
+### Command Line Interface (Easiest)
+
+1. Create a `.env.gdcloud` configuration file:
+
+```env
+BASE_URL=https://your-instance.gooddata.com
+WORKSPACE_ID=your_workspace_id
+BEARER_TOKEN=your_api_token
+```
+
+2. Run the export:
+
+```bash
+# Basic export (both SQLite and CSV)
+python main.py
+
+# Export only SQLite (fastest)
+python main.py --format sqlite
+
+# Export with child workspaces
+python main.py --include-children --max-workers 10
+
+# Custom directories
+python main.py --db-dir my_databases --csv-dir my_csvs
+
+# Enable debug mode
+python main.py --debug
+
+# Get help
+python main.py --help
+```
+
 ### Python API
 
 ```python
@@ -37,16 +69,15 @@ from gooddata_export import export_metadata
 result = export_metadata(
     base_url="https://your-instance.gooddata.com",
     workspace_id="your_workspace_id",
-    bearer_token="your_api_token",
-    output_dir="output"
+    bearer_token="your_api_token"
 )
 
-print(f"Database created at: {result['db_path']}")
-print(f"CSV files in: {result['csv_dir']}")
+print(f"Database created at: {result['db_path']}")  # output/db/gooddata_export.db
+print(f"CSV files in: {result['csv_dir']}")  # output/metadata_csv/
 print(f"Processed {result['workspace_count']} workspace(s)")
 ```
 
-### Using Environment Variables
+### Using Environment Variables (Python API)
 
 Create a `.env.gdcloud` file:
 
@@ -69,6 +100,47 @@ result = export_all_metadata(
     config=config,
     output_dir="output"
 )
+```
+
+## CLI Options
+
+The `main.py` script supports the following command-line options:
+
+### Connection Options
+- `--base-url URL` - GoodData API base URL (overrides .env.gdcloud)
+- `--workspace-id ID` - Workspace ID to export (overrides .env.gdcloud)
+- `--bearer-token TOKEN` - API authentication token (overrides .env.gdcloud)
+
+### Export Configuration
+- `--db-dir DIR` - Directory for SQLite database files (default: `output/db`)
+- `--csv-dir DIR` - Directory for CSV export files (default: `output/metadata_csv`)
+- `--format {sqlite,csv}` - Export format(s): `sqlite`, `csv`, or both (default: both)
+- `--db-name FILENAME` - Custom SQLite database filename (default: `gooddata_export.db`)
+
+### Child Workspace Options
+- `--include-children` - Include child workspaces in export
+- `--child-data-types {metrics,dashboards,visualizations,filter_contexts}` - Data types to fetch from children
+- `--max-workers N` - Maximum parallel workers (default: 5)
+
+### Feature Flags
+- `--enable-rich-text` - Enable extraction from rich text widgets
+- `--skip-post-export` - Skip post-export SQL processing (duplicate detection)
+- `--debug` - Enable debug logging
+
+### Examples
+
+```bash
+# SQLite only (fastest)
+python main.py --format sqlite --skip-post-export
+
+# CSV only
+python main.py --format csv
+
+# Multi-workspace with specific data types
+python main.py --include-children --child-data-types dashboards visualizations --max-workers 15
+
+# Override config with command-line args
+python main.py --workspace-id prod_workspace --output-dir exports/prod --debug
 ```
 
 ## Usage Examples
@@ -247,10 +319,11 @@ gooddata-export/
 │   └── sql/
 │       ├── metrics_probable_duplicates.sql
 │       └── visuals_with_same_content.sql
+├── main.py                 # Command-line interface
 ├── setup.py
 ├── requirements.txt
 ├── README.md
-└── .env.example
+└── .env.gdcloud           # Configuration file (create from template)
 ```
 
 ## License

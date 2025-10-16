@@ -504,15 +504,17 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
         "PRIMARY KEY": "(metric_id, workspace_id)",
     }
 
-    # Export to CSV
-    csv_filename = "gooddata_metrics.csv"
-    records_count = write_to_csv(
-        all_processed_data,
-        export_dir,
-        csv_filename,
-        fieldnames=metrics_columns.keys(),
-        exclude_fields={"content"},  # Exclude content from CSV since it's large
-    )
+    # Export to CSV (if requested)
+    records_count = len(all_processed_data)
+    if export_dir is not None:
+        csv_filename = "gooddata_metrics.csv"
+        records_count = write_to_csv(
+            all_processed_data,
+            export_dir,
+            csv_filename,
+            fieldnames=metrics_columns.keys(),
+            exclude_fields={"content"},  # Exclude content from CSV since it's large
+        )
 
     # Export to SQLite
     conn = connect_database(db_name)
@@ -546,7 +548,10 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
     )
 
     conn.commit()
-    log_export("metrics", records_count, os.path.join(export_dir, csv_filename))
+    if export_dir is not None:
+        log_export("metrics", records_count, os.path.join(export_dir, "gooddata_metrics.csv"))
+    else:
+        print(f"Exported {records_count} metrics to {db_name}")
     conn.close()
 
 
@@ -594,14 +599,16 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         "PRIMARY KEY": "(visualization_id, workspace_id)",
     }
 
-    csv_filename = "gooddata_visualizations.csv"
-    vis_count = write_to_csv(
-        all_processed_visualizations,
-        export_dir,
-        csv_filename,
-        fieldnames=visualization_columns.keys(),
-        exclude_fields={"content"},
-    )
+    vis_count = len(all_processed_visualizations)
+    if export_dir is not None:
+        csv_filename = "gooddata_visualizations.csv"
+        vis_count = write_to_csv(
+            all_processed_visualizations,
+            export_dir,
+            csv_filename,
+            fieldnames=visualization_columns.keys(),
+            exclude_fields={"content"},
+        )
 
     conn = connect_database(db_name)
     cursor = setup_table(conn, "visualizations", visualization_columns)
@@ -640,13 +647,15 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
     }
 
-    rel_csv = "gooddata_visualization_metrics.csv"
-    rel_count = write_to_csv(
-        all_processed_relationships,
-        export_dir,
-        rel_csv,
-        fieldnames=["visualization_id", "metric_id", "workspace_id"],
-    )
+    rel_count = len(all_processed_relationships)
+    if export_dir is not None:
+        rel_csv = "gooddata_visualization_metrics.csv"
+        rel_count = write_to_csv(
+            all_processed_relationships,
+            export_dir,
+            rel_csv,
+            fieldnames=["visualization_id", "metric_id", "workspace_id"],
+        )
 
     cursor = setup_table(conn, "visualization_metrics", relationship_columns)
     execute_with_retry(
@@ -663,12 +672,16 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
     )
 
     conn.commit()
-    log_export("visualizations", vis_count, os.path.join(export_dir, csv_filename))
-    log_export(
-        "visualization-metric relationships",
-        rel_count,
-        os.path.join(export_dir, rel_csv),
-    )
+    if export_dir is not None:
+        log_export("visualizations", vis_count, os.path.join(export_dir, "gooddata_visualizations.csv"))
+        log_export(
+            "visualization-metric relationships",
+            rel_count,
+            os.path.join(export_dir, "gooddata_visualization_metrics.csv"),
+        )
+    else:
+        print(f"Exported {vis_count} visualizations to {db_name}")
+        print(f"Exported {rel_count} visualization-metric relationships to {db_name}")
     conn.close()
 
 
@@ -731,14 +744,16 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         "PRIMARY KEY": "(dashboard_id, workspace_id)",
     }
 
-    csv_filename = "gooddata_dashboards.csv"
-    dash_count = write_to_csv(
-        all_processed_dashboards,
-        export_dir,
-        csv_filename,
-        fieldnames=dashboard_columns.keys(),
-        exclude_fields={"content"},
-    )
+    dash_count = len(all_processed_dashboards)
+    if export_dir is not None:
+        csv_filename = "gooddata_dashboards.csv"
+        dash_count = write_to_csv(
+            all_processed_dashboards,
+            export_dir,
+            csv_filename,
+            fieldnames=dashboard_columns.keys(),
+            exclude_fields={"content"},
+        )
 
     conn = connect_database(db_name)
     cursor = setup_table(conn, "dashboards", dashboard_columns)
@@ -778,18 +793,20 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         "PRIMARY KEY": "(dashboard_id, visualization_id, from_rich_text, workspace_id)",
     }
 
-    rel_csv = "gooddata_dashboard_visualizations.csv"
-    rel_count = write_to_csv(
-        all_processed_relationships,
-        export_dir,
-        rel_csv,
-        fieldnames=[
-            "dashboard_id",
-            "visualization_id",
-            "from_rich_text",
-            "workspace_id",
-        ],
-    )
+    rel_count = len(all_processed_relationships)
+    if export_dir is not None:
+        rel_csv = "gooddata_dashboard_visualizations.csv"
+        rel_count = write_to_csv(
+            all_processed_relationships,
+            export_dir,
+            rel_csv,
+            fieldnames=[
+                "dashboard_id",
+                "visualization_id",
+                "from_rich_text",
+                "workspace_id",
+            ],
+        )
 
     cursor = setup_table(conn, "dashboard_visualizations", relationship_columns)
     execute_with_retry(
@@ -811,12 +828,16 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
     )
 
     conn.commit()
-    log_export("dashboards", dash_count, os.path.join(export_dir, csv_filename))
-    log_export(
-        "dashboard-visualization relationships",
-        rel_count,
-        os.path.join(export_dir, rel_csv),
-    )
+    if export_dir is not None:
+        log_export("dashboards", dash_count, os.path.join(export_dir, "gooddata_dashboards.csv"))
+        log_export(
+            "dashboard-visualization relationships",
+            rel_count,
+            os.path.join(export_dir, "gooddata_dashboard_visualizations.csv"),
+        )
+    else:
+        print(f"Exported {dash_count} dashboards to {db_name}")
+        print(f"Exported {rel_count} dashboard-visualization relationships to {db_name}")
     conn.close()
 
 
@@ -852,10 +873,12 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         "workspace_id": "TEXT",
     }
 
-    dataset_csv = "gooddata_ldm_datasets.csv"
-    dataset_count = write_to_csv(
-        datasets, export_dir, dataset_csv, fieldnames=dataset_columns.keys()
-    )
+    dataset_count = len(datasets)
+    if export_dir is not None:
+        dataset_csv = "gooddata_ldm_datasets.csv"
+        dataset_count = write_to_csv(
+            datasets, export_dir, dataset_csv, fieldnames=dataset_columns.keys()
+        )
 
     conn = connect_database(db_name)
     cursor = setup_table(conn, "ldm_datasets", dataset_columns)
@@ -902,10 +925,12 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         "workspace_id": "TEXT",
     }
 
-    column_csv = "gooddata_ldm_columns.csv"
-    column_count = write_to_csv(
-        column_records, export_dir, column_csv, fieldnames=column_columns.keys()
-    )
+    column_count = len(column_records)
+    if export_dir is not None:
+        column_csv = "gooddata_ldm_columns.csv"
+        column_count = write_to_csv(
+            column_records, export_dir, column_csv, fieldnames=column_columns.keys()
+        )
 
     cursor = setup_table(conn, "ldm_columns", column_columns)
     execute_with_retry(
@@ -935,8 +960,12 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
     )
 
     conn.commit()
-    log_export("datasets", dataset_count, os.path.join(export_dir, dataset_csv))
-    log_export("columns", column_count, os.path.join(export_dir, column_csv))
+    if export_dir is not None:
+        log_export("datasets", dataset_count, os.path.join(export_dir, "gooddata_ldm_datasets.csv"))
+        log_export("columns", column_count, os.path.join(export_dir, "gooddata_ldm_columns.csv"))
+    else:
+        print(f"Exported {dataset_count} datasets to {db_name}")
+        print(f"Exported {column_count} columns to {db_name}")
     conn.close()
 
 
@@ -964,17 +993,19 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         "PRIMARY KEY": "(filter_context_id, workspace_id)",
     }
 
-    # Export to CSV
-    csv_filename = "gooddata_filter_contexts.csv"
-    records_count = write_to_csv(
-        all_processed_data,
-        export_dir,
-        csv_filename,
-        fieldnames=filter_contexts_columns.keys(),
-    )
+    # Export to CSV (if requested)
+    records_count = len(all_processed_data)
+    if export_dir is not None:
+        csv_filename = "gooddata_filter_contexts.csv"
+        records_count = write_to_csv(
+            all_processed_data,
+            export_dir,
+            csv_filename,
+            fieldnames=filter_contexts_columns.keys(),
+        )
 
     # Export to SQLite
-    conn = connect_database(DB_NAME)
+    conn = connect_database(db_name)
     cursor = setup_table(conn, "filter_contexts", filter_contexts_columns)
 
     execute_with_retry(
@@ -988,7 +1019,10 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
     )
 
     conn.commit()
-    log_export("filter contexts", records_count, os.path.join(export_dir, csv_filename))
+    if export_dir is not None:
+        log_export("filter contexts", records_count, os.path.join(export_dir, "gooddata_filter_contexts.csv"))
+    else:
+        print(f"Exported {records_count} filter contexts to {db_name}")
     conn.close()
 
 
@@ -1021,14 +1055,16 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
         "modified_at": "DATE",
     }
 
-    # Export to CSV
-    csv_filename = "gooddata_workspaces.csv"
-    records_count = write_to_csv(
-        processed_data,
-        export_dir,
-        csv_filename,
-        fieldnames=workspaces_columns.keys(),
-    )
+    # Export to CSV (if requested)
+    records_count = len(processed_data)
+    if export_dir is not None:
+        csv_filename = "gooddata_workspaces.csv"
+        records_count = write_to_csv(
+            processed_data,
+            export_dir,
+            csv_filename,
+            fieldnames=workspaces_columns.keys(),
+        )
 
     # Export to SQLite
     conn = connect_database(db_name)
@@ -1055,7 +1091,10 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
     )
 
     conn.commit()
-    log_export("workspaces", records_count, os.path.join(export_dir, csv_filename))
+    if export_dir is not None:
+        log_export("workspaces", records_count, os.path.join(export_dir, "gooddata_workspaces.csv"))
+    else:
+        print(f"Exported {records_count} workspaces to {db_name}")
     conn.close()
 
 
@@ -1166,14 +1205,16 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             "PRIMARY KEY": "(dashboard_id, metric_id)",
         }
 
-        # Export to CSV
-        csv_filename = "gooddata_dashboard_metrics.csv"
-        records_count = write_to_csv(
-            rich_text_metrics,
-            export_dir,
-            csv_filename,
-            fieldnames=["dashboard_id", "metric_id"],
-        )
+        # Export to CSV (if requested)
+        records_count = len(rich_text_metrics)
+        if export_dir is not None:
+            csv_filename = "gooddata_dashboard_metrics.csv"
+            records_count = write_to_csv(
+                rich_text_metrics,
+                export_dir,
+                csv_filename,
+                fieldnames=["dashboard_id", "metric_id"],
+            )
 
         # Export to SQLite - check if table exists first and drop it to avoid conflicts
         conn = connect_database(db_name)
@@ -1196,11 +1237,14 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         )
 
         conn.commit()
-        log_export(
-            "dashboard metrics from rich text",
-            records_count,
-            os.path.join(export_dir, csv_filename),
-        )
+        if export_dir is not None:
+            log_export(
+                "dashboard metrics from rich text",
+                records_count,
+                os.path.join(export_dir, "gooddata_dashboard_metrics.csv"),
+            )
+        else:
+            print(f"Exported {records_count} dashboard metrics from rich text to {db_name}")
         conn.close()
 
     except Exception as e:
@@ -1209,13 +1253,13 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         raise RuntimeError(f"Error processing dashboard metrics: {str(e)}")
 
 
-def export_all_metadata(config, output_dir="output", db_name=None, export_formats=None, run_post_export=True):
+def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export.db", export_formats=None, run_post_export=True):
     """Export all metadata to SQLite database and CSV files.
     
     Args:
         config: ExportConfig instance with GoodData credentials and options
-        output_dir: Directory for output files (default: "output")
-        db_name: Path to SQLite database file (default: output_dir/gooddata_export.db)
+        csv_dir: Directory for CSV files (default: None, uses "output/metadata_csv" if csv in formats)
+        db_path: Path to SQLite database file (default: "output/db/gooddata_export.db")
         export_formats: List of formats to export ("sqlite", "csv") (default: both)
         run_post_export: Whether to run post-export SQL processing (default: True)
     
@@ -1225,14 +1269,13 @@ def export_all_metadata(config, output_dir="output", db_name=None, export_format
     if export_formats is None:
         export_formats = ["sqlite", "csv"]
     
-    export_dir = output_dir if "csv" in export_formats else None
+    # Set up CSV directory
+    if "csv" in export_formats and csv_dir is None:
+        csv_dir = "output/metadata_csv"
+    export_dir = csv_dir if "csv" in export_formats else None
     
     # Set up database path
-    if db_name is None:
-        db_export_dir = os.path.join(output_dir, "db")
-        db_name = os.path.join(db_export_dir, "gooddata_export.db")
-    else:
-        db_export_dir = os.path.dirname(db_name)
+    db_export_dir = os.path.dirname(db_path)
     errors = []
 
     # Ensure the database export directory exists
@@ -1275,24 +1318,25 @@ def export_all_metadata(config, output_dir="output", db_name=None, export_format
         try:
             # Skip CSV export for functions if CSV not requested
             func_export_dir = export_dir if export_dir else None
-            export_func["func"](all_workspace_data, func_export_dir, config, db_name)
+            export_func["func"](all_workspace_data, func_export_dir, config, db_path)
         except Exception as e:
             error_msg = str(e).split("\n")[0]
             errors.append(f"{export_func['func'].__name__}: {error_msg}")
 
     if errors:
-        # Raise a simplified error message
+        # Raise detailed error messages
         workspace_id = config.WORKSPACE_ID
+        error_details = "\n  - ".join(errors)
         raise Exception(
-            f"Failed to connect to workspace: {workspace_id}\n"
-            "Please verify your workspace ID in config."
+            f"Export failed for workspace: {workspace_id}\n"
+            f"Errors encountered:\n  - {error_details}"
         )
 
     # Only run post-export processing for single workspace (parent only) and if requested
     # Multi-workspace data would produce confusing duplicate detection results
     if run_post_export and not config.INCLUDE_CHILD_WORKSPACES:
         print("Running post-export processing...")
-        run_post_export_sql(db_name)
+        run_post_export_sql(db_path)
     elif not run_post_export:
         print("Skipping post-export processing (disabled)")
     else:
@@ -1301,7 +1345,7 @@ def export_all_metadata(config, output_dir="output", db_name=None, export_format
     # Get workspace ID from API client
     client = get_api_client(config)
     workspace_id = client.get("workspace_id", "default")
-    store_workspace_metadata(db_name, config)
+    store_workspace_metadata(db_path, config)
 
     # Create workspace-specific database copy
     workspace_db = None
@@ -1309,7 +1353,7 @@ def export_all_metadata(config, output_dir="output", db_name=None, export_format
         try:
             workspace_db = os.path.join(db_export_dir, f"{workspace_id}.db")
             # Create a copy of the database with workspace_id name
-            shutil.copy(db_name, workspace_db)
+            shutil.copy(db_path, workspace_db)
             print(f"Created workspace-specific database: {workspace_db}")
         except Exception as e:
             print(f"Warning: Could not create workspace-specific database: {str(e)}")
@@ -1324,7 +1368,7 @@ def export_all_metadata(config, output_dir="output", db_name=None, export_format
         print("Successfully processed parent workspace")
 
     return {
-        "db_path": db_name,
+        "db_path": db_path,
         "workspace_db_path": workspace_db,
         "csv_dir": export_dir,
         "workspace_count": total_workspaces,
