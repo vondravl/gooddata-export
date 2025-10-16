@@ -1278,11 +1278,16 @@ def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export
     db_export_dir = os.path.dirname(db_path)
     errors = []
 
-    # Ensure the database export directory exists
+    # Ensure database directory exists (databases overwrite themselves, no cleanup needed)
     if db_export_dir:
         os.makedirs(db_export_dir, exist_ok=True)
     
-    # Ensure CSV export directory exists if needed
+    # Clean CSV directory completely to avoid stale data (files mix together, so we need a clean slate)
+    if export_dir and os.path.exists(export_dir):
+        print(f"Cleaning CSV directory: {export_dir}")
+        shutil.rmtree(export_dir)
+    
+    # Ensure CSV directory exists if needed
     if export_dir:
         os.makedirs(export_dir, exist_ok=True)
 

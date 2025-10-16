@@ -10,6 +10,7 @@ A Python library for exporting GoodData workspace metadata to SQLite databases a
 - **Post-Processing**: Automatic duplicate detection and relationship analysis
 - **Rich Text Extraction**: Optional extraction of metrics/insights from dashboard rich text widgets
 - **Standalone**: Zero Flask dependencies - pure Python library
+- **Clean CSV Exports**: Automatically clears CSV directory before each export to prevent stale data
 
 ## Installation
 
@@ -218,6 +219,8 @@ result = export_metadata(
 - `db_name`: Custom database path (default: output_dir/db/gooddata_export.db)
 
 ## Output Structure
+
+**Note**: Before each export, the CSV directory (`output/metadata_csv/`) is automatically cleaned to prevent stale data from mixing with new exports. Database files naturally overwrite themselves and are not cleaned, allowing you to keep workspace-specific databases from multiple exports.
 
 ### SQLite Database
 
