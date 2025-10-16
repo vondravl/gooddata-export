@@ -5,6 +5,8 @@ venv
 .env*
 !.env*.example
 build
-metadata_csv
-db
+dist
+output
 debug_output
+*.egg-info
+*.egg
