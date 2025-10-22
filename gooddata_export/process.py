@@ -627,6 +627,7 @@ def process_ldm(data, workspace_id=None):
                     "tags": str(sort_tags(attr.get("tags", ""))),
                     "data_type": attr["sourceColumnDataType"],
                     "source_column": attr.get("sourceColumn", ""),
+                    "type": "attribute",
                     "grain": "Yes"
                     if any(g["id"] == attr["id"] for g in dataset.get("grain", []))
                     else "No",
@@ -648,6 +649,7 @@ def process_ldm(data, workspace_id=None):
                     "tags": str(sort_tags(fact.get("tags", ""))),
                     "data_type": fact["sourceColumnDataType"],
                     "source_column": fact.get("sourceColumn", ""),
+                    "type": "fact",
                     "grain": "No",
                     "reference_to_id": "",
                     "reference_to_title": "",
@@ -670,6 +672,7 @@ def process_ldm(data, workspace_id=None):
                     "tags": "",
                     "data_type": ref["sources"][0]["dataType"],
                     "source_column": ref["sources"][0]["column"],
+                    "type": "reference",
                     "grain": "No",
                     "reference_to_id": target_dataset_id,
                     "reference_to_title": target_dataset_info["title"]

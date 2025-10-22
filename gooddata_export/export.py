@@ -919,6 +919,7 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         "tags": "TEXT",
         "data_type": "TEXT",
         "source_column": "TEXT",
+        "type": "TEXT",
         "grain": "TEXT",
         "reference_to_id": "TEXT",
         "reference_to_title": "TEXT",
@@ -937,8 +938,8 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO ldm_columns 
-        (dataset_id, dataset_name, title, description, id, tags, data_type, source_column, grain, reference_to_id, reference_to_title, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (dataset_id, dataset_name, title, description, id, tags, data_type, source_column, type, grain, reference_to_id, reference_to_title, workspace_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -950,6 +951,7 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
                 d["tags"],
                 d["data_type"],
                 d["source_column"],
+                d["type"],
                 d["grain"],
                 d["reference_to_id"],
                 d["reference_to_title"],
