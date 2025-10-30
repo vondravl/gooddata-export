@@ -58,11 +58,21 @@ class ExportConfig:
             self.DEBUG_WORKSPACE_PROCESSING = debug_value in ("true", "1", "yes", "on")
         
         # Feature flag: enable/disable rich text extraction
+        # Check if explicitly set in environment
+        env_rich_text_value = getenv("ENABLE_RICH_TEXT_EXTRACTION")
+        
         if enable_rich_text_extraction is not None:
+            # Explicitly set via parameter
             self._enable_rich_text_extraction = enable_rich_text_extraction
+            self._rich_text_explicit = True
+        elif env_rich_text_value is not None:
+            # Explicitly set in .env file
+            self._enable_rich_text_extraction = env_rich_text_value.lower() in ("true", "1", "yes", "on")
+            self._rich_text_explicit = True
         else:
-            rich_text_value = getenv("ENABLE_RICH_TEXT_EXTRACTION", "False").lower()
-            self._enable_rich_text_extraction = rich_text_value in ("true", "1", "yes", "on")
+            # Not explicitly set - use default (True)
+            self._enable_rich_text_extraction = True
+            self._rich_text_explicit = False
         
         # Child workspace data selection
         if child_workspace_data_types is not None:
@@ -104,13 +114,21 @@ class ExportConfig:
 
     @property
     def ENABLE_RICH_TEXT_EXTRACTION(self):
-        base_value = getattr(self, '_enable_rich_text_extraction', False)
-        # When multi-workspace mode is on, always disable rich-text extraction
+        base_value = getattr(self, '_enable_rich_text_extraction', True)
+        is_explicit = getattr(self, '_rich_text_explicit', False)
+        
+        # If explicitly set in .env or via parameter, respect that value
+        if is_explicit:
+            return base_value
+        
+        # When multi-workspace mode is on, default to disabled (unless explicitly overridden)
         if getattr(self, '_include_child_workspaces', False):
             return False
+        
         return base_value
 
     @ENABLE_RICH_TEXT_EXTRACTION.setter
     def ENABLE_RICH_TEXT_EXTRACTION(self, value):
         self._enable_rich_text_extraction = bool(value)
+        self._rich_text_explicit = True
 
