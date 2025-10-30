@@ -598,10 +598,12 @@ def process_ldm(data, workspace_id=None):
             "attributes_count": len(dataset.get("attributes", [])),
             "facts_count": len(dataset.get("facts", [])),
             "references_count": len(dataset.get("references", [])),
+            "workspace_data_filter_columns_count": len(dataset.get("workspaceDataFilterColumns", [])),
             "total_columns": (
                 len(dataset.get("attributes", []))
                 + len(dataset.get("facts", []))
                 + len(dataset.get("references", []))
+                + len(dataset.get("workspaceDataFilterColumns", []))
             ),
             "data_source_id": (
                 dataset.get("dataSourceTableId", {}).get("dataSourceId", "") or
@@ -685,6 +687,28 @@ def process_ldm(data, workspace_id=None):
                     "reference_to_title": target_dataset_info["title"]
                     if target_dataset_info
                     else "",
+                    "workspace_id": workspace_id,
+                }
+            )
+
+        # Add workspace data filter columns
+        # These are columns in the underlying table that are not used in the dataset
+        # but are available (typically for row-level security/filtering)
+        for wdf_col in dataset.get("workspaceDataFilterColumns", []):
+            columns.append(
+                {
+                    "dataset_id": dataset["id"],
+                    "dataset_name": dataset["title"],
+                    "title": wdf_col.get("name", ""),
+                    "description": "",
+                    "id": wdf_col.get("name", ""),
+                    "tags": "",
+                    "data_type": wdf_col.get("dataType", ""),
+                    "source_column": wdf_col.get("name", ""),
+                    "type": "workspace_data_filter",
+                    "grain": "No",
+                    "reference_to_id": "",
+                    "reference_to_title": "",
                     "workspace_id": workspace_id,
                 }
             )
