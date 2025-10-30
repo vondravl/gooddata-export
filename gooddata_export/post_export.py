@@ -10,14 +10,35 @@ from gooddata_export.db import connect_database
 
 # Post-export configuration: defines SQL scripts and required columns for each table
 # NOTE: Script execution order matters! See gooddata_export/sql/EXECUTION_ORDER.md for details
+#
+# Structure:
+# 1. VIEWS: Created first (read-only, safe to create early, can be used by table updates)
+# 2. TABLE UPDATES: Grouped by table name, includes required_columns for ALTER TABLE
+#
+# This order allows table update scripts to reference views (e.g., visuals_with_same_content.sql uses v_visualization_tags)
+
 POST_EXPORT_CONFIG = {
+    # ===== VIEWS (read-only, can reference any tables) =====
+    # Created FIRST so table updates can reference them
+    "views": {
+        "sql_scripts": [
+            # Tag views (simple, table-specific) - created first
+            "views/v_metric_tags.sql",
+            "views/v_visualization_tags.sql",  # Used by visuals_with_same_content.sql
+            "views/v_dashboard_tags.sql",
+            # Usage/relationship views (can join multiple tables)
+            "views/v_metric_usage.sql",
+            "views/v_metric_dependencies.sql",
+            "views/v_visualization_usage.sql",
+        ],
+        # Note: No required_columns - views don't modify tables
+    },
+    
+    # ===== TABLE UPDATES (modify existing tables) =====
     "visualizations": {
         "sql_scripts": [
-            # IMPORTANT: v_visualization_tags.sql MUST run first (used by visuals_with_same_content.sql)
-            "views/v_visualization_tags.sql",
-            "updates/visuals_with_same_content.sql",
+            "updates/visuals_with_same_content.sql",  # Uses v_visualization_tags view
             "updates/visualizations_usage_check.sql",
-            "views/v_visualization_usage.sql",
         ],
         "required_columns": {
             "columns": "TEXT",
@@ -29,23 +50,14 @@ POST_EXPORT_CONFIG = {
     },
     "metrics": {
         "sql_scripts": [
-            "views/v_metric_tags.sql",
             "updates/metrics_probable_duplicates.sql",
             "updates/metrics_usage_check.sql",
-            "views/v_metric_usage.sql",
-            "views/v_metric_dependencies.sql",
         ],
         "required_columns": {
             "similar_metric_id": "INTEGER",
             "is_used_insight": "INTEGER DEFAULT 0",
             "is_used_maql": "INTEGER DEFAULT 0",
         }
-    },
-    "dashboards": {
-        "sql_scripts": [
-            "views/v_dashboard_tags.sql",
-        ],
-        "required_columns": {}
     },
 }
 
@@ -81,7 +93,7 @@ def post_export_table(db_path, table_name):
     
     config = POST_EXPORT_CONFIG[table_name]
     sql_scripts = config["sql_scripts"]
-    required_columns = config["required_columns"]
+    required_columns = config.get("required_columns", {})
     
     # Base directory for SQL scripts
     sql_dir = os.path.join(
@@ -96,14 +108,15 @@ def post_export_table(db_path, table_name):
     try:
         cursor = conn.cursor()
         
-        # Check if required columns exist and create if not
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        existing_columns = [column[1] for column in cursor.fetchall()]
+        # Check if required columns exist and create if not (only for table sections, not views)
+        if required_columns:
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            existing_columns = [column[1] for column in cursor.fetchall()]
 
-        for column_name, column_type in required_columns.items():
-            if column_name not in existing_columns:
-                print(f"Adding {column_name} column to {table_name} table")
-                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            for column_name, column_type in required_columns.items():
+                if column_name not in existing_columns:
+                    print(f"Adding {column_name} column to {table_name} table")
+                    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
         
         # Process each SQL script
         for script_name in sql_scripts:
