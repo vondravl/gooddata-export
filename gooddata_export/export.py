@@ -1329,6 +1329,7 @@ def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export
     # Execute each export function with all workspace data
     # Note: Database writes are kept sequential to avoid SQLite concurrency issues
     print("Processing and writing data to database...")
+    print("=" * 80)
     for export_func in export_functions:
         try:
             # Skip CSV export for functions if CSV not requested
@@ -1350,7 +1351,9 @@ def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export
     # Only run post-export processing for single workspace (parent only) and if requested
     # Multi-workspace data would produce confusing duplicate detection results
     if run_post_export and not config.INCLUDE_CHILD_WORKSPACES:
+        print()
         print("Running post-export processing...")
+        print("=" * 80)
         run_post_export_sql(db_path)
     elif not run_post_export:
         print("Skipping post-export processing (disabled)")

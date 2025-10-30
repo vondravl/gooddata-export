@@ -9,9 +9,12 @@ from gooddata_export.db import connect_database
 
 
 # Post-export configuration: defines SQL scripts and required columns for each table
+# NOTE: Script execution order matters! See gooddata_export/sql/EXECUTION_ORDER.md for details
 POST_EXPORT_CONFIG = {
     "visualizations": {
         "sql_scripts": [
+            # IMPORTANT: v_visualization_tags.sql MUST run first (used by visuals_with_same_content.sql)
+            "views/v_visualization_tags.sql",
             "updates/visuals_with_same_content.sql",
             "updates/visualizations_usage_check.sql",
             "views/v_visualization_usage.sql",
@@ -26,6 +29,7 @@ POST_EXPORT_CONFIG = {
     },
     "metrics": {
         "sql_scripts": [
+            "views/v_metric_tags.sql",
             "updates/metrics_probable_duplicates.sql",
             "updates/metrics_usage_check.sql",
             "views/v_metric_usage.sql",
@@ -36,6 +40,12 @@ POST_EXPORT_CONFIG = {
             "is_used_insight": "INTEGER DEFAULT 0",
             "is_used_maql": "INTEGER DEFAULT 0",
         }
+    },
+    "dashboards": {
+        "sql_scripts": [
+            "views/v_dashboard_tags.sql",
+        ],
+        "required_columns": {}
     },
 }
 
