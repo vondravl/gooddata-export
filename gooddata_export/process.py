@@ -419,84 +419,91 @@ def process_dashboard_visualizations(dashboard_data, workspace_id=None, known_in
             known_insights = set(known_insights)
         logger.info(f"Found {len(known_insights)} known insights for validation")
     
+    def process_items(items, dashboard_id):
+        """Recursively process dashboard items to extract visualizations"""
+        for item in items:
+            widget = item.get("widget", {})
+            
+            # Single visualization widgets
+            viz_id = widget.get("insight", {}).get("identifier", {}).get("id")
+            if viz_id:
+                key = (dashboard_id, viz_id, 0)  # 0 = regular reference
+                if key not in added_relationships:
+                    relationships.append({
+                        "dashboard_id": dashboard_id, 
+                        "visualization_id": viz_id,
+                        "from_rich_text": 0,
+                        "workspace_id": workspace_id,
+                    })
+                    added_relationships.add(key)
+
+            # Multiple visualization widgets (visualizationSwitcher)
+            visualizations = widget.get("visualizations", [])
+            for viz in visualizations:
+                viz_id = viz.get("insight", {}).get("identifier", {}).get("id")
+                if viz_id:
+                    key = (dashboard_id, viz_id, 0)  # 0 = regular reference
+                    if key not in added_relationships:
+                        relationships.append({
+                            "dashboard_id": dashboard_id, 
+                            "visualization_id": viz_id,
+                            "from_rich_text": 0,
+                            "workspace_id": workspace_id,
+                        })
+                        added_relationships.add(key)
+            
+            # Nested IDashboardLayout widgets - recurse into their sections
+            if widget.get("type") == "IDashboardLayout":
+                nested_sections = widget.get("sections", [])
+                for nested_section in nested_sections:
+                    nested_items = nested_section.get("items", [])
+                    if nested_items:
+                        process_items(nested_items, dashboard_id)
+                        
+            # Rich text extraction (single feature-flag gate)
+            if enable_rich_text:
+                # Rich text widgets
+                if widget.get("type") == "richText":
+                    rich_text_content = widget.get("content", "")
+                    rich_text_insights = process_rich_text_insights(rich_text_content, dashboard_id, known_insights)
+                    for insight in rich_text_insights:
+                        key = (dashboard_id, insight["visualization_id"], 1)
+                        if key not in added_relationships:
+                            relationships.append({
+                                "dashboard_id": dashboard_id,
+                                "visualization_id": insight["visualization_id"],
+                                "from_rich_text": 1,
+                                "workspace_id": workspace_id,
+                            })
+                            added_relationships.add(key)
+                
+                # Other widget content that might contain insight references
+                widget_content = widget.get("content")
+                if isinstance(widget_content, str) and any(pattern in widget_content for pattern in [
+                    "insightFirstAttribute", "insightFirstMeasure", "insightFirstMeasureChange",
+                    "comparisonFromInsightMeasure", "insightFirstTotal"
+                ]):
+                    additional_insights = process_rich_text_insights(widget_content, dashboard_id, known_insights)
+                    for insight in additional_insights:
+                        key = (dashboard_id, insight["visualization_id"], 1)
+                        if key not in added_relationships:
+                            relationships.append({
+                                "dashboard_id": dashboard_id,
+                                "visualization_id": insight["visualization_id"],
+                                "from_rich_text": 1,
+                                "workspace_id": workspace_id,
+                            })
+                            added_relationships.add(key)
+    
     for dash in dashboard_data:
         content = dash["attributes"]["content"]
         if "layout" not in content or "sections" not in content["layout"]:
             continue
 
         for section in content["layout"]["sections"]:
-            if "items" not in section:
-                continue
-
-            for item in section["items"]:
-                # Single visualization widgets
-                viz_id = (
-                    item.get("widget", {})
-                    .get("insight", {})
-                    .get("identifier", {})
-                    .get("id")
-                )
-                if viz_id:
-                    key = (dash["id"], viz_id, 0)  # 0 = regular reference
-                    if key not in added_relationships:
-                        relationships.append({
-                            "dashboard_id": dash["id"], 
-                            "visualization_id": viz_id,
-                            "from_rich_text": 0,
-                            "workspace_id": workspace_id,
-                        })
-                        added_relationships.add(key)
-
-                # Multiple visualization widgets
-                visualizations = item.get("widget", {}).get("visualizations", [])
-                for viz in visualizations:
-                    viz_id = viz.get("insight", {}).get("identifier", {}).get("id")
-                    if viz_id:
-                        key = (dash["id"], viz_id, 0)  # 0 = regular reference
-                        if key not in added_relationships:
-                            relationships.append({
-                                "dashboard_id": dash["id"], 
-                                "visualization_id": viz_id,
-                                "from_rich_text": 0,
-                                "workspace_id": workspace_id,
-                            })
-                            added_relationships.add(key)
-                        
-                # Rich text extraction (single feature-flag gate)
-                if enable_rich_text:
-                    widget = item.get("widget", {})
-                    # Rich text widgets
-                    if widget.get("type") == "richText":
-                        rich_text_content = widget.get("content", "")
-                        rich_text_insights = process_rich_text_insights(rich_text_content, dash["id"], known_insights)
-                        for insight in rich_text_insights:
-                            key = (dash["id"], insight["visualization_id"], 1)
-                            if key not in added_relationships:
-                                relationships.append({
-                                    "dashboard_id": dash["id"],
-                                    "visualization_id": insight["visualization_id"],
-                                    "from_rich_text": 1,
-                                    "workspace_id": workspace_id,
-                                })
-                                added_relationships.add(key)
-                    
-                    # Other widget content that might contain insight references
-                    widget_content = widget.get("content")
-                    if isinstance(widget_content, str) and any(pattern in widget_content for pattern in [
-                        "insightFirstAttribute", "insightFirstMeasure", "insightFirstMeasureChange",
-                        "comparisonFromInsightMeasure", "insightFirstTotal"
-                    ]):
-                        additional_insights = process_rich_text_insights(widget_content, dash["id"], known_insights)
-                        for insight in additional_insights:
-                            key = (dash["id"], insight["visualization_id"], 1)
-                            if key not in added_relationships:
-                                relationships.append({
-                                    "dashboard_id": dash["id"],
-                                    "visualization_id": insight["visualization_id"],
-                                    "from_rich_text": 1,
-                                    "workspace_id": workspace_id,
-                                })
-                                added_relationships.add(key)
+            items = section.get("items", [])
+            if items:
+                process_items(items, dash["id"])
 
     return sorted(
         relationships, 

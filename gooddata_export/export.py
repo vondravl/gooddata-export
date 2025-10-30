@@ -1137,6 +1137,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
     try:
         # Process dashboards from all workspaces to extract metrics from rich text widgets
         for workspace_info in all_workspace_data:
+            workspace_id = workspace_info["workspace_id"]
             workspace_dashboards = workspace_info["data"].get("dashboards")
             if not workspace_dashboards:
                 continue
@@ -1166,6 +1167,9 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                                 rich_text_content, dashboard_id, known_metrics
                             )
                             if dashboard_metrics:
+                                # Add workspace_id to each metric
+                                for metric in dashboard_metrics:
+                                    metric["workspace_id"] = workspace_id
                                 rich_text_metrics.extend(dashboard_metrics)
 
                         # Check for any widget content field that might contain metric references
@@ -1185,6 +1189,9 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                                 widget_content, dashboard_id, known_metrics
                             )
                             if additional_metrics:
+                                # Add workspace_id to each metric
+                                for metric in additional_metrics:
+                                    metric["workspace_id"] = workspace_id
                                 rich_text_metrics.extend(additional_metrics)
 
         # Skip if no metrics found
@@ -1195,7 +1202,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         # Remove duplicates by converting to dict and back to list
         unique_metrics = {}
         for item in rich_text_metrics:
-            key = (item["dashboard_id"], item["metric_id"])
+            key = (item["dashboard_id"], item["metric_id"], item["workspace_id"])
             unique_metrics[key] = item
 
         rich_text_metrics = list(unique_metrics.values())
@@ -1204,7 +1211,8 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         dashboard_metrics_columns = {
             "dashboard_id": "TEXT",
             "metric_id": "TEXT",
-            "PRIMARY KEY": "(dashboard_id, metric_id)",
+            "workspace_id": "TEXT",
+            "PRIMARY KEY": "(dashboard_id, metric_id, workspace_id)",
         }
 
         # Export to CSV (if requested)
@@ -1215,7 +1223,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                 rich_text_metrics,
                 export_dir,
                 csv_filename,
-                fieldnames=["dashboard_id", "metric_id"],
+                fieldnames=["dashboard_id", "metric_id", "workspace_id"],
             )
 
         # Export to SQLite - check if table exists first and drop it to avoid conflicts
@@ -1232,10 +1240,10 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         cursor.executemany(
             """
             INSERT INTO dashboard_metrics 
-            (dashboard_id, metric_id)
-            VALUES (?, ?)
+            (dashboard_id, metric_id, workspace_id)
+            VALUES (?, ?, ?)
             """,
-            [(d["dashboard_id"], d["metric_id"]) for d in rich_text_metrics],
+            [(d["dashboard_id"], d["metric_id"], d["workspace_id"]) for d in rich_text_metrics],
         )
 
         conn.commit()

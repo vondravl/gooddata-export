@@ -43,6 +43,7 @@ SET similar_metric_id = (
     SELECT rn 
     FROM duplicities
     WHERE duplicities.metric_id = metrics.metric_id
+      AND duplicities.workspace_id = metrics.workspace_id
 );
 
 -- Drop the temporary table

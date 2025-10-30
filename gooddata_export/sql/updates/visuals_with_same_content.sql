@@ -49,6 +49,7 @@ SET columns = (
     SELECT columns 
     FROM duplicities 
     WHERE duplicities.visualization_id = visualizations.visualization_id
+      AND duplicities.workspace_id = visualizations.workspace_id
 );
 
 -- Update same_columns_id
@@ -57,6 +58,7 @@ SET same_columns_id = (
     SELECT same_columns_id 
     FROM duplicities 
     WHERE duplicities.visualization_id = visualizations.visualization_id
+      AND duplicities.workspace_id = visualizations.workspace_id
 );
 
 -- Update same_visuals_id (simple version - just URL + columns)
@@ -70,6 +72,7 @@ SET same_visuals_id = (
           WHERE same_visuals_count > 1
          ) d
     WHERE d.visualization_id = visualizations.visualization_id
+      AND d.workspace_id = visualizations.workspace_id
 );
 
 -- Update same_visuals_id_with_tags (precise version - URL + columns + tags)
@@ -83,6 +86,7 @@ SET same_visuals_id_with_tags = (
           WHERE same_visuals_count_with_tags > 1
          ) d
     WHERE d.visualization_id = visualizations.visualization_id
+      AND d.workspace_id = visualizations.workspace_id
 );
 
 -- Drop the temporary table
