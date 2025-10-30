@@ -61,10 +61,6 @@ class ExportConfig:
         # Check if explicitly set in environment
         env_rich_text_value = getenv("ENABLE_RICH_TEXT_EXTRACTION")
         
-        # DEBUG: Print what we're seeing
-        print(f"DEBUG config.py: enable_rich_text_extraction parameter = {enable_rich_text_extraction}")
-        print(f"DEBUG config.py: ENABLE_RICH_TEXT_EXTRACTION env var = {env_rich_text_value}")
-        
         if enable_rich_text_extraction is not None:
             # Explicitly set via parameter
             self._enable_rich_text_extraction = enable_rich_text_extraction
@@ -121,22 +117,14 @@ class ExportConfig:
         base_value = getattr(self, '_enable_rich_text_extraction', True)
         is_explicit = getattr(self, '_rich_text_explicit', False)
         
-        # DEBUG
-        print(f"DEBUG property: _enable_rich_text_extraction = {base_value}")
-        print(f"DEBUG property: _rich_text_explicit = {is_explicit}")
-        print(f"DEBUG property: _include_child_workspaces = {getattr(self, '_include_child_workspaces', False)}")
-        
         # If explicitly set in .env or via parameter, respect that value
         if is_explicit:
-            print(f"DEBUG property: Returning base_value (explicit): {base_value}")
             return base_value
         
         # When multi-workspace mode is on, default to disabled (unless explicitly overridden)
         if getattr(self, '_include_child_workspaces', False):
-            print(f"DEBUG property: Returning False (multi-workspace mode)")
             return False
         
-        print(f"DEBUG property: Returning base_value (default): {base_value}")
         return base_value
 
     @ENABLE_RICH_TEXT_EXTRACTION.setter
