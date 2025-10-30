@@ -14,7 +14,7 @@ POST_EXPORT_CONFIG = {
         "sql_scripts": [
             "updates/visuals_with_same_content.sql",
             "updates/visualizations_usage_check.sql",
-            "views/view_visualization_usage.sql",
+            "views/v_visualization_usage.sql",
         ],
         "required_columns": {
             "columns": "TEXT",
@@ -28,8 +28,8 @@ POST_EXPORT_CONFIG = {
         "sql_scripts": [
             "updates/metrics_probable_duplicates.sql",
             "updates/metrics_usage_check.sql",
-            "views/view_metric_usage.sql",
-            "views/view_metric_dependencies.sql",
+            "views/v_metric_usage.sql",
+            "views/v_metric_dependencies.sql",
         ],
         "required_columns": {
             "similar_metric_id": "INTEGER",

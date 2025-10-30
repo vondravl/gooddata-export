@@ -2,7 +2,7 @@
 -- This allows easy lookup of metric usage by metric_id
 -- Combines both direct dashboard usage (from rich text) and indirect usage (through visualizations)
 
-CREATE VIEW IF NOT EXISTS metric_usage AS
+CREATE VIEW IF NOT EXISTS v_metric_usage AS
 -- Direct dashboard usage (from rich text)
 SELECT 
     m.metric_id,
