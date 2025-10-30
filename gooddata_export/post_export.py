@@ -65,30 +65,62 @@ POST_EXPORT_CONFIG = {
 def run_post_export_sql(db_path):
     """Run all post-export SQL operations on the database.
     This is the main entry point for post-export processing.
+    
+    Uses a retry mechanism to handle dependency ordering issues:
+    - First pass: Try to execute all scripts
+    - If any fail, retry them once (they might depend on scripts that ran later)
+    - If still failing after retry, it's a real error
     """
-    success = True
+    max_retries = 1
+    all_sections = list(POST_EXPORT_CONFIG.keys())
+    failed_sections = []
     
-    # Process each table defined in POST_EXPORT_CONFIG
-    for table_name in POST_EXPORT_CONFIG.keys():
+    # First pass: Try all sections
+    print("Starting post-export processing...")
+    for table_name in all_sections:
         if not post_export_table(db_path, table_name):
-            success = False
-            print(f"Warning: Failed to process {table_name}")
+            failed_sections.append(table_name)
+            print(f"Warning: Failed to process {table_name} (will retry)")
     
-    return success
+    # Retry logic: Keep trying failed sections
+    retry_count = 0
+    while failed_sections and retry_count < max_retries:
+        retry_count += 1
+        print(f"\nRetry attempt {retry_count}/{max_retries} for {len(failed_sections)} failed section(s): {', '.join(failed_sections)}")
+        
+        still_failing = []
+        for table_name in failed_sections:
+            # Retry quietly (verbose=False) to avoid duplicate error messages
+            if not post_export_table(db_path, table_name, verbose=False):
+                still_failing.append(table_name)
+            else:
+                print(f"  ✓ Successfully processed '{table_name}' on retry {retry_count}")
+        
+        failed_sections = still_failing
+    
+    # Final result
+    if failed_sections:
+        print(f"\n❌ Failed to process {len(failed_sections)} section(s) after {max_retries} retries: {', '.join(failed_sections)}")
+        return False
+    else:
+        print("\n✓ All post-export processing completed successfully")
+        return True
 
 
-def post_export_table(db_path, table_name):
+def post_export_table(db_path, table_name, verbose=True):
     """Generic function to run SQL post-processing for a specific table.
     
     Args:
         db_path: Path to the SQLite database
         table_name: Name of the table to process (must exist in POST_EXPORT_CONFIG)
+        verbose: If False, suppress non-critical output (for retries)
     
     Returns:
         bool: True if successful, False otherwise
     """
     if table_name not in POST_EXPORT_CONFIG:
-        print(f"Error: No configuration found for table '{table_name}'")
+        if verbose:
+            print(f"Error: No configuration found for table '{table_name}'")
         return False
     
     config = POST_EXPORT_CONFIG[table_name]
@@ -115,7 +147,8 @@ def post_export_table(db_path, table_name):
 
             for column_name, column_type in required_columns.items():
                 if column_name not in existing_columns:
-                    print(f"Adding {column_name} column to {table_name} table")
+                    if verbose:
+                        print(f"Adding {column_name} column to {table_name} table")
                     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
         
         # Process each SQL script
@@ -123,10 +156,12 @@ def post_export_table(db_path, table_name):
             script_path = os.path.join(sql_dir, script_name)
             
             if not os.path.exists(script_path):
-                print(f"Warning: SQL script not found at {script_path}")
+                if verbose:
+                    print(f"Warning: SQL script not found at {script_path}")
                 continue
-                
-            print(f"Executing SQL script: {script_name}")
+            
+            if verbose:
+                print(f"Executing SQL script: {script_name}")
             
             # Read the SQL script
             with open(script_path, 'r') as f:
@@ -135,24 +170,29 @@ def post_export_table(db_path, table_name):
             try:
                 # First try to execute the entire script as a single transaction
                 cursor.executescript(sql_script)
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError as e:
                 # If that fails, fall back to executing statements individually
-                print(f"Executing {script_name} statement by statement")
+                if verbose:
+                    print(f"Executing {script_name} statement by statement")
                 statements = sql_script.split(';')
                 for statement in statements:
                     if statement.strip():
                         try:
                             cursor.execute(statement)
-                        except sqlite3.Error as e:
-                            print(f"Error executing statement: {e}")
-                            print(f"Statement: {statement[:100]}...")
+                        except sqlite3.Error as stmt_error:
+                            if verbose:
+                                print(f"Error executing statement: {stmt_error}")
+                                print(f"Statement: {statement[:100]}...")
+                            raise  # Re-raise to fail the whole section
             
         conn.commit()
-        print(f"Successfully ran all post-export SQL scripts for {table_name} on {db_path}")
+        if verbose:
+            print(f"Successfully ran all post-export SQL scripts for {table_name} on {db_path}")
         return True
     except Exception as e:
         conn.rollback()
-        print(f"Error running post-export SQL for {table_name}: {str(e)}")
+        if verbose:
+            print(f"Error running post-export SQL for {table_name}: {str(e)}")
         return False
     finally:
         conn.close()
