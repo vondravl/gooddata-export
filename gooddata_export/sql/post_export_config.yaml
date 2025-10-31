@@ -65,8 +65,8 @@ views:
 # SQLite doesn't support stored procedures, so we simulate them with parameterized views.
 # Parameters are substituted at execution time from ExportConfig and environment.
 procedures:
-  v_procedures_api_metrics:
-    sql_file: procedures/v_procedures_api_metrics.sql
+  v_api_automation_metrics:
+    sql_file: procedures/v_api_automation_metrics.sql
     description: Procedure to generate API curl commands for metric operations
     category: procedures
     dependencies: []
