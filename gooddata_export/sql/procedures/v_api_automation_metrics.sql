@@ -1,4 +1,4 @@
--- Procedure: v_procedures_api_metrics
+-- Procedure: v_api_automation_metrics
 -- Description: Parameterized procedure for generating API metric curl commands
 -- Purpose: SQLite doesn't support stored procedures, so we simulate them with parameterized views
 --
@@ -17,9 +17,9 @@
 --   formula_put - Excel formula for PUT substitution
 --   curl_delete - DELETE command to remove metric
 
-DROP VIEW IF EXISTS v_procedures_api_metrics;
+DROP VIEW IF EXISTS v_api_automation_metrics;
 
-CREATE VIEW v_procedures_api_metrics AS
+CREATE VIEW v_api_automation_metrics AS
 SELECT 
     metric_id,
     -- Use json_quote to escape special characters, then remove surrounding quotes
@@ -52,4 +52,5 @@ SELECT
 FROM metrics
 WHERE metric_id IS NOT NULL
 ORDER BY metric_id;
+
 
