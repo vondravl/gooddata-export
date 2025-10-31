@@ -19,6 +19,7 @@ class ExportConfig:
                  child_workspace_data_types: Optional[List[str]] = None,
                  max_parallel_workspaces: Optional[int] = None,
                  enable_rich_text_extraction: Optional[bool] = None,
+                 enable_post_export: Optional[bool] = None,
                  debug_workspace_processing: Optional[bool] = None,
                  load_from_env: bool = True):
         """Initialize export configuration.
@@ -31,6 +32,7 @@ class ExportConfig:
             child_workspace_data_types: List of data types to fetch from child workspaces
             max_parallel_workspaces: Number of workspaces to process in parallel
             enable_rich_text_extraction: Whether to extract from rich text widgets
+            enable_post_export: Whether to run post-export enrichment/procedures
             debug_workspace_processing: Enable debug logging
             load_from_env: Whether to load config from .env files
         """
@@ -54,8 +56,8 @@ class ExportConfig:
         if debug_workspace_processing is not None:
             self.DEBUG_WORKSPACE_PROCESSING = debug_workspace_processing
         else:
-            debug_value = getenv("DEBUG_WORKSPACE_PROCESSING", "False").lower()
-            self.DEBUG_WORKSPACE_PROCESSING = debug_value in ("true", "1", "yes", "on")
+            debug_env = getenv("DEBUG", "False")
+            self.DEBUG_WORKSPACE_PROCESSING = debug_env.lower() in ("true", "1", "yes", "on")
         
         # Feature flag: enable/disable rich text extraction
         # Check if explicitly set in environment
@@ -88,7 +90,14 @@ class ExportConfig:
         if max_parallel_workspaces is not None:
             self.MAX_PARALLEL_WORKSPACES = max_parallel_workspaces
         else:
-            self.MAX_PARALLEL_WORKSPACES = int(getenv("MAX_PARALLEL_WORKSPACES", "5"))
+            self.MAX_PARALLEL_WORKSPACES = int(getenv("MAX_WORKERS", "5"))
+        
+        # Post-export processing (enrichment/procedures)
+        if enable_post_export is not None:
+            self.ENABLE_POST_EXPORT = enable_post_export
+        else:
+            post_export_value = getenv("ENABLE_POST_EXPORT", "true").lower()
+            self.ENABLE_POST_EXPORT = post_export_value in ("true", "1", "yes", "on")
         
         # Dynamic workspace ID
         self._workspace_id = self._WORKSPACE_ID

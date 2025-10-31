@@ -108,17 +108,17 @@ def _add_export_arguments(parser):
     parser.add_argument(
         "--base-url",
         type=str,
-        help="GoodData API base URL (overrides .env.gdcloud)"
+        help="GoodData API base URL (env: BASE_URL_GOODDATA)"
     )
     parser.add_argument(
         "--workspace-id",
         type=str,
-        help="Workspace ID to export (overrides .env.gdcloud)"
+        help="Workspace ID to export (env: WORKSPACE_ID)"
     )
     parser.add_argument(
         "--bearer-token",
         type=str,
-        help="API authentication token (overrides .env.gdcloud)"
+        help="API authentication token (env: BEARER_TOKEN)"
     )
 
     # Export configuration
@@ -149,38 +149,38 @@ def _add_export_arguments(parser):
 
     # Child workspace options
     parser.add_argument(
-        "--include-children",
+        "--include-child-workspaces",
         action="store_true",
-        help="Include child workspaces in export"
+        help="Include child workspaces in export (env: INCLUDE_CHILD_WORKSPACES)"
     )
     parser.add_argument(
-        "--child-data-types",
+        "--child-workspace-data-types",
         nargs="+",
         choices=["metrics", "dashboards", "visualizations", "filter_contexts"],
-        help="Data types to fetch from child workspaces (default: all)"
+        help="Data types to fetch from child workspaces - default: all (env: CHILD_WORKSPACE_DATA_TYPES)"
     )
     parser.add_argument(
         "--max-workers",
         type=int,
         default=5,
-        help="Maximum parallel workers for child workspace processing (default: 5)"
+        help="Maximum parallel workers for child workspace processing - default: 5 (env: MAX_WORKERS)"
     )
 
     # Feature flags
     parser.add_argument(
-        "--enable-rich-text",
+        "--enable-rich-text-extraction",
         action="store_true",
-        help="Enable extraction from rich text widgets"
+        help="Enable extraction from rich text widgets (env: ENABLE_RICH_TEXT_EXTRACTION)"
     )
     parser.add_argument(
         "--skip-post-export",
         action="store_true",
-        help="Skip post-export SQL processing (duplicate detection)"
+        help="Skip post-export SQL processing (views, updates, procedures). Note: env uses ENABLE_POST_EXPORT=true/false"
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging"
+        help="Enable debug logging (env: DEBUG)"
     )
 
 
@@ -292,17 +292,20 @@ def run_export_command(args):
     # Determine effective settings (from .env or args)
     if loaded_config:
         # Use settings from loaded config, but allow CLI args to override
-        include_children = loaded_config.INCLUDE_CHILD_WORKSPACES if not args.include_children else args.include_children
-        child_data_types = loaded_config.CHILD_WORKSPACE_DATA_TYPES if not args.child_data_types else args.child_data_types
+        include_children = loaded_config.INCLUDE_CHILD_WORKSPACES if not args.include_child_workspaces else args.include_child_workspaces
+        child_data_types = loaded_config.CHILD_WORKSPACE_DATA_TYPES if not args.child_workspace_data_types else args.child_workspace_data_types
         max_workers = loaded_config.MAX_PARALLEL_WORKSPACES
-        enable_rich_text = loaded_config.ENABLE_RICH_TEXT_EXTRACTION if not args.enable_rich_text else args.enable_rich_text
+        enable_rich_text = loaded_config.ENABLE_RICH_TEXT_EXTRACTION if not args.enable_rich_text_extraction else args.enable_rich_text_extraction
+        # Handle post-export: CLI --skip-post-export overrides .env ENABLE_POST_EXPORT
+        enable_post_export = not args.skip_post_export if args.skip_post_export else loaded_config.ENABLE_POST_EXPORT
         debug = loaded_config.DEBUG_WORKSPACE_PROCESSING if not args.debug else args.debug
     else:
         # Use CLI args
-        include_children = args.include_children
-        child_data_types = args.child_data_types
+        include_children = args.include_child_workspaces
+        child_data_types = args.child_workspace_data_types
         max_workers = args.max_workers
-        enable_rich_text = args.enable_rich_text
+        enable_rich_text = args.enable_rich_text_extraction
+        enable_post_export = not args.skip_post_export  # Invert the skip flag
         debug = args.debug
 
     # Display configuration
@@ -344,7 +347,7 @@ def run_export_command(args):
             child_workspace_data_types=child_data_types,
             max_parallel_workspaces=max_workers,
             enable_rich_text_extraction=enable_rich_text,
-            run_post_export=not args.skip_post_export,
+            run_post_export=enable_post_export,
             debug=debug,
             db_path=db_path
         )
