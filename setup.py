@@ -24,9 +24,10 @@ setup(
     install_requires=[
         "python-dotenv>=1.0.0",
         "requests>=2.32.0",
+        "pyyaml>=6.0.0",
     ],
     package_data={
-        "gooddata_export": ["sql/*.sql"],
+        "gooddata_export": ["sql/*.sql", "sql/*.yaml", "sql/views/*.sql", "sql/updates/*.sql"],
     },
     include_package_data=True,
 )

@@ -1,121 +1,145 @@
 # SQL Scripts Execution Order and Dependencies
 
-This document describes the execution order and dependencies of SQL scripts in post-export processing.
+This document describes how SQL scripts are executed in post-export processing.
 
-## Execution Structure
+## Overview
 
-Post-export processing is divided into two main phases:
+Post-export processing is now configured via **`post_export_config.yaml`**. This provides:
+- ✅ **Self-documenting configuration** with descriptions and categories
+- ✅ **Explicit dependency management** - no more retry logic needed
+- ✅ **Automatic execution ordering** via topological sort
+- ✅ **Clear separation** between views (read-only) and updates (table modifications)
 
-### Phase 1: CREATE VIEWS (Read-Only)
-All views are created first. Views are read-only and can reference any tables or other views.
-- ✅ Safe to create early
-- ✅ Can be used by table update scripts
-- ✅ Combined views (joining multiple tables) go here
+## Configuration Structure
 
-### Phase 2: TABLE UPDATES (Modify Tables)
-Table update scripts modify existing tables (ADD COLUMN, UPDATE).
-- Grouped by which table they modify
-- Can reference views created in Phase 1
+The YAML file defines two sections:
 
----
+### 1. Views (Read-Only)
+Database views that can reference any tables or other views.
+- Created first
+- Safe to create early
+- Can be used by table update scripts
+- No table modifications
 
-## Phase 1: Views Section
+### 2. Updates (Table Modifications)
+Scripts that modify existing tables (ALTER TABLE, UPDATE).
+- Executed after views
+- Can reference any views
+- Grouped by target table
+- Include required column definitions
 
-All views are created in this order:
+## Current Execution Order
 
-1. **`v_metric_tags.sql`**
-   - Dependencies: `metrics` table
-   - Description: Unnests metric tags into individual rows
-   - Type: Simple entity-specific view
+Operations are executed in **dependency order** using topological sort. The actual execution order is determined automatically based on the `dependencies` field in the YAML configuration.
 
-2. **`v_visualization_tags.sql`** ⚠️ CRITICAL
-   - Dependencies: `visualizations` table
-   - Description: Unnests visualization tags into individual rows
-   - Type: Simple entity-specific view
-   - **Used by**: `visuals_with_same_content.sql` in Phase 2
+### Phase 1: Views (no dependencies between them currently)
+1. **`v_metric_tags`** - Unnests metric tags into individual rows
+2. **`v_visualization_tags`** - Unnests visualization tags into individual rows
+3. **`v_dashboard_tags`** - Unnests dashboard tags into individual rows
+4. **`v_metric_usage`** - Shows where metrics are used
+5. **`v_metric_dependencies`** - Shows metric dependencies via MAQL
+6. **`v_visualization_usage`** - Shows where visualizations are used
 
-3. **`v_dashboard_tags.sql`**
-   - Dependencies: `dashboards` table
-   - Description: Unnests dashboard tags into individual rows
-   - Type: Simple entity-specific view
+### Phase 2: Updates (executed in dependency order)
+1. **`visuals_with_same_content`** (depends on: `v_visualization_tags`)
+   - Updates: `visualizations` table
+   - Columns: `columns`, `same_columns_id`, `same_visuals_id`, `same_visuals_id_with_tags`
 
-4. **`v_metric_usage.sql`**
-   - Dependencies: `metrics`, `dashboard_metrics`, `dashboards`, `visualizations`, `visualization_metrics`, `dashboard_visualizations` tables
-   - Description: Shows where metrics are used (joins multiple tables)
-   - Type: **Combined view** (crosses entity boundaries)
+2. **`visualizations_usage_check`** (no dependencies)
+   - Updates: `visualizations` table
+   - Column: `is_used`
 
-5. **`v_metric_dependencies.sql`**
-   - Dependencies: `metrics` table (self-join)
-   - Description: Shows metric dependencies via MAQL references
-   - Type: Relationship view
+3. **`metrics_probable_duplicates`** (no dependencies)
+   - Updates: `metrics` table
+   - Column: `similar_metric_id`
 
-6. **`v_visualization_usage.sql`**
-   - Dependencies: `visualizations`, `dashboard_visualizations`, `dashboards` tables
-   - Description: Shows where visualizations are used (joins multiple tables)
-   - Type: **Combined view** (crosses entity boundaries)
-
----
-
-## Phase 2: Table Updates
-
-### Visualizations Table Updates
-
-1. **`visuals_with_same_content.sql`**
-   - Dependencies: `visualizations` table, `v_visualization_tags` view ⚠️
-   - Updates columns: `columns`, `same_columns_id`, `same_visuals_id`, `same_visuals_id_with_tags`
-   - Description: Identifies duplicate visualizations
-
-2. **`visualizations_usage_check.sql`**
-   - Dependencies: `visualizations`, `dashboard_visualizations` tables
-   - Updates column: `is_used`
-   - Description: Marks visualizations as used/unused
-
-### Metrics Table Updates
-
-1. **`metrics_probable_duplicates.sql`**
-   - Dependencies: `metrics` table
-   - Updates column: `similar_metric_id`
-   - Description: Identifies probable duplicate metrics
-
-2. **`metrics_usage_check.sql`**
-   - Dependencies: `metrics`, `dashboard_metrics`, `visualization_metrics` tables
-   - Updates columns: `is_used_insight`, `is_used_maql`
-   - Description: Marks metrics as used/unused
-
----
+4. **`metrics_usage_check`** (no dependencies)
+   - Updates: `metrics` table
+   - Columns: `is_used_insight`, `is_used_maql`
 
 ## Adding New Scripts
 
-### For Entity-Specific Views
-Add to the `"views"` section in `POST_EXPORT_CONFIG`
-
-### For Combined Views (Joining Multiple Tables)
-Add to the `"views"` section in `POST_EXPORT_CONFIG` - that's the beauty of this structure!
-
-Example combined view:
-```sql
--- v_metric_visualization_dashboard_usage.sql
-CREATE VIEW IF NOT EXISTS v_metric_visualization_dashboard_usage AS
-SELECT 
-    m.metric_id,
-    v.visualization_id,
-    d.dashboard_id
-FROM metrics m
-JOIN visualization_metrics vm ON m.metric_id = vm.metric_id
-JOIN visualizations v ON vm.visualization_id = v.visualization_id
-JOIN dashboard_visualizations dv ON v.visualization_id = dv.visualization_id
-JOIN dashboards d ON dv.dashboard_id = d.dashboard_id;
+### To Add a View:
+```yaml
+views:
+  v_your_new_view:
+    sql_file: views/v_your_new_view.sql
+    description: What this view does
+    category: tagging|usage|analytics
+    dependencies: []  # or list other views it depends on
 ```
 
-### For Table Updates
-Add to the appropriate table section (`"visualizations"`, `"metrics"`, etc.) with `required_columns`
+### To Add an Update:
+```yaml
+updates:
+  your_new_update:
+    sql_file: updates/your_new_update.sql
+    description: What this update does
+    category: usage|deduplication|automation
+    table: table_name  # which table it modifies
+    dependencies:
+      - v_some_view  # if it uses any views
+    required_columns:
+      column_name: COLUMN_TYPE
+      another_column: INTEGER DEFAULT 0
+```
 
----
+## Dependency Resolution
 
-## Critical Dependency
+The system uses **Kahn's algorithm** for topological sorting:
+1. All operations are loaded from YAML
+2. A dependency graph is built
+3. Operations are sorted so dependencies are always executed first
+4. Execution proceeds in sorted order
+5. If circular dependencies exist, the system fails with a clear error
 
-⚠️ **IMPORTANT**: 
-- ALL views are created in Phase 1
-- ALL table updates happen in Phase 2
-- This ensures table updates can safely reference any view
+## Critical Dependencies
 
+⚠️ **Current critical dependency**:
+- `visuals_with_same_content` **depends on** `v_visualization_tags`
+  - The update uses this view to compare visualization tags
+  - The view MUST be created before the update runs
+  - This is enforced automatically via dependency declaration
+
+## Benefits of YAML Configuration
+
+| Old Approach | New Approach |
+|-------------|-------------|
+| Hard-coded dictionary in Python | Self-documenting YAML file |
+| Retry mechanism for ordering issues | Explicit dependencies with topological sort |
+| Manual ordering required | Automatic dependency resolution |
+| Difficult to understand relationships | Clear dependency declarations |
+| Split between views/updates by section | Unified dependency graph |
+
+## Troubleshooting
+
+### "Circular dependency detected"
+- Check your YAML configuration
+- Look for circular references (A depends on B, B depends on A)
+- Review the `dependencies` lists
+
+### "Item 'X' depends on 'Y' which doesn't exist"
+- You've declared a dependency that isn't defined in the YAML
+- Check spelling of the dependency name
+- Ensure the dependency is in the same YAML file
+
+### SQL Execution Errors
+- Check the SQL file exists at the specified path
+- Review SQL syntax
+- Ensure table/column names are correct
+- Check that dependencies are correctly declared (e.g., views exist before they're used)
+
+## File Structure
+```
+gooddata_export/sql/
+├── post_export_config.yaml    # Main configuration file
+├── EXECUTION_ORDER.md          # This documentation
+├── views/                      # View SQL files
+│   ├── v_metric_tags.sql
+│   ├── v_visualization_tags.sql
+│   └── ...
+└── updates/                    # Update SQL files
+    ├── visuals_with_same_content.sql
+    ├── metrics_usage_check.sql
+    └── ...
+```

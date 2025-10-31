@@ -1,0 +1,106 @@
+# Post-Export SQL Configuration
+#
+# This file defines all SQL operations that run after metadata export.
+# Operations are executed in dependency order using topological sort.
+#
+# Structure:
+#   - views: Read-only database views (SELECT)
+#   - updates: Table modifications (ALTER TABLE, UPDATE)
+#
+# Each entry contains:
+#   - sql_file: Path to SQL file (relative to sql/ directory)
+#   - description: Human-readable purpose
+#   - category: Grouping for documentation (tagging/usage/analytics/deduplication)
+#   - dependencies: List of other views/updates this depends on
+#   - table: (updates only) Which table this modifies
+#   - required_columns: (updates only) Columns to ensure exist before running
+
+# ====================
+# VIEWS (Read-Only)
+# ====================
+views:
+  # Tag Views - Simple entity-specific views that unnest tags
+  v_metric_tags:
+    sql_file: views/v_metric_tags.sql
+    description: Unnests metric tags into individual rows
+    category: tagging
+    dependencies: []
+  
+  v_visualization_tags:
+    sql_file: views/v_visualization_tags.sql
+    description: Unnests visualization tags into individual rows (used by duplicate detection)
+    category: tagging
+    dependencies: []
+  
+  v_dashboard_tags:
+    sql_file: views/v_dashboard_tags.sql
+    description: Unnests dashboard tags into individual rows
+    category: tagging
+    dependencies: []
+  
+  # Usage Views - Combined views joining multiple tables
+  v_metric_usage:
+    sql_file: views/v_metric_usage.sql
+    description: Shows where metrics are used across dashboards and visualizations
+    category: usage
+    dependencies: []
+  
+  v_metric_dependencies:
+    sql_file: views/v_metric_dependencies.sql
+    description: Shows metric dependencies via MAQL formula references
+    category: usage
+    dependencies: []
+  
+  v_visualization_usage:
+    sql_file: views/v_visualization_usage.sql
+    description: Shows where visualizations are used in dashboards
+    category: usage
+    dependencies: []
+
+# ====================
+# TABLE UPDATES
+# ====================
+updates:
+  # Visualization Updates
+  visuals_with_same_content:
+    sql_file: updates/visuals_with_same_content.sql
+    description: Identifies duplicate visualizations based on content and tags
+    category: deduplication
+    table: visualizations
+    dependencies:
+      - v_visualization_tags  # Uses this view for tag comparison
+    required_columns:
+      columns: TEXT
+      same_columns_id: INTEGER
+      same_visuals_id: INTEGER
+      same_visuals_id_with_tags: INTEGER
+  
+  visualizations_usage_check:
+    sql_file: updates/visualizations_usage_check.sql
+    description: Marks visualizations as used/unused based on dashboard presence
+    category: usage
+    table: visualizations
+    dependencies: []
+    required_columns:
+      is_used: INTEGER DEFAULT 0
+  
+  # Metric Updates
+  metrics_probable_duplicates:
+    sql_file: updates/metrics_probable_duplicates.sql
+    description: Identifies probable duplicate metrics based on MAQL, title, and ID patterns
+    category: deduplication
+    table: metrics
+    dependencies: []
+    required_columns:
+      similar_metric_id: INTEGER
+  
+  metrics_usage_check:
+    sql_file: updates/metrics_usage_check.sql
+    description: Marks metrics as used in insights or MAQL formulas
+    category: usage
+    table: metrics
+    dependencies: []
+    required_columns:
+      is_used_insight: INTEGER DEFAULT 0
+      is_used_maql: INTEGER DEFAULT 0
+
