@@ -71,6 +71,7 @@ procedures:
     category: procedures
     dependencies: []
     parameters:
+      base_url: "{{BASE_URL}}"  # Will be replaced with actual base_url from config
       workspace_id: "{{WORKSPACE_ID}}"  # Will be replaced with actual workspace_id from config
       bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Will be replaced with literal ${TOKEN_GOODDATA_DEV} for shell
 
