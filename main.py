@@ -5,25 +5,28 @@ Run this script to export GoodData metadata to SQLite and/or CSV files.
 
 Usage:
     # Using .env.gdcloud configuration file:
-    python main.py
+    python main.py export
+
+    # Run only enrichment (post-processing) on existing database:
+    python main.py enrich --db-path output/db/gooddata_export.db
 
     # With command-line arguments:
-    python main.py --workspace-id your_workspace --output-dir my_output
+    python main.py export --workspace-id your_workspace --output-dir my_output
 
     # Export only SQLite (fastest):
-    python main.py --format sqlite
+    python main.py export --format sqlite
 
     # Export only CSV:
-    python main.py --format csv
+    python main.py export --format csv
 
     # Export both (default):
-    python main.py --format sqlite csv
+    python main.py export --format sqlite csv
 
     # With child workspaces:
-    python main.py --include-children --max-workers 10
+    python main.py export --include-children --max-workers 10
 
     # With debug mode:
-    python main.py --debug
+    python main.py export --debug
 
 Configuration:
     Create a .env.gdcloud file with:
@@ -40,6 +43,7 @@ import sys
 import os
 from gooddata_export import export_metadata
 from gooddata_export.config import ExportConfig
+from gooddata_export.post_export import run_post_export_sql
 
 
 def parse_args():
@@ -50,22 +54,56 @@ def parse_args():
         epilog="""
 Examples:
   # Basic export using .env.gdcloud:
-  python main.py
+  python main.py export
+
+  # Export only (skip enrichment):
+  python main.py export --skip-post-export
+
+  # Enrich existing database:
+  python main.py enrich --db-path output/db/gooddata_export.db
 
   # Export only to SQLite (fastest):
-  python main.py --format sqlite
+  python main.py export --format sqlite
 
   # Export with child workspaces:
-  python main.py --include-children --max-workers 10
+  python main.py export --include-children --max-workers 10
 
   # Custom output directory:
-  python main.py --output-dir exports/production
+  python main.py export --output-dir exports/production
 
   # Debug mode:
-  python main.py --debug
+  python main.py export --debug
         """
     )
+    
+    # Subcommands
+    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+    
+    # Export command (default behavior)
+    export_parser = subparsers.add_parser('export', help='Export metadata from GoodData')
+    enrich_parser = subparsers.add_parser('enrich', help='Run post-export enrichment on existing database')
+    
+    # Enrich-specific arguments
+    enrich_parser.add_argument(
+        '--db-path',
+        type=str,
+        help='Path to SQLite database to enrich (required for enrich command)'
+    )
+    enrich_parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug logging'
+    )
+    
+    # Add export arguments to export_parser
+    _add_export_arguments(export_parser)
+    
+    return parser.parse_args()
 
+
+def _add_export_arguments(parser):
+
+    """Add export-specific arguments to parser."""
     # Connection arguments (override .env.gdcloud)
     parser.add_argument(
         "--base-url",
@@ -145,13 +183,72 @@ Examples:
         help="Enable debug logging"
     )
 
-    return parser.parse_args()
+
+def run_enrich_command(args):
+    """Run enrichment (post-export processing) on existing database."""
+    print("=" * 70)
+    print("GoodData Database Enrichment")
+    print("=" * 70)
+    
+    # Validate db_path
+    if not args.db_path:
+        print("\n❌ Error: --db-path is required for enrich command")
+        print("\nExample: python main.py enrich --db-path output/db/gooddata_export.db")
+        return 1
+    
+    if not os.path.exists(args.db_path):
+        print(f"\n❌ Error: Database not found: {args.db_path}")
+        return 1
+    
+    print(f"\n📋 Configuration:")
+    print(f"   Database: {args.db_path}")
+    print(f"   Debug Mode: {'Enabled' if args.debug else 'Disabled'}")
+    print()
+    
+    try:
+        # Set up logging level
+        if args.debug:
+            import logging
+            logging.basicConfig(level=logging.DEBUG)
+        
+        # Run post-export processing
+        success = run_post_export_sql(args.db_path)
+        
+        if success:
+            print("\n" + "=" * 70)
+            print("✅ Enrichment Completed Successfully!")
+            print("=" * 70)
+            print(f"\n📊 Database enriched: {args.db_path}")
+            print("   - Views created")
+            print("   - Procedures executed")
+            print("   - Table updates applied")
+            print("\n" + "=" * 70)
+            return 0
+        else:
+            print("\n" + "=" * 70)
+            print("❌ Enrichment Failed!")
+            print("=" * 70)
+            return 1
+            
+    except Exception as e:
+        print("\n" + "=" * 70)
+        print("❌ Enrichment Failed!")
+        print("=" * 70)
+        print(f"\nError: {str(e)}")
+        
+        if args.debug:
+            import traceback
+            print("\nFull traceback:")
+            traceback.print_exc()
+        else:
+            print("\nRun with --debug flag for detailed error information.")
+        
+        print("\n" + "=" * 70)
+        return 1
 
 
-def main():
-    """Main entry point for the export script."""
-    args = parse_args()
-
+def run_export_command(args):
+    """Run export command."""
     print("=" * 70)
     print("GoodData Metadata Export")
     print("=" * 70)
@@ -284,6 +381,30 @@ def main():
             print("\nRun with --debug flag for detailed error information.")
         
         print("\n" + "=" * 70)
+        return 1
+
+
+def main():
+    """Main entry point for the CLI."""
+    args = parse_args()
+    
+    # Default to export+enrich if no command specified (backward compatibility)
+    if not args.command:
+        print("⚠️  No command specified. Use 'python main.py export' or 'python main.py enrich'")
+        print("   Defaulting to 'export' (with enrichment) for backward compatibility...")
+        print()
+        # Re-parse with 'export' command to get all default values automatically
+        import sys
+        sys.argv.append('export')
+        args = parse_args()
+    
+    if args.command == 'enrich':
+        return run_enrich_command(args)
+    elif args.command == 'export':
+        return run_export_command(args)
+    else:
+        print(f"❌ Unknown command: {args.command}")
+        print("   Available commands: export, enrich")
         return 1
 
 

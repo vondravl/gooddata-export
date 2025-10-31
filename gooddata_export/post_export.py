@@ -12,6 +12,7 @@ import yaml
 import logging
 from collections import defaultdict, deque
 from gooddata_export.db import connect_database
+from gooddata_export.config import ExportConfig
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +88,53 @@ def topological_sort(items_dict):
     return result
 
 
-def execute_sql_file(cursor, sql_path):
-    """Execute a SQL file.
+def substitute_parameters(sql_script, parameters, config):
+    """Substitute parameters in SQL script.
+    
+    Args:
+        sql_script: The SQL script content
+        parameters: Dict of parameter definitions from config
+        config: ExportConfig instance for accessing runtime values
+        
+    Returns:
+        str: SQL script with substituted parameters
+    """
+    if not parameters:
+        return sql_script
+    
+    result = sql_script
+    for param_name, param_template in parameters.items():
+        # Handle special template syntax
+        if param_template.startswith("{{") and param_template.endswith("}}"):
+            # {{WORKSPACE_ID}} -> get actual value from config
+            config_key = param_template[2:-2].strip()
+            if hasattr(config, config_key):
+                value = getattr(config, config_key)
+                result = result.replace(f"{{{param_name}}}", str(value))
+                logger.debug(f"  Substituted {{{param_name}}} with {value}")
+            else:
+                logger.warning(f"  Config key {config_key} not found, skipping substitution")
+        elif param_template.startswith("$$"):
+            # $${TOKEN_GOODDATA_DEV} -> replace with ${TOKEN_GOODDATA_DEV} (literal string, remove one $)
+            value = param_template[1:]  # Remove one $ to get ${...}
+            result = result.replace(f"{{{param_name}}}", value)
+            logger.debug(f"  Substituted {{{param_name}}} with literal {value}")
+        else:
+            # Direct string substitution
+            result = result.replace(f"{{{param_name}}}", param_template)
+            logger.debug(f"  Substituted {{{param_name}}} with {param_template}")
+    
+    return result
+
+
+def execute_sql_file(cursor, sql_path, parameters=None, config=None):
+    """Execute a SQL file with optional parameter substitution.
     
     Args:
         cursor: Database cursor
         sql_path: Path to SQL file
+        parameters: Optional dict of parameters to substitute
+        config: Optional ExportConfig instance for parameter values
         
     Returns:
         bool: True if successful, False otherwise
@@ -105,6 +147,10 @@ def execute_sql_file(cursor, sql_path):
     
     with open(sql_path, 'r') as f:
         sql_script = f.read()
+    
+    # Perform parameter substitution if needed
+    if parameters and config:
+        sql_script = substitute_parameters(sql_script, parameters, config)
     
     try:
         # Try to execute the entire script as a single transaction
@@ -166,23 +212,28 @@ def run_post_export_sql(db_path):
     
     try:
         # Load configuration
-        config = load_post_export_config()
+        yaml_config = load_post_export_config()
         sql_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "sql"
         )
+        
+        # Load export config for parameter substitution
+        export_config = ExportConfig(load_from_env=True)
         
         # Connect to database
         conn = connect_database(db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # Combine views and updates for dependency sorting
+        # Combine views, updates, and procedures for dependency sorting
         all_items = {}
-        if 'views' in config:
-            all_items.update(config['views'])
-        if 'updates' in config:
-            all_items.update(config['updates'])
+        if 'views' in yaml_config:
+            all_items.update(yaml_config['views'])
+        if 'updates' in yaml_config:
+            all_items.update(yaml_config['updates'])
+        if 'procedures' in yaml_config:
+            all_items.update(yaml_config['procedures'])
         
         # Sort by dependencies
         try:
@@ -199,9 +250,18 @@ def run_post_export_sql(db_path):
         for item_name in execution_order:
             item_config = all_items[item_name]
             
-            # Determine if it's a view or update
-            is_view = item_name in config.get('views', {})
-            item_type = "VIEW" if is_view else "UPDATE"
+            # Determine type: view, update, or procedure
+            is_view = item_name in yaml_config.get('views', {})
+            is_update = item_name in yaml_config.get('updates', {})
+            is_procedure = item_name in yaml_config.get('procedures', {})
+            
+            if is_procedure:
+                item_type = "PROCEDURE"
+            elif is_view:
+                item_type = "VIEW"
+            else:
+                item_type = "UPDATE"
+            
             category = item_config.get('category', 'unknown')
             
             logger.debug(f"\n[{item_type}] {item_name} ({category})")
@@ -213,7 +273,7 @@ def run_post_export_sql(db_path):
                 logger.debug(f"  Dependencies: {', '.join(deps)}")
             
             # For updates, ensure required columns exist
-            if not is_view:
+            if is_update:
                 table_name = item_config.get('table')
                 required_columns = item_config.get('required_columns', {})
                 if table_name and required_columns:
@@ -223,7 +283,10 @@ def run_post_export_sql(db_path):
             sql_file = item_config['sql_file']
             sql_path = os.path.join(sql_dir, sql_file)
             
-            if execute_sql_file(cursor, sql_path):
+            # Get parameters for procedure items
+            parameters = item_config.get('parameters', {}) if is_procedure else None
+            
+            if execute_sql_file(cursor, sql_path, parameters=parameters, config=export_config):
                 success_count += 1
                 logger.debug("  ✓ Success")
             else:
@@ -241,10 +304,11 @@ def run_post_export_sql(db_path):
         logger.debug("="*70)
         
         # Simple info message for regular users
-        view_count = len(config.get('views', {}))
-        update_count = len(config.get('updates', {}))
+        view_count = len(yaml_config.get('views', {}))
+        update_count = len(yaml_config.get('updates', {}))
+        procedure_count = len(yaml_config.get('procedures', {}))
         
-        logger.info(f"Successfully created {view_count} views and {update_count} table updates in database")
+        logger.info(f"Successfully created {view_count} views, {procedure_count} procedures, and {update_count} table updates in database")
         
         return True
         

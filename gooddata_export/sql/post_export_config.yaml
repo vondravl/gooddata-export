@@ -6,14 +6,16 @@
 # Structure:
 #   - views: Read-only database views (SELECT)
 #   - updates: Table modifications (ALTER TABLE, UPDATE)
+#   - procedures: Parameterized procedures (SQLite stored procedure simulation)
 #
 # Each entry contains:
 #   - sql_file: Path to SQL file (relative to sql/ directory)
 #   - description: Human-readable purpose
-#   - category: Grouping for documentation (tagging/usage/analytics/deduplication)
+#   - category: Grouping for documentation (tagging/usage/analytics/deduplication/procedures)
 #   - dependencies: List of other views/updates this depends on
 #   - table: (updates only) Which table this modifies
 #   - required_columns: (updates only) Columns to ensure exist before running
+#   - parameters: (procedures only) Variables to substitute in the procedure
 
 # ====================
 # VIEWS (Read-Only)
@@ -56,6 +58,21 @@ views:
     description: Shows where visualizations are used in dashboards
     category: usage
     dependencies: []
+
+# ====================
+# PROCEDURES (Parameterized)
+# ====================
+# SQLite doesn't support stored procedures, so we simulate them with parameterized views.
+# Parameters are substituted at execution time from ExportConfig and environment.
+procedures:
+  v_procedures_api_metrics:
+    sql_file: procedures/v_procedures_api_metrics.sql
+    description: Procedure to generate API curl commands for metric operations
+    category: procedures
+    dependencies: []
+    parameters:
+      workspace_id: "{{WORKSPACE_ID}}"  # Will be replaced with actual workspace_id from config
+      bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Will be replaced with literal ${TOKEN_GOODDATA_DEV} for shell
 
 # ====================
 # TABLE UPDATES
