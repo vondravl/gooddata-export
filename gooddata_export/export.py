@@ -128,17 +128,13 @@ def fetch_all_data_parallel(config):
         },
         {"function": fetch_data, "args": ("filterContexts", client, config), "key": "filter_contexts"},
         {"function": fetch_ldm, "args": (client, config), "key": "ldm"},
+        # Always fetch child workspaces list for workspaces table (quick operation)
+        {
+            "function": fetch_child_workspaces,
+            "args": (client, config),
+            "key": "child_workspaces",
+        },
     ]
-
-    # Add child workspaces fetch if enabled
-    if config.INCLUDE_CHILD_WORKSPACES:
-        fetch_tasks.append(
-            {
-                "function": fetch_child_workspaces,
-                "args": (client, config),
-                "key": "child_workspaces",
-            }
-        )
 
     results = {}
 
@@ -1033,10 +1029,9 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
 
 def export_workspaces(all_workspace_data, export_dir, config, db_name):
     """Export workspaces to both CSV and SQLite"""
-    if not config.INCLUDE_CHILD_WORKSPACES:
-        # If child workspaces are not enabled, don't export workspaces table
-        return
-
+    # Always export workspaces table (quick to create and useful for reference)
+    # Note: Child workspace DATA (metrics, dashboards, etc.) is still conditional on INCLUDE_CHILD_WORKSPACES
+    
     # Get the parent workspace info
     client = get_api_client(config)
     parent_workspace_id = client["workspace_id"]
@@ -1314,20 +1309,16 @@ def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export
             print(f"  - {ws['workspace_name']} ({ws['workspace_id']})")
 
     # Define export functions to run sequentially with their respective data
-    # Ensure workspaces are exported first if child workspaces are enabled
-    export_functions = []
-    if config.INCLUDE_CHILD_WORKSPACES:
-        export_functions.append({"func": export_workspaces, "data_key": "workspaces"})
-    export_functions.extend(
-        [
-            {"func": export_metrics, "data_key": "metrics"},
-            {"func": export_visualizations, "data_key": "visualizations"},
-            {"func": export_dashboards, "data_key": "dashboards"},
-            {"func": export_dashboard_metrics, "data_key": "dashboard_metrics"},
-            {"func": export_ldm, "data_key": "ldm"},
-            {"func": export_filter_contexts, "data_key": "filter_contexts"},
-        ]
-    )
+    # Always export workspaces first (quick and useful for reference)
+    export_functions = [
+        {"func": export_workspaces, "data_key": "workspaces"},
+        {"func": export_metrics, "data_key": "metrics"},
+        {"func": export_visualizations, "data_key": "visualizations"},
+        {"func": export_dashboards, "data_key": "dashboards"},
+        {"func": export_dashboard_metrics, "data_key": "dashboard_metrics"},
+        {"func": export_ldm, "data_key": "ldm"},
+        {"func": export_filter_contexts, "data_key": "filter_contexts"},
+    ]
 
     # Execute each export function with all workspace data
     # Note: Database writes are kept sequential to avoid SQLite concurrency issues

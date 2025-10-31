@@ -209,7 +209,8 @@ result = export_metadata(
 
 - `output_dir`: Output directory (default: "output")
 - `export_formats`: List of ["sqlite"], ["csv"], or both (default: both)
-- `include_child_workspaces`: Process child workspaces (default: False)
+- `include_child_workspaces`: Fetch data from child workspaces (default: False)
+  - Note: The workspaces table is always created with child workspace list; this flag controls whether to fetch child workspace DATA (metrics, dashboards, etc.)
 - `child_workspace_data_types`: Data types to fetch from children (default: all)
   - Options: "metrics", "dashboards", "visualizations", "filter_contexts"
 - `max_parallel_workspaces`: Parallel processing limit (default: 5)
@@ -232,7 +233,7 @@ The SQLite database contains the following tables:
 - **ldm_datasets**: Logical data model datasets
 - **ldm_columns**: LDM columns (attributes, facts, references)
 - **filter_contexts**: Filter context definitions
-- **workspaces**: Workspace information (multi-workspace mode only)
+- **workspaces**: Workspace information (always included; child workspaces listed when available)
 - **visualization_metrics**: Metric-to-visualization relationships
 - **dashboard_visualizations**: Visualization-to-dashboard relationships
 - **dashboard_metrics**: Metric-to-dashboard relationships (rich text only)
@@ -248,7 +249,7 @@ When CSV export is enabled, the following files are created:
 - `gooddata_ldm_datasets.csv`
 - `gooddata_ldm_columns.csv`
 - `gooddata_filter_contexts.csv`
-- `gooddata_workspaces.csv` (multi-workspace only)
+- `gooddata_workspaces.csv` (always included; child workspaces listed when available)
 - `gooddata_visualization_metrics.csv`
 - `gooddata_dashboard_visualizations.csv`
 - `gooddata_dashboard_metrics.csv` (rich text only)
