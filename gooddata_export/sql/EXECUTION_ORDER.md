@@ -8,11 +8,12 @@ Post-export processing is now configured via **`post_export_config.yaml`**. This
 - ✅ **Self-documenting configuration** with descriptions and categories
 - ✅ **Explicit dependency management** - no more retry logic needed
 - ✅ **Automatic execution ordering** via topological sort
-- ✅ **Clear separation** between views (read-only) and updates (table modifications)
+- ✅ **Clear separation** between views (read-only), procedures (parameterized), and updates (table modifications)
+- ✅ **Stored procedure simulation** - SQLite doesn't have procedures, so we use parameterized views
 
 ## Configuration Structure
 
-The YAML file defines two sections:
+The YAML file defines three sections:
 
 ### 1. Views (Read-Only)
 Database views that can reference any tables or other views.
@@ -21,7 +22,15 @@ Database views that can reference any tables or other views.
 - Can be used by table update scripts
 - No table modifications
 
-### 2. Updates (Table Modifications)
+### 2. Procedures (Parameterized Views)
+SQLite doesn't support stored procedures, so we simulate them with parameterized views.
+- Accept input parameters via YAML configuration
+- Support config value substitution (e.g., `{{WORKSPACE_ID}}`)
+- Support literal string substitution (e.g., `$${TOKEN_VAR}`)
+- Return result sets like regular views
+- Parameters substituted at execution time
+
+### 3. Updates (Table Modifications)
 Scripts that modify existing tables (ALTER TABLE, UPDATE).
 - Executed after views
 - Can reference any views
@@ -39,6 +48,11 @@ Operations are executed in **dependency order** using topological sort. The actu
 4. **`v_metric_usage`** - Shows where metrics are used
 5. **`v_metric_dependencies`** - Shows metric dependencies via MAQL
 6. **`v_visualization_usage`** - Shows where visualizations are used
+
+### Phase 1.5: Procedures (with parameter substitution)
+1. **`v_procedures_api_metrics`** - Procedure to generate curl commands for API metric operations
+   - Parameters: `workspace_id` (from config), `bearer_token` (literal `${TOKEN_GOODDATA_DEV}`)
+   - Returns: POST, PUT, DELETE commands with Excel formula helpers
 
 ### Phase 2: Updates (executed in dependency order)
 1. **`visuals_with_same_content`** (depends on: `v_visualization_tags`)
@@ -68,6 +82,30 @@ views:
     category: tagging|usage|analytics
     dependencies: []  # or list other views it depends on
 ```
+
+### To Add a Procedure:
+```yaml
+procedures:
+  v_procedures_your_operation:
+    sql_file: procedures/v_procedures_your_operation.sql
+    description: What this procedure does and returns
+    category: procedures
+    dependencies: []  # or list views it depends on
+    parameters:
+      workspace_id: "{{WORKSPACE_ID}}"  # Config value substitution
+      bearer_token: "$${TOKEN_VAR}"     # Literal string substitution (shell var)
+      api_url: "https://api.example.com"  # Direct string substitution
+```
+
+**Parameter Types (Simulating Procedure Arguments):**
+- `{{CONFIG_KEY}}` - Replaced with value from ExportConfig (e.g., WORKSPACE_ID, BASE_URL)
+- `$${LITERAL}` - Replaced with literal string `${LITERAL}` (for shell variables)
+- Plain string - Replaced as-is
+
+**Note:** SQLite doesn't support stored procedures. This system simulates procedures by:
+1. Accepting parameters via YAML configuration
+2. Substituting parameters into the SQL at runtime
+3. Creating views that return computed results
 
 ### To Add an Update:
 ```yaml
@@ -110,6 +148,7 @@ The system uses **Kahn's algorithm** for topological sorting:
 | Manual ordering required | Automatic dependency resolution |
 | Difficult to understand relationships | Clear dependency declarations |
 | Split between views/updates by section | Unified dependency graph |
+| No parameter support | Parameterized procedures (stored procedure simulation) |
 
 ## Troubleshooting
 
@@ -134,9 +173,13 @@ The system uses **Kahn's algorithm** for topological sorting:
 gooddata_export/sql/
 ├── post_export_config.yaml    # Main configuration file
 ├── EXECUTION_ORDER.md          # This documentation
+├── DEPENDENCY_GRAPH.md         # Dependency visualization
 ├── views/                      # View SQL files
 │   ├── v_metric_tags.sql
 │   ├── v_visualization_tags.sql
+│   └── ...
+├── procedures/                 # Procedures (parameterized views)
+│   ├── v_procedures_api_metrics.sql
 │   └── ...
 └── updates/                    # Update SQL files
     ├── visuals_with_same_content.sql

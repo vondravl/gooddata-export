@@ -1,6 +1,6 @@
 # Post-Export SQL Dependency Graph
 
-This document visualizes the dependencies between views and updates in the post-export processing system.
+This document visualizes the dependencies between views, procedures, and updates in the post-export processing system.
 
 ## Visual Dependency Graph
 
@@ -69,6 +69,7 @@ This document visualizes the dependencies between views and updates in the post-
 | `v_metric_usage` | VIEW | (none) | (none) |
 | `v_metric_dependencies` | VIEW | (none) | (none) |
 | `v_visualization_usage` | VIEW | (none) | (none) |
+| `v_procedures_api_metrics` | PROCEDURE | (none) | (none) |
 | `metrics_probable_duplicates` | UPDATE | (none) | (none) |
 | `metrics_usage_check` | UPDATE | (none) | (none) |
 | `visualizations_usage_check` | UPDATE | (none) | (none) |
@@ -100,13 +101,14 @@ The system automatically computes this execution order:
 4. v_metric_dependencies           ← VIEW (no dependencies)
 5. v_metric_tags                   ← VIEW (no dependencies)
 6. v_metric_usage                  ← VIEW (no dependencies)
-7. v_visualization_tags            ← VIEW (no dependencies) ⚠️
-8. v_visualization_usage           ← VIEW (no dependencies)
-9. visualizations_usage_check      ← UPDATE (no dependencies)
-10. visuals_with_same_content      ← UPDATE (depends on #7) ⚠️
+7. v_procedures_api_metrics        ← PROCEDURE (no dependencies, with parameters)
+8. v_visualization_tags            ← VIEW (no dependencies) ⚠️
+9. v_visualization_usage           ← VIEW (no dependencies)
+10. visualizations_usage_check     ← UPDATE (no dependencies)
+11. visuals_with_same_content      ← UPDATE (depends on #8) ⚠️
 ```
 
-**Key observation**: Items 1-9 have no dependencies, so they can execute in any order (alphabetically sorted for determinism). Item 10 MUST come after item 7.
+**Key observation**: Items 1-10 have no dependencies, so they can execute in any order (alphabetically sorted for determinism). Item 11 MUST come after item 8.
 
 ## How Dependencies Work
 
@@ -116,6 +118,14 @@ views:
   v_visualization_tags:
     sql_file: views/v_visualization_tags.sql
     dependencies: []
+
+procedures:
+  v_procedures_api_metrics:
+    sql_file: procedures/v_procedures_api_metrics.sql
+    dependencies: []
+    parameters:
+      workspace_id: "{{WORKSPACE_ID}}"  # Replaced with actual value
+      bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Replaced with literal ${TOKEN_GOODDATA_DEV}
 
 updates:
   visuals_with_same_content:
@@ -129,6 +139,42 @@ The system builds a dependency graph and sorts operations so dependencies are al
 
 ### 3. Execution
 Operations are executed in the sorted order, ensuring all dependencies are satisfied.
+
+## Procedures (Parameterized Views)
+
+SQLite doesn't support stored procedures, so we simulate them with **parameterized views** that support runtime parameter substitution:
+
+### Parameter Types
+
+1. **Config Value Substitution** - `{{CONFIG_KEY}}`
+   - Replaced with actual value from ExportConfig
+   - Example: `{{WORKSPACE_ID}}` → `"micdiagnose-dev"`
+
+2. **Literal String Substitution** - `$${LITERAL}`
+   - Escaped $ - replaced with the literal string minus one $
+   - Example: `$${TOKEN_GOODDATA_DEV}` → `${TOKEN_GOODDATA_DEV}`
+   - Useful for shell variables in generated commands
+
+3. **Direct Substitution** - Plain string
+   - Replaced as-is
+   - Example: `"production"` → `"production"`
+
+### Example: API Metrics Procedure
+
+```yaml
+procedures:
+  v_procedures_api_metrics:
+    sql_file: procedures/v_procedures_api_metrics.sql
+    description: Procedure to generate API curl commands for metric operations
+    category: procedures
+    parameters:
+      workspace_id: "{{WORKSPACE_ID}}"
+      bearer_token: "$${TOKEN_GOODDATA_DEV}"
+```
+
+This procedure generates curl commands with placeholders that get replaced at runtime:
+- `{workspace_id}` → actual workspace ID from config
+- `{bearer_token}` → literal string `${TOKEN_GOODDATA_DEV}` for shell usage
 
 ## Adding Dependencies
 
@@ -164,6 +210,23 @@ updates:
 ```
 
 The system will automatically ensure `v_metric_usage` is created before `analyze_metric_usage` runs.
+
+### Example: Adding a New Procedure
+
+If you create a new procedure for API operations:
+
+```yaml
+procedures:
+  v_procedures_api_dashboards:
+    sql_file: procedures/v_procedures_api_dashboards.sql
+    description: Procedure to generate API curl commands for dashboard operations
+    category: procedures
+    dependencies: []  # or reference views if needed
+    parameters:
+      workspace_id: "{{WORKSPACE_ID}}"
+      api_endpoint: "https://api.example.com"
+      auth_token: "$${MY_TOKEN_VAR}"
+```
 
 ## Circular Dependency Detection
 
