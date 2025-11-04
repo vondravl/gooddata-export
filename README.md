@@ -50,7 +50,7 @@ python main.py
 python main.py --format sqlite
 
 # Export with child workspaces
-python main.py --include-children --max-workers 10
+python main.py --include-child-workspaces --max-parallel-workspaces 10
 
 # Custom directories
 python main.py --db-dir my_databases --csv-dir my_csvs
@@ -119,12 +119,12 @@ The `main.py` script supports the following command-line options:
 - `--db-name FILENAME` - Custom SQLite database filename (default: `gooddata_export.db`)
 
 ### Child Workspace Options
-- `--include-children` - Include child workspaces in export
-- `--child-data-types {metrics,dashboards,visualizations,filter_contexts}` - Data types to fetch from children
-- `--max-workers N` - Maximum parallel workers (default: 5)
+- `--include-child-workspaces` - Include child workspaces in export
+- `--child-workspace-data-types {metrics,dashboards,visualizations,filter_contexts}` - Data types to fetch from children
+- `--max-parallel-workspaces N` - Maximum parallel workers (default: 5)
 
 ### Feature Flags
-- `--enable-rich-text` - Enable extraction from rich text widgets
+- `--enable-rich-text-extraction` - Enable extraction from rich text widgets
 - `--skip-post-export` - Skip post-export SQL processing (duplicate detection)
 - `--debug` - Enable debug logging
 
@@ -138,7 +138,7 @@ python main.py --format sqlite --skip-post-export
 python main.py --format csv
 
 # Multi-workspace with specific data types
-python main.py --include-children --child-data-types dashboards visualizations --max-workers 15
+python main.py --include-child-workspaces --child-workspace-data-types dashboards visualizations --max-parallel-workspaces 15
 
 # Override config with command-line args
 python main.py --workspace-id prod_workspace --output-dir exports/prod --debug
