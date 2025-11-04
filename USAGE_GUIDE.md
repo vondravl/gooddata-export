@@ -141,7 +141,8 @@ BEARER_TOKEN=your_api_token
 # Optional
 ENABLE_RICH_TEXT_EXTRACTION=true
 INCLUDE_CHILD_WORKSPACES=false
-MAX_PARALLEL_WORKSPACES=5
+MAX_WORKERS=5
+DEBUG=false
 ```
 
 ## Common Use Cases
@@ -186,8 +187,8 @@ python main.py enrich --db-path output/db/workspace-b.db
 ```bash
 python main.py export \
   --format sqlite \
-  --include-children \
-  --max-workers 10 \
+  --include-child-workspaces \
+  --max-parallel-workspaces 10 \
   --db-name production-$(date +%Y%m%d).db
 ```
 
