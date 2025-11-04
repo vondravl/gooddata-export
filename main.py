@@ -11,7 +11,7 @@ Usage:
     python main.py enrich --db-path output/db/gooddata_export.db
 
     # With command-line arguments:
-    python main.py export --workspace-id your_workspace --output-dir my_output
+    python main.py export --workspace-id your_workspace --db-dir my_databases --csv-dir my_csvs
 
     # Export only SQLite (fastest):
     python main.py export --format sqlite
@@ -23,7 +23,7 @@ Usage:
     python main.py export --format sqlite csv
 
     # With child workspaces:
-    python main.py export --include-child-workspaces --max-parallel-workspaces 10
+    python main.py export --include-child-workspaces --max-workers 10
 
     # With debug mode:
     python main.py export --debug
@@ -67,10 +67,10 @@ Examples:
   python main.py export --format sqlite
 
   # Export with child workspaces:
-  python main.py export --include-child-workspaces --max-parallel-workspaces 10
+  python main.py export --include-child-workspaces --max-workers 10
 
-  # Custom output directory:
-  python main.py export --output-dir exports/production
+  # Custom directories:
+  python main.py export --db-dir exports/production/db --csv-dir exports/production/csv
 
   # Debug mode:
   python main.py export --debug
@@ -109,7 +109,7 @@ def _add_export_arguments(parser):
     parser.add_argument(
         "--base-url",
         type=str,
-        help="GoodData API base URL (env: BASE_URL_GOODDATA)"
+        help="GoodData API base URL (env: BASE_URL)"
     )
     parser.add_argument(
         "--workspace-id",
@@ -161,7 +161,7 @@ def _add_export_arguments(parser):
         help="Data types to fetch from child workspaces - default: all (env: CHILD_WORKSPACE_DATA_TYPES)"
     )
     parser.add_argument(
-        "--max-parallel-workspaces",
+        "--max-workers",
         type=int,
         default=None,
         help="Maximum parallel workers for child workspace processing - default: 5 (env: MAX_WORKERS)"
@@ -295,7 +295,7 @@ def run_export_command(args):
         # Use settings from loaded config, but allow CLI args to override
         include_child_workspaces = args.include_child_workspaces if args.include_child_workspaces else loaded_config.INCLUDE_CHILD_WORKSPACES
         child_workspace_data_types = args.child_workspace_data_types if args.child_workspace_data_types else loaded_config.CHILD_WORKSPACE_DATA_TYPES
-        max_parallel_workspaces = args.max_parallel_workspaces if args.max_parallel_workspaces is not None else loaded_config.MAX_PARALLEL_WORKSPACES
+        max_workers = args.max_workers if args.max_workers is not None else loaded_config.MAX_PARALLEL_WORKSPACES
         enable_rich_text_extraction = args.enable_rich_text_extraction if args.enable_rich_text_extraction else loaded_config.ENABLE_RICH_TEXT_EXTRACTION
         # Handle post-export: CLI --skip-post-export overrides .env ENABLE_POST_EXPORT
         enable_post_export = not args.skip_post_export if args.skip_post_export else loaded_config.ENABLE_POST_EXPORT
@@ -304,7 +304,7 @@ def run_export_command(args):
         # Use CLI args with defaults
         include_child_workspaces = args.include_child_workspaces
         child_workspace_data_types = args.child_workspace_data_types
-        max_parallel_workspaces = args.max_parallel_workspaces if args.max_parallel_workspaces is not None else 5
+        max_workers = args.max_workers if args.max_workers is not None else 5
         enable_rich_text_extraction = args.enable_rich_text_extraction
         enable_post_export = not args.skip_post_export  # Invert the skip flag
         debug = args.debug
@@ -320,7 +320,7 @@ def run_export_command(args):
     print(f"   Export Formats: {', '.join(args.format)}")
     print(f"   Include Child Workspaces: {'Yes' if include_child_workspaces else 'No'}")
     if include_child_workspaces:
-        print(f"   Max Parallel Workers: {max_parallel_workspaces}")
+        print(f"   Max Workers: {max_workers}")
         if child_workspace_data_types:
             print(f"   Child Data Types: {', '.join(child_workspace_data_types)}")
     print(f"   Rich Text Extraction: {'Enabled' if enable_rich_text_extraction else 'Disabled'}")
@@ -346,7 +346,7 @@ def run_export_command(args):
             export_formats=args.format,
             include_child_workspaces=include_child_workspaces,
             child_workspace_data_types=child_workspace_data_types,
-            max_parallel_workspaces=max_parallel_workspaces,
+            max_parallel_workspaces=max_workers,
             enable_rich_text_extraction=enable_rich_text_extraction,
             run_post_export=enable_post_export,
             debug=debug,
