@@ -188,7 +188,7 @@ python main.py enrich --db-path output/db/workspace-b.db
 python main.py export \
   --format sqlite \
   --include-child-workspaces \
-  --max-parallel-workspaces 10 \
+  --max-workers 10 \
   --db-name production-$(date +%Y%m%d).db
 ```
 
