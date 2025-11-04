@@ -10,12 +10,15 @@
 -- Returns: Table with curl commands and Excel formulas for API operations
 --
 -- Columns returned:
---   metric_id, title, tags, format, description, maql - Metric attributes
+--   metric_id, title, tags, format, description, maql, is_hidden - Metric attributes
 --   curl_post - POST command to create metric
 --   formula_post - Excel formula for POST substitution
 --   curl_put - PUT command to update metric
 --   formula_put - Excel formula for PUT substitution
 --   curl_delete - DELETE command to remove metric
+--
+-- Note: is_hidden is a boolean field:
+--   In Excel/SQLite: Use 0 for false (visible), 1 for true (hidden)
 
 DROP VIEW IF EXISTS v_api_automation_metrics;
 
@@ -28,23 +31,24 @@ SELECT
     substr(json_quote(COALESCE(format, '#,##0')), 2, length(json_quote(COALESCE(format, '#,##0'))) - 2) as format,
     substr(json_quote(COALESCE(description, '')), 2, length(json_quote(COALESCE(description, ''))) - 2) as description,
     substr(json_quote(maql), 2, length(json_quote(maql)) - 2) as maql,
+    CASE WHEN is_hidden = 1 THEN 'true' ELSE 'false' END as is_hidden,
     
     -- POST curl command (for creating new metrics)
     -- Note: metric_id left as placeholder {metric_id} so you can change it to create new metrics
-    'curl -X POST "{base_url}/api/v1/entities/workspaces/{workspace_id}/metrics" -H "Authorization: Bearer {bearer_token}" -H "Content-Type: application/vnd.gooddata.api+json" -d ''{"data":{"id":"{metric_id}","type":"metric","attributes":{"title":"{title}","description":"{description}","content":{"format":"{format}","maql":"{maql}"}}}}''' AS curl_post,
+    'curl -X POST "{base_url}/api/v1/entities/workspaces/{workspace_id}/metrics" -H "Authorization: Bearer {bearer_token}" -H "Content-Type: application/vnd.gooddata.api+json" -d ''{"data":{"id":"{metric_id}","type":"metric","attributes":{"title":"{title}","description":"{description}","isHidden":{is_hidden},"content":{"format":"{format}","maql":"{maql}"}}}}''' AS curl_post,
     
     -- Excel formula for POST command
-    -- Assuming columns are: A=metric_id, B=title, C=tags, D=format, E=description, F=maql, G=curl_post
+    -- Assuming columns are: A=metric_id, B=title, C=tags, D=format, E=description, F=maql, G=is_hidden, H=curl_post
     -- Note: workspace_id and bearer_token already substituted; metric_id kept as placeholder for flexibility
-    '=SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(G2,"{metric_id}",A2),"{title}",B2),"{tags}",C2),"{format}",D2),"{description}",E2),"{maql}",F2)' as formula_post,
+    '=SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(H2,"{metric_id}",A2),"{title}",B2),"{tags}",C2),"{format}",D2),"{description}",E2),"{maql}",F2),"{is_hidden}",G2)' as formula_post,
     
     -- PUT curl command (for updating existing metrics)
-    'curl -X PUT "{base_url}/api/v1/entities/workspaces/{workspace_id}/metrics/' || metric_id || '" -H "Authorization: Bearer {bearer_token}" -H "Content-Type: application/vnd.gooddata.api+json" -d ''{"data":{"id":"' || metric_id || '","type":"metric","attributes":{"title":"{title}","description":"{description}","content":{"format":"{format}","maql":"{maql}"}}}}''' AS curl_put,
+    'curl -X PUT "{base_url}/api/v1/entities/workspaces/{workspace_id}/metrics/' || metric_id || '" -H "Authorization: Bearer {bearer_token}" -H "Content-Type: application/vnd.gooddata.api+json" -d ''{"data":{"id":"' || metric_id || '","type":"metric","attributes":{"title":"{title}","description":"{description}","isHidden":{is_hidden},"content":{"format":"{format}","maql":"{maql}"}}}}''' AS curl_put,
     
     -- Excel formula for PUT command
-    -- Assuming columns are: B=title, C=tags, D=format, E=description, F=maql, I=curl_put
+    -- Assuming columns are: B=title, C=tags, D=format, E=description, F=maql, G=is_hidden, J=curl_put
     -- Note: workspace_id, bearer_token, and metric_id are already substituted
-    '=SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(I2,"{title}",B2),"{tags}",C2),"{format}",D2),"{description}",E2),"{maql}",F2)' as formula_put,
+    '=SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(J2,"{title}",B2),"{tags}",C2),"{format}",D2),"{description}",E2),"{maql}",F2),"{is_hidden}",G2)' as formula_put,
     
     -- DELETE curl command (for deleting metrics)
     'curl -X DELETE "{base_url}/api/v1/entities/workspaces/{workspace_id}/metrics/' || metric_id || '" -H "Authorization: Bearer {bearer_token}"' AS curl_delete

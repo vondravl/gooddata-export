@@ -255,6 +255,7 @@ def process_metrics(data, workspace_id=None):
                     "modifiedAt", obj["attributes"]["createdAt"]
                 ),
                 "is_valid": obj["attributes"]["areRelationsValid"],
+                "is_hidden": obj["attributes"].get("isHidden", False),
                 "workspace_id": workspace_id,
                 "origin_type": origin_type,
                 "content": obj,  # Store the original JSON object
@@ -290,6 +291,7 @@ def process_visualizations(data, base_url, workspace_id):
                 "origin_type": origin_type,
                 "content": obj,
                 "is_valid": obj["attributes"]["areRelationsValid"],
+                "is_hidden": obj["attributes"].get("isHidden", False),
             }
         )
     return processed_data
@@ -391,6 +393,7 @@ def process_dashboards(data, base_url, workspace_id):
                 "origin_type": origin_type,
                 "content": obj["attributes"]["content"],
                 "is_valid": obj["attributes"]["areRelationsValid"],
+                "is_hidden": obj["attributes"].get("isHidden", False),
                 "filter_context_id": obj["attributes"]
                 .get("content", {})
                 .get("filterContextRef", {})
