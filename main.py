@@ -23,7 +23,7 @@ Usage:
     python main.py export --format sqlite csv
 
     # With child workspaces:
-    python main.py export --include-children --max-workers 10
+    python main.py export --include-child-workspaces --max-parallel-workspaces 10
 
     # With debug mode:
     python main.py export --debug
@@ -35,7 +35,8 @@ Configuration:
         BEARER_TOKEN=your_api_token
         ENABLE_RICH_TEXT_EXTRACTION=true  # Optional
         INCLUDE_CHILD_WORKSPACES=false     # Optional
-        MAX_PARALLEL_WORKSPACES=5          # Optional
+        MAX_WORKERS=5                      # Optional
+        DEBUG=false                        # Optional
 """
 
 import argparse
@@ -66,7 +67,7 @@ Examples:
   python main.py export --format sqlite
 
   # Export with child workspaces:
-  python main.py export --include-children --max-workers 10
+  python main.py export --include-child-workspaces --max-parallel-workspaces 10
 
   # Custom output directory:
   python main.py export --output-dir exports/production
@@ -160,9 +161,9 @@ def _add_export_arguments(parser):
         help="Data types to fetch from child workspaces - default: all (env: CHILD_WORKSPACE_DATA_TYPES)"
     )
     parser.add_argument(
-        "--max-workers",
+        "--max-parallel-workspaces",
         type=int,
-        default=5,
+        default=None,
         help="Maximum parallel workers for child workspace processing - default: 5 (env: MAX_WORKERS)"
     )
 
@@ -292,19 +293,19 @@ def run_export_command(args):
     # Determine effective settings (from .env or args)
     if loaded_config:
         # Use settings from loaded config, but allow CLI args to override
-        include_children = loaded_config.INCLUDE_CHILD_WORKSPACES if not args.include_child_workspaces else args.include_child_workspaces
-        child_data_types = loaded_config.CHILD_WORKSPACE_DATA_TYPES if not args.child_workspace_data_types else args.child_workspace_data_types
-        max_workers = loaded_config.MAX_PARALLEL_WORKSPACES
-        enable_rich_text = loaded_config.ENABLE_RICH_TEXT_EXTRACTION if not args.enable_rich_text_extraction else args.enable_rich_text_extraction
+        include_child_workspaces = args.include_child_workspaces if args.include_child_workspaces else loaded_config.INCLUDE_CHILD_WORKSPACES
+        child_workspace_data_types = args.child_workspace_data_types if args.child_workspace_data_types else loaded_config.CHILD_WORKSPACE_DATA_TYPES
+        max_parallel_workspaces = args.max_parallel_workspaces if args.max_parallel_workspaces is not None else loaded_config.MAX_PARALLEL_WORKSPACES
+        enable_rich_text_extraction = args.enable_rich_text_extraction if args.enable_rich_text_extraction else loaded_config.ENABLE_RICH_TEXT_EXTRACTION
         # Handle post-export: CLI --skip-post-export overrides .env ENABLE_POST_EXPORT
         enable_post_export = not args.skip_post_export if args.skip_post_export else loaded_config.ENABLE_POST_EXPORT
-        debug = loaded_config.DEBUG_WORKSPACE_PROCESSING if not args.debug else args.debug
+        debug = args.debug if args.debug else loaded_config.DEBUG_WORKSPACE_PROCESSING
     else:
-        # Use CLI args
-        include_children = args.include_child_workspaces
-        child_data_types = args.child_workspace_data_types
-        max_workers = args.max_workers
-        enable_rich_text = args.enable_rich_text_extraction
+        # Use CLI args with defaults
+        include_child_workspaces = args.include_child_workspaces
+        child_workspace_data_types = args.child_workspace_data_types
+        max_parallel_workspaces = args.max_parallel_workspaces if args.max_parallel_workspaces is not None else 5
+        enable_rich_text_extraction = args.enable_rich_text_extraction
         enable_post_export = not args.skip_post_export  # Invert the skip flag
         debug = args.debug
 
@@ -317,12 +318,12 @@ def run_export_command(args):
     if "csv" in args.format:
         print(f"   CSV Directory: {args.csv_dir}")
     print(f"   Export Formats: {', '.join(args.format)}")
-    print(f"   Include Child Workspaces: {'Yes' if include_children else 'No'}")
-    if include_children:
-        print(f"   Max Parallel Workers: {max_workers}")
-        if child_data_types:
-            print(f"   Child Data Types: {', '.join(child_data_types)}")
-    print(f"   Rich Text Extraction: {'Enabled' if enable_rich_text else 'Disabled'}")
+    print(f"   Include Child Workspaces: {'Yes' if include_child_workspaces else 'No'}")
+    if include_child_workspaces:
+        print(f"   Max Parallel Workers: {max_parallel_workspaces}")
+        if child_workspace_data_types:
+            print(f"   Child Data Types: {', '.join(child_workspace_data_types)}")
+    print(f"   Rich Text Extraction: {'Enabled' if enable_rich_text_extraction else 'Disabled'}")
     print(f"   Post-Export Processing: {'Disabled' if args.skip_post_export else 'Enabled'}")
     print(f"   Debug Mode: {'Enabled' if debug else 'Disabled'}")
     print()
@@ -343,10 +344,10 @@ def run_export_command(args):
             bearer_token=bearer_token,
             csv_dir=args.csv_dir if "csv" in args.format else None,
             export_formats=args.format,
-            include_child_workspaces=include_children,
-            child_workspace_data_types=child_data_types,
-            max_parallel_workspaces=max_workers,
-            enable_rich_text_extraction=enable_rich_text,
+            include_child_workspaces=include_child_workspaces,
+            child_workspace_data_types=child_workspace_data_types,
+            max_parallel_workspaces=max_parallel_workspaces,
+            enable_rich_text_extraction=enable_rich_text_extraction,
             run_post_export=enable_post_export,
             debug=debug,
             db_path=db_path
