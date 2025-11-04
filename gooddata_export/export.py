@@ -495,6 +495,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
         "created_at": "DATE",
         "modified_at": "DATE",
         "is_valid": "BOOLEAN",
+        "is_hidden": "BOOLEAN",
         "origin_type": "TEXT",
         "content": "JSON",  # Add content field to store the original JSON
         "PRIMARY KEY": "(metric_id, workspace_id)",
@@ -521,8 +522,8 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO metrics 
-        (metric_id, workspace_id, title, description, tags, maql, format, created_at, modified_at, is_valid, origin_type, content)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (metric_id, workspace_id, title, description, tags, maql, format, created_at, modified_at, is_valid, is_hidden, origin_type, content)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -536,6 +537,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
                 d["created_at"],
                 d["modified_at"],
                 d["is_valid"],
+                d["is_hidden"],
                 d["origin_type"],
                 json.dumps(d["content"]),
             )
@@ -592,6 +594,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         "origin_type": "TEXT",
         "content": "JSON",
         "is_valid": "BOOLEAN",
+        "is_hidden": "BOOLEAN",
         "PRIMARY KEY": "(visualization_id, workspace_id)",
     }
 
@@ -613,8 +616,8 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO visualizations 
-        (visualization_id, workspace_id, title, description, tags, visualization_url, created_at, modified_at, url_link, origin_type, content, is_valid)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (visualization_id, workspace_id, title, description, tags, visualization_url, created_at, modified_at, url_link, origin_type, content, is_valid, is_hidden)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -630,6 +633,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
                 d["origin_type"],
                 json.dumps(d["content"]),
                 d["is_valid"],
+                d["is_hidden"],
             )
             for d in all_processed_visualizations
         ],
@@ -736,6 +740,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         "origin_type": "TEXT",
         "content": "JSON",
         "is_valid": "BOOLEAN",
+        "is_hidden": "BOOLEAN",
         "filter_context_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, workspace_id)",
     }
@@ -758,8 +763,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO dashboards 
-        (dashboard_id, workspace_id, title, description, tags, created_at, modified_at, dashboard_url, origin_type, content, is_valid, filter_context_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (dashboard_id, workspace_id, title, description, tags, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -774,6 +779,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
                 d["origin_type"],
                 json.dumps(d["content"]),
                 d["is_valid"],
+                d["is_hidden"],
                 d.get("filter_context_id"),  # Use get() to handle potential None values
             )
             for d in all_processed_dashboards
