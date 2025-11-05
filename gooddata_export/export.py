@@ -717,8 +717,19 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         except Exception:
             known_insights = set()
 
+        # When child workspaces are included, only enable rich text extraction for parent workspace
+        # Create a workspace-specific config to control rich text behavior per workspace
+        workspace_config = config
+        if config.INCLUDE_CHILD_WORKSPACES and not workspace_info.get("is_parent", False):
+            # For child workspaces, create a temporary config with rich text disabled
+            from copy import copy
+            workspace_config = copy(config)
+            workspace_config._enable_rich_text_extraction = False
+            workspace_config._rich_text_explicit = True
+            logging.debug(f"Rich text extraction disabled for child workspace: {workspace_id}")
+        
         processed_relationships = process_dashboard_visualizations(
-            raw_data, workspace_id, known_insights, config
+            raw_data, workspace_id, known_insights, workspace_config
         )
 
         all_processed_dashboards.extend(processed_dashboards)
@@ -1106,7 +1117,28 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
 
 def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
     """Export metrics used in rich text widgets on dashboards across all workspaces"""
+    
+    # Always create the table structure (even if empty) to ensure post-processing SQL works
+    # This is needed because views like v_metric_usage depend on this table existing
+    dashboard_metrics_columns = {
+        "dashboard_id": "TEXT",
+        "metric_id": "TEXT",
+        "workspace_id": "TEXT",
+        "PRIMARY KEY": "(dashboard_id, metric_id, workspace_id)",
+    }
+    
+    # Connect to database and ensure table exists
+    conn = connect_database(db_name)
+    cursor = conn.cursor()
+    cursor.execute("DROP TABLE IF EXISTS dashboard_metrics")
+    conn.commit()
+    cursor = setup_table(conn, "dashboard_metrics", dashboard_metrics_columns)
+    conn.commit()
+    
+    # If rich text extraction is disabled, keep empty table and return
     if not config.ENABLE_RICH_TEXT_EXTRACTION:
+        conn.close()
+        logging.info("Rich text extraction disabled - dashboard_metrics table created but empty")
         return
 
     rich_text_metrics = []
@@ -1139,8 +1171,16 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         )
 
     try:
-        # Process dashboards from all workspaces to extract metrics from rich text widgets
-        for workspace_info in all_workspace_data:
+        # When child workspaces are included, only process parent workspace for rich text
+        workspaces_to_process = all_workspace_data
+        if config.INCLUDE_CHILD_WORKSPACES:
+            workspaces_to_process = [ws for ws in all_workspace_data if ws.get("is_parent", False)]
+            logging.info(
+                f"Rich text extraction: Processing only parent workspace (found {len(workspaces_to_process)} parent workspace(s) out of {len(all_workspace_data)} total)"
+            )
+        
+        # Process dashboards from workspaces to extract metrics from rich text widgets
+        for workspace_info in workspaces_to_process:
             workspace_id = workspace_info["workspace_id"]
             workspace_dashboards = workspace_info["data"].get("dashboards")
             if not workspace_dashboards:
@@ -1198,11 +1238,6 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                                     metric["workspace_id"] = workspace_id
                                 rich_text_metrics.extend(additional_metrics)
 
-        # Skip if no metrics found
-        if not rich_text_metrics:
-            print("No metrics found in rich text widgets")
-            return
-
         # Remove duplicates by converting to dict and back to list
         unique_metrics = {}
         for item in rich_text_metrics:
@@ -1210,14 +1245,14 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             unique_metrics[key] = item
 
         rich_text_metrics = list(unique_metrics.values())
-
-        # Define columns for the new table
-        dashboard_metrics_columns = {
-            "dashboard_id": "TEXT",
-            "metric_id": "TEXT",
-            "workspace_id": "TEXT",
-            "PRIMARY KEY": "(dashboard_id, metric_id, workspace_id)",
-        }
+        
+        # If no metrics found, table already exists (created earlier), just log and return
+        if not rich_text_metrics:
+            conn.close()
+            logging.info("No metrics found in rich text widgets - dashboard_metrics table created but empty")
+            if export_dir is None:
+                print("No metrics found in rich text widgets")
+            return
 
         # Export to CSV (if requested)
         records_count = len(rich_text_metrics)
@@ -1230,17 +1265,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                 fieldnames=["dashboard_id", "metric_id", "workspace_id"],
             )
 
-        # Export to SQLite - check if table exists first and drop it to avoid conflicts
-        conn = connect_database(db_name)
-        cursor = conn.cursor()
-
-        # First drop the table if it exists to avoid conflicts
-        cursor.execute("DROP TABLE IF EXISTS dashboard_metrics")
-        conn.commit()
-
-        # Then recreate it with our schema
-        cursor = setup_table(conn, "dashboard_metrics", dashboard_metrics_columns)
-
+        # Insert data into the table (table was already created earlier)
         cursor.executemany(
             """
             INSERT INTO dashboard_metrics 
@@ -1262,6 +1287,11 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         conn.close()
 
     except Exception as e:
+        # Ensure connection is closed on error to prevent resource leak
+        try:
+            conn.close()
+        except Exception:
+            pass  # Connection may already be closed or invalid
         print(f"Error in export_dashboard_metrics: {str(e)}")
         # Re-raise with more specific message
         raise RuntimeError(f"Error processing dashboard metrics: {str(e)}")

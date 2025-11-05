@@ -1,6 +1,7 @@
 -- Create view showing where metrics are used across dashboards and visualizations
 -- This allows easy lookup of metric usage by metric_id
 -- Combines both direct dashboard usage (from rich text) and indirect usage (through visualizations)
+-- Note: dashboard_metrics table is always created (may be empty if rich text extraction disabled)
 
 CREATE VIEW IF NOT EXISTS v_metric_usage AS
 -- Direct dashboard usage (from rich text)
