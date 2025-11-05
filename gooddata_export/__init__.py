@@ -85,7 +85,7 @@ def export_metadata(
             bearer_token="your_token_here",
             include_child_workspaces=True,
             child_workspace_data_types=["dashboards", "visualizations"],
-            max_parallel_workspaces=10
+            max_parallel_workspaces=5
         )
     """
     if export_formats is None:

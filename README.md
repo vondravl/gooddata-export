@@ -178,7 +178,7 @@ result = export_metadata(
     bearer_token="your_token",
     include_child_workspaces=True,
     child_workspace_data_types=["dashboards", "visualizations"],
-    max_parallel_workspaces=10  # Process 10 workspaces at once
+    max_parallel_workspaces=5  # Process 5 workspaces at once (default)
 )
 ```
 

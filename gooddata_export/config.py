@@ -130,10 +130,8 @@ class ExportConfig:
         if is_explicit:
             return base_value
         
-        # When multi-workspace mode is on, default to disabled (unless explicitly overridden)
-        if getattr(self, '_include_child_workspaces', False):
-            return False
-        
+        # Always return base_value (default True)
+        # When child workspaces are included, filtering happens in export_dashboard_metrics
         return base_value
 
     @ENABLE_RICH_TEXT_EXTRACTION.setter
