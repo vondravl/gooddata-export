@@ -859,6 +859,8 @@ def process_workspaces(parent_workspace_id, parent_workspace_name, child_workspa
         })
     
     return processed_data
+
+
 def extract_all_ids_from_content(content_str):
     """
     Extract all potential UUIDs from content using regex pattern matching
@@ -1348,9 +1350,8 @@ def process_dashboard_metrics_from_rich_text(dashboard_data, config=None):
 
 
 def fetch_filter_context_entity(client, workspace_id, filter_context_id, timeout=30):
-    """Fetch a single filter context entity via the GoodData Entity API.
-    
-    Returns the entity JSON (typically under 'data'), or None on failure.
+    """Fetch a single filter context entity via the GoodData Entity API and return the entity JSON.
+    No validity checks are performed here; caller decides how to use the payload.
     """
     try:
         url = f"{client['base_url']}/api/v1/entities/workspaces/{workspace_id}/filterContexts/{filter_context_id}"
@@ -1361,11 +1362,11 @@ def fetch_filter_context_entity(client, workspace_id, filter_context_id, timeout
             body = resp.json()
             return body.get("data", body)
         logger.debug(
-            f"Failed to fetch filter context {filter_context_id} for workspace {workspace_id}: HTTP {resp.status_code}"
+            f"Fetch filter context entity HTTP {resp.status_code} for {filter_context_id} in workspace {workspace_id}"
         )
         return None
     except Exception as e:
         logger.debug(
-            f"Error fetching filter context {filter_context_id} for workspace {workspace_id}: {e}"
+            f"Error fetching filter context entity {filter_context_id} for workspace {workspace_id}: {e}"
         )
         return None

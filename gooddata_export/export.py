@@ -518,7 +518,6 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
     conn = connect_database(db_name)
     cursor = setup_table(conn, "metrics", metrics_columns)
 
-    # Minify content for child references to parent objects
     execute_with_retry(
         cursor,
         """
@@ -1001,34 +1000,14 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
 
         processed = process_filter_contexts(raw_data, workspace_id)
 
-        # Ensure we also include any filter contexts referenced by dashboards but missing from collection
+        # Always load the full entity via single-entity endpoint and store it in content (no extra validity checks)
         try:
             client = get_api_client(config)
-            dashboards_raw = workspace_info["data"].get("dashboards") or []
-            referenced_ids = set()
-            for dash in dashboards_raw:
-                fc_id = (
-                    dash.get("attributes", {})
-                    .get("content", {})
-                    .get("filterContextRef", {})
-                    .get("identifier", {})
-                    .get("id")
-                )
-                if fc_id:
-                    referenced_ids.add(fc_id)
-
-            existing_ids = {p["filter_context_id"] for p in processed}
-            missing_ids = referenced_ids - existing_ids
-
-            # Fetch missing ones via entity endpoint
-            for fc_id in sorted(missing_ids):
+            for item in processed:
+                fc_id = item.get("filter_context_id")
                 entity = fetch_filter_context_entity(client, workspace_id, fc_id)
-                if entity:
-                    processed.append({
-                        "filter_context_id": entity.get("id", fc_id),
-                        "workspace_id": workspace_id,
-                        "content": entity,
-                    })
+                if entity is not None:
+                    item["content"] = entity
         except Exception:
             # Best-effort enrichment; ignore failures
             pass
