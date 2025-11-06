@@ -80,6 +80,15 @@ procedures:
       base_url: "{{BASE_URL}}"  # Will be replaced with actual base_url from config
       workspace_id: "{{WORKSPACE_ID}}"  # Will be replaced with actual workspace_id from config
       bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Will be replaced with literal ${TOKEN_GOODDATA_DEV} for shell
+  
+  v_api_automation_workspaces:
+    sql_file: procedures/v_api_automation_workspaces.sql
+    description: Procedure to generate API curl commands for workspace operations
+    category: procedures
+    dependencies: []
+    parameters:
+      base_url: "{{BASE_URL}}"  # Will be replaced with actual base_url from config
+      bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Will be replaced with literal ${TOKEN_GOODDATA_DEV} for shell
 
 # ====================
 # TABLE UPDATES
