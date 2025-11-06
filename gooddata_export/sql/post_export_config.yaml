@@ -58,6 +58,12 @@ views:
     description: Shows where visualizations are used in dashboards
     category: usage
     dependencies: []
+  
+  v_filter_context_usage:
+    sql_file: views/v_filter_context_usage.sql
+    description: Shows where filter contexts are used in dashboards
+    category: usage
+    dependencies: []
 
 # ====================
 # PROCEDURES (Parameterized)
@@ -121,4 +127,25 @@ updates:
     required_columns:
       is_used_insight: INTEGER DEFAULT 0
       is_used_maql: INTEGER DEFAULT 0
+  
+  # Filter Context Updates
+  filter_contexts_with_same_content:
+    sql_file: updates/filter_contexts_with_same_content.sql
+    description: Identifies duplicate filter contexts based on filter fields
+    category: deduplication
+    table: filter_contexts
+    dependencies: []
+    required_columns:
+      filter_fields: TEXT
+      same_fields_id: INTEGER
+      same_filter_contexts_count: INTEGER
+  
+  filter_contexts_usage_check:
+    sql_file: updates/filter_contexts_usage_check.sql
+    description: Marks filter contexts as used/unused based on dashboard references
+    category: usage
+    table: filter_contexts
+    dependencies: []
+    required_columns:
+      is_used: INTEGER DEFAULT 0
 
