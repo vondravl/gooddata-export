@@ -314,23 +314,30 @@ pytest
 
 ```
 gooddata-export/
-├── gooddata_export/
-│   ├── __init__.py         # Main API
-│   ├── config.py           # Configuration handling
-│   ├── export.py           # Export orchestration
-│   ├── process.py          # Data processing
-│   ├── common.py           # API client utilities
-│   ├── db.py               # Database utilities
-│   ├── post_export.py      # Post-processing
-│   └── sql/
-│       ├── metrics_probable_duplicates.sql
-│       └── visuals_with_same_content.sql
-├── main.py                 # Command-line interface
-├── setup.py
-├── requirements.txt
-├── README.md
-└── .env.gdcloud           # Configuration file (create from template)
+├── gooddata_export/           # Core library package
+│   ├── __init__.py           # Main API exports
+│   ├── config.py             # Configuration handling
+│   ├── export.py             # Export orchestration
+│   ├── process.py            # Data processing logic
+│   ├── common.py             # API client utilities
+│   ├── db.py                 # Database utilities
+│   ├── post_export.py        # Post-processing orchestration
+│   └── sql/                  # SQL scripts (auto-executed during post-export)
+│       ├── procedures/       # Stored procedures and automation views
+│       ├── updates/          # Data enrichment scripts (duplicates, usage analysis)
+│       ├── views/            # Analytical views (dependencies, tags, usage)
+│       └── *.yaml, *.md      # Execution config and documentation
+├── main.py                   # Command-line interface
+├── setup.py                  # Package configuration
+├── README.md                 # This file
+├── USAGE_GUIDE.md            # Detailed usage examples
+├── .env.gdcloud              # Configuration file (create this)
+└── output/                   # Export destination (auto-created)
+    ├── db/                   # SQLite databases
+    └── metadata_csv/         # CSV exports
 ```
+
+**Note**: The `sql/` directory contains various analytical scripts that are automatically applied during post-export processing. These scripts evolve frequently as new analysis capabilities are added.
 
 ## License
 
