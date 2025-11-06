@@ -727,6 +727,7 @@ def process_filter_contexts(data, workspace_id=None):
             {
                 "filter_context_id": obj["id"],
                 "workspace_id": workspace_id,
+                "content": obj,
             }
         )
     return processed_data
@@ -1344,3 +1345,27 @@ def process_dashboard_metrics_from_rich_text(dashboard_data, config=None):
     
     # Sort the results for consistency
     return sorted(relationships, key=lambda x: (x["dashboard_id"], x["metric_id"]))
+
+
+def fetch_filter_context_entity(client, workspace_id, filter_context_id, timeout=30):
+    """Fetch a single filter context entity via the GoodData Entity API.
+    
+    Returns the entity JSON (typically under 'data'), or None on failure.
+    """
+    try:
+        url = f"{client['base_url']}/api/v1/entities/workspaces/{workspace_id}/filterContexts/{filter_context_id}"
+        resp = requests.get(
+            url, params=client.get("params"), headers=client.get("headers"), timeout=timeout
+        )
+        if resp.status_code == 200:
+            body = resp.json()
+            return body.get("data", body)
+        logger.debug(
+            f"Failed to fetch filter context {filter_context_id} for workspace {workspace_id}: HTTP {resp.status_code}"
+        )
+        return None
+    except Exception as e:
+        logger.debug(
+            f"Error fetching filter context {filter_context_id} for workspace {workspace_id}: {e}"
+        )
+        return None

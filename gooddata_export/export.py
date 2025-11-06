@@ -23,6 +23,7 @@ from gooddata_export.process import (
     process_visualization_metrics,
     process_visualizations,
     process_workspaces,
+    fetch_filter_context_entity,
 )
 from gooddata_export.db import (
     connect_database,
@@ -687,7 +688,6 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
 
 def export_dashboards(all_workspace_data, export_dir, config, db_name):
     """Export dashboards and dashboard-visualization relationships"""
-
     client = get_api_client(config)
     all_processed_dashboards = []
     all_processed_relationships = []
@@ -1000,6 +1000,39 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
             continue
 
         processed = process_filter_contexts(raw_data, workspace_id)
+
+        # Ensure we also include any filter contexts referenced by dashboards but missing from collection
+        try:
+            client = get_api_client(config)
+            dashboards_raw = workspace_info["data"].get("dashboards") or []
+            referenced_ids = set()
+            for dash in dashboards_raw:
+                fc_id = (
+                    dash.get("attributes", {})
+                    .get("content", {})
+                    .get("filterContextRef", {})
+                    .get("identifier", {})
+                    .get("id")
+                )
+                if fc_id:
+                    referenced_ids.add(fc_id)
+
+            existing_ids = {p["filter_context_id"] for p in processed}
+            missing_ids = referenced_ids - existing_ids
+
+            # Fetch missing ones via entity endpoint
+            for fc_id in sorted(missing_ids):
+                entity = fetch_filter_context_entity(client, workspace_id, fc_id)
+                if entity:
+                    processed.append({
+                        "filter_context_id": entity.get("id", fc_id),
+                        "workspace_id": workspace_id,
+                        "content": entity,
+                    })
+        except Exception:
+            # Best-effort enrichment; ignore failures
+            pass
+
         all_processed_data.extend(processed)
 
     if not all_processed_data:
@@ -1008,6 +1041,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
     filter_contexts_columns = {
         "filter_context_id": "TEXT",
         "workspace_id": "TEXT",
+        "content": "JSON",
         "PRIMARY KEY": "(filter_context_id, workspace_id)",
     }
 
@@ -1020,6 +1054,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
             export_dir,
             csv_filename,
             fieldnames=filter_contexts_columns.keys(),
+            exclude_fields={"content"},
         )
 
     # Export to SQLite
@@ -1030,10 +1065,17 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO filter_contexts 
-        (filter_context_id, workspace_id)
-        VALUES (?, ?)
+        (filter_context_id, workspace_id, content)
+        VALUES (?, ?, ?)
         """,
-        [(d["filter_context_id"], d["workspace_id"]) for d in all_processed_data],
+        [
+            (
+                d["filter_context_id"],
+                d["workspace_id"],
+                json.dumps(d.get("content")) if d.get("content") is not None else None,
+            )
+            for d in all_processed_data
+        ],
     )
 
     conn.commit()
