@@ -233,6 +233,7 @@ The SQLite database contains the following tables:
 - **ldm_datasets**: Logical data model datasets
 - **ldm_columns**: LDM columns (attributes, facts, references)
 - **filter_contexts**: Filter context definitions
+- **filter_context_fields**: Individual filters within each filter context (date filters and attribute filters)
 - **workspaces**: Workspace information (always included; child workspaces listed when available)
 - **visualization_metrics**: Metric-to-visualization relationships
 - **dashboard_visualizations**: Visualization-to-dashboard relationships
@@ -249,6 +250,7 @@ When CSV export is enabled, the following files are created:
 - `gooddata_ldm_datasets.csv`
 - `gooddata_ldm_columns.csv`
 - `gooddata_filter_contexts.csv`
+- `gooddata_filter_context_fields.csv`
 - `gooddata_workspaces.csv` (always included; child workspaces listed when available)
 - `gooddata_visualization_metrics.csv`
 - `gooddata_dashboard_visualizations.csv`

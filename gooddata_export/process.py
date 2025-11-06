@@ -723,13 +723,84 @@ def process_filter_contexts(data, workspace_id=None):
     """Process filter context data into uniform format"""
     processed_data = []
     for obj in data:
+        # Determine origin type
+        origin_type = "NATIVE"  # default
+        if "meta" in obj and "origin" in obj["meta"]:
+            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
+        
         processed_data.append(
             {
                 "filter_context_id": obj["id"],
                 "workspace_id": workspace_id,
+                "title": obj.get("attributes", {}).get("title", ""),
+                "description": obj.get("attributes", {}).get("description", ""),
+                "origin_type": origin_type,
+                "content": obj.get("attributes", {}).get("content", {}),
             }
         )
     return processed_data
+
+
+def process_filter_context_fields(data, workspace_id=None):
+    """Process filter context data to extract individual filter fields"""
+    processed_fields = []
+    
+    for obj in data:
+        filter_context_id = obj["id"]
+        content = obj.get("attributes", {}).get("content", {})
+        filters = content.get("filters", [])
+        
+        for filter_index, filter_obj in enumerate(filters):
+            # Determine filter type
+            if "dateFilter" in filter_obj:
+                date_filter = filter_obj["dateFilter"]
+                processed_fields.append({
+                    "filter_context_id": filter_context_id,
+                    "workspace_id": workspace_id,
+                    "filter_index": filter_index,
+                    "filter_type": "dateFilter",
+                    "local_identifier": date_filter.get("localIdentifier", ""),
+                    "display_form_id": None,
+                    "title": None,
+                    "negative_selection": None,
+                    "selection_mode": None,
+                    "date_granularity": date_filter.get("granularity", ""),
+                    "date_from": date_filter.get("from"),
+                    "date_to": date_filter.get("to"),
+                    "date_type": date_filter.get("type", ""),
+                    "attribute_elements_count": None,
+                })
+            
+            elif "attributeFilter" in filter_obj:
+                attr_filter = filter_obj["attributeFilter"]
+                display_form_id = (
+                    attr_filter.get("displayForm", {})
+                    .get("identifier", {})
+                    .get("id", "")
+                )
+                
+                # Count attribute elements
+                attribute_elements = attr_filter.get("attributeElements", {}).get("uris", [])
+                elements_count = len(attribute_elements) if attribute_elements else 0
+                
+                processed_fields.append({
+                    "filter_context_id": filter_context_id,
+                    "workspace_id": workspace_id,
+                    "filter_index": filter_index,
+                    "filter_type": "attributeFilter",
+                    "local_identifier": attr_filter.get("localIdentifier", ""),
+                    "display_form_id": display_form_id,
+                    "title": attr_filter.get("title", ""),
+                    "negative_selection": attr_filter.get("negativeSelection"),
+                    "selection_mode": attr_filter.get("selectionMode", ""),
+                    "date_granularity": None,
+                    "date_from": None,
+                    "date_to": None,
+                    "date_type": None,
+                    "attribute_elements_count": elements_count,
+                })
+    
+    return processed_fields
 
 
 def fetch_child_workspaces(client=None, config=None, size=2000):
