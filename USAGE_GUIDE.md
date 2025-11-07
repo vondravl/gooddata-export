@@ -114,9 +114,13 @@ When you run enrichment, it executes all SQL operations defined in `gooddata_exp
 - `v_metric_tags` - Metric tags unnested
 - `v_visualization_tags` - Visualization tags unnested
 - `v_dashboard_tags` - Dashboard tags unnested
+- `v_ldm_datasets_tags` - LDM dataset tags unnested
+- `v_ldm_columns_tags` - LDM column tags unnested
 - `v_metric_usage` - Where metrics are used
 - `v_metric_dependencies` - Metric MAQL dependencies
 - `v_visualization_usage` - Where visualizations are used
+- `v_filter_context_usage` - Where filter contexts are used in dashboards
+- `v_ldm_dataset_column_tag_check` - Validates dataset-column tag consistency
 
 ### Procedures Executed
 - `v_procedures_api_metrics` - Generates curl commands for API operations
@@ -128,6 +132,8 @@ When you run enrichment, it executes all SQL operations defined in `gooddata_exp
 - `visualizations_usage_check` - Mark used/unused visualizations
 - `metrics_probable_duplicates` - Find similar metrics
 - `metrics_usage_check` - Mark used metrics in insights/MAQL
+- `filter_contexts_with_same_content` - Duplicate filter context detection
+- `filter_contexts_usage_check` - Mark used/unused filter contexts
 
 ## Configuration
 
