@@ -877,6 +877,7 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         "title": "TEXT",
         "description": "TEXT",
         "id": "TEXT PRIMARY KEY",
+        "tags": "TEXT",
         "attributes_count": "INTEGER",
         "facts_count": "INTEGER",
         "references_count": "INTEGER",
@@ -902,16 +903,17 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO ldm_datasets 
-        (title, description, id, attributes_count, facts_count, references_count, 
+        (title, description, id, tags, attributes_count, facts_count, references_count, 
          workspace_data_filter_columns_count, total_columns, 
          data_source_id, source_table, source_table_path, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
                 d["title"],
                 d["description"],
                 d["id"],
+                d["tags"],
                 d["attributes_count"],
                 d["facts_count"],
                 d["references_count"],
