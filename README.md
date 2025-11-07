@@ -230,8 +230,8 @@ The SQLite database contains the following tables:
 - **metrics**: Metric definitions, MAQL, and metadata
 - **visualizations**: Visualization configurations
 - **dashboards**: Dashboard definitions and layouts
-- **ldm_datasets**: Logical data model datasets
-- **ldm_columns**: LDM columns (attributes, facts, references)
+- **ldm_datasets**: Logical data model datasets with tags
+- **ldm_columns**: LDM columns (attributes, facts, references) with tags
 - **filter_contexts**: Filter context definitions
 - **filter_context_fields**: Individual filters within each filter context (date filters and attribute filters)
 - **workspaces**: Workspace information (always included; child workspaces listed when available)
