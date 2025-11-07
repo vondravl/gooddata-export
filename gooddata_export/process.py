@@ -108,7 +108,7 @@ def import_time_iso():
 
 
 def fetch_data(endpoint, client=None, config=None, max_retries=3):
-    """Fetch data from GoodData API with retry mechanism"""
+    """Fetch data from GoodData API with pagination and retry mechanism"""
     import time
     
     if client is None:
@@ -117,113 +117,146 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
         client = get_api_client(config)
         logging.debug("Created new API client")
 
-    url = f"{client['base_url']}/api/v1/entities/workspaces/{client['workspace_id']}/{endpoint}"
+    base_url = f"{client['base_url']}/api/v1/entities/workspaces/{client['workspace_id']}/{endpoint}"
     logging.info(f"Fetching {endpoint} from workspace: {client['workspace_id']}")
 
-    last_exception = None
+    all_data = []
+    page = 0
     
-    for attempt in range(max_retries + 1):
-        try:
-            # Increase timeout for parallel requests and add backoff
-            timeout = 60 + (attempt * 15)  # 60s, 75s, 90s, 105s
-            if attempt > 0:
-                # Add exponential backoff delay
-                delay = 2 ** attempt
-                logging.info(f"Retrying {endpoint} (attempt {attempt + 1}/{max_retries + 1}) after {delay}s delay")
-                time.sleep(delay)
+    while True:
+        # Add page parameter to params
+        params = client["params"].copy()
+        params["page"] = str(page)
+        
+        url = base_url
+        logging.debug(f"Fetching {endpoint} page {page}")
+        
+        page_success = False
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Increase timeout for parallel requests and add backoff
+                timeout = 60 + (attempt * 15)  # 60s, 75s, 90s, 105s
+                if attempt > 0:
+                    # Add exponential backoff delay
+                    delay = 2 ** attempt
+                    logging.info(f"Retrying {endpoint} page {page} (attempt {attempt + 1}/{max_retries + 1}) after {delay}s delay")
+                    time.sleep(delay)
+                
+                response = requests.get(
+                    url, params=params, headers=client["headers"], timeout=timeout
+                )
+
+                if response.status_code == 200:
+                    json_input = response.json()
+                    page_data = json_input.get("data", [])
+                    
+                    # If no data returned, we've reached the end
+                    if not page_data:
+                        page_success = True
+                        break
+                    
+                    all_data.extend(page_data)
+                    logging.debug(f"Page {page}: Found {len(page_data)} items")
+                    page_success = True
+                    break  # Success, exit retry loop
+
+                elif response.status_code == 404:
+                    error_msg = (
+                        f"Failed to fetch {endpoint} (404)\n"
+                        f"Workspace: {client['workspace_id']}\n"
+                        f"Please verify workspace ID in .env file\n"
+                        f"Response: {response.text}"
+                    )
+                    logging.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+                elif response.status_code == 401:
+                    error_msg = (
+                        f"Authentication failed for {endpoint}\n"
+                        f"Please check API token in .env file\n"
+                        f"Response: {response.text}"
+                    )
+                    logging.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+                else:
+                    error_msg = (
+                        f"Failed to fetch {endpoint} (HTTP {response.status_code})\n"
+                        f"Response: {response.text[:200]}"
+                    )
+                    logging.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt < max_retries:
+                    logging.warning(f"Timeout/connection error for {endpoint} page {page} (attempt {attempt + 1}): {str(e)}")
+                    continue
+                else:
+                    base_url_str = client.get('base_url') if client else 'unknown'
+                    error_msg = (
+                        f"Connection error fetching {endpoint} after {max_retries + 1} attempts\n"
+                        f"Please verify HOST in .env file: {base_url_str}\n"
+                        f"Last error: {str(e)}"
+                    )
+                    logging.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Request failed for {endpoint}: {str(e)}"
+                logging.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            except Exception as e:
+                error_msg = f"Unexpected error fetching {endpoint}: {str(e)}"
+                logging.error(error_msg)
+                raise RuntimeError(error_msg)
+        
+        # If page fetch was not successful, break pagination loop
+        if not page_success:
+            break
             
-            response = requests.get(
-                url, params=client["params"], headers=client["headers"], timeout=timeout
-            )
-
-            if response.status_code == 200:
-                json_input = response.json()
-
-                if not json_input.get("data"):
-                    logging.warning(f"{endpoint}: No data received (empty array)")
-                    return None
-
-                # Filter to NATIVE origin for all entity endpoints fetched via this function
-                data = []
-                for obj in json_input["data"]:
-                    origin_type = (
-                        obj.get("meta", {})
-                        .get("origin", {})
-                        .get("originType", "NATIVE")
-                    )
-                    if str(origin_type).upper() == "NATIVE":
-                        data.append(obj)
-
-                try:
-                    sorted_data = sorted(
-                        data,
-                        key=lambda obj: obj.get("attributes", {}).get("title", ""),
-                    )
-                    logging.info(
-                        f"{endpoint}: Successfully fetched {len(sorted_data)} items"
-                    )
-                    return sorted_data
-                except KeyError as sort_error:
-                    logging.warning(f"{endpoint}: Could not sort data - {sort_error}")
-                    return data
-
-            elif response.status_code == 404:
-                error_msg = (
-                    f"Failed to fetch {endpoint} (404)\n"
-                    f"Workspace: {client['workspace_id']}\n"
-                    f"Please verify workspace ID in .env file\n"
-                    f"Response: {response.text}"
-                )
-                logging.error(error_msg)
-                raise RuntimeError(error_msg)
-
-            elif response.status_code == 401:
-                error_msg = (
-                    f"Authentication failed for {endpoint}\n"
-                    f"Please check API token in .env file\n"
-                    f"Response: {response.text}"
-                )
-                logging.error(error_msg)
-                raise RuntimeError(error_msg)
-
-            else:
-                error_msg = (
-                    f"Failed to fetch {endpoint} (HTTP {response.status_code})\n"
-                    f"Response: {response.text[:200]}"
-                )
-                logging.error(error_msg)
-                raise RuntimeError(error_msg)
-
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            last_exception = e
-            if attempt < max_retries:
-                logging.warning(f"Timeout/connection error for {endpoint} (attempt {attempt + 1}): {str(e)}")
-                continue
-            else:
-                base_url = client.get('base_url') if client else 'unknown'
-                error_msg = (
-                    f"Connection error fetching {endpoint} after {max_retries + 1} attempts\n"
-                    f"Please verify HOST in .env file: {base_url}\n"
-                    f"Last error: {str(e)}"
-                )
-                logging.error(error_msg)
-                raise RuntimeError(error_msg)
-
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Request failed for {endpoint}: {str(e)}"
-            logging.error(error_msg)
-            raise RuntimeError(error_msg)
-
-        except Exception as e:
-            error_msg = f"Unexpected error fetching {endpoint}: {str(e)}"
-            logging.error(error_msg)
-            raise RuntimeError(error_msg)
+        # If we got data, increment page and continue
+        # If we got no data (empty page), we've already broken out above
+        if page_data:
+            page += 1
+        else:
+            break
     
-    # If we get here, all retries failed
-    if last_exception:
-        raise RuntimeError(f"Failed to fetch {endpoint} after {max_retries + 1} attempts: {str(last_exception)}")
-    else:
-        raise RuntimeError(f"Failed to fetch {endpoint} after {max_retries + 1} attempts")
+    # Process all accumulated data
+    if not all_data:
+        logging.warning(f"{endpoint}: No data received (empty array)")
+        return None
+    
+    # Filter to NATIVE origin for all entity endpoints fetched via this function
+    filtered_data = []
+    for obj in all_data:
+        origin_type = (
+            obj.get("meta", {})
+            .get("origin", {})
+            .get("originType", "NATIVE")
+        )
+        if str(origin_type).upper() == "NATIVE":
+            filtered_data.append(obj)
+
+    try:
+        sorted_data = sorted(
+            filtered_data,
+            key=lambda obj: obj.get("attributes", {}).get("title", ""),
+        )
+        # Log with page count only if more than 1 page
+        if page > 1:
+            logging.info(
+                f"{endpoint}: Successfully fetched {len(sorted_data)} items across {page} pages"
+            )
+        else:
+            logging.info(
+                f"{endpoint}: Successfully fetched {len(sorted_data)} items"
+            )
+        return sorted_data
+    except KeyError as sort_error:
+        logging.warning(f"{endpoint}: Could not sort data - {sort_error}")
+        return filtered_data
 
 
 def sort_tags(tags):
@@ -598,6 +631,7 @@ def process_ldm(data, workspace_id=None):
             "title": dataset["title"],
             "description": dataset.get("description", ""),
             "id": dataset["id"],
+            "tags": str(sort_tags(dataset.get("tags", ""))),
             "attributes_count": len(dataset.get("attributes", [])),
             "facts_count": len(dataset.get("facts", [])),
             "references_count": len(dataset.get("references", [])),
@@ -723,14 +757,84 @@ def process_filter_contexts(data, workspace_id=None):
     """Process filter context data into uniform format"""
     processed_data = []
     for obj in data:
+        # Determine origin type
+        origin_type = "NATIVE"  # default
+        if "meta" in obj and "origin" in obj["meta"]:
+            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
+        
         processed_data.append(
             {
                 "filter_context_id": obj["id"],
                 "workspace_id": workspace_id,
-                "content": obj,
+                "title": obj.get("attributes", {}).get("title", ""),
+                "description": obj.get("attributes", {}).get("description", ""),
+                "origin_type": origin_type,
+                "content": obj.get("attributes", {}).get("content", {}),
             }
         )
     return processed_data
+
+
+def process_filter_context_fields(data, workspace_id=None):
+    """Process filter context data to extract individual filter fields"""
+    processed_fields = []
+    
+    for obj in data:
+        filter_context_id = obj["id"]
+        content = obj.get("attributes", {}).get("content", {})
+        filters = content.get("filters", [])
+        
+        for filter_index, filter_obj in enumerate(filters):
+            # Determine filter type
+            if "dateFilter" in filter_obj:
+                date_filter = filter_obj["dateFilter"]
+                processed_fields.append({
+                    "filter_context_id": filter_context_id,
+                    "workspace_id": workspace_id,
+                    "filter_index": filter_index,
+                    "filter_type": "dateFilter",
+                    "local_identifier": date_filter.get("localIdentifier", ""),
+                    "display_form_id": None,
+                    "title": None,
+                    "negative_selection": None,
+                    "selection_mode": None,
+                    "date_granularity": date_filter.get("granularity", ""),
+                    "date_from": date_filter.get("from"),
+                    "date_to": date_filter.get("to"),
+                    "date_type": date_filter.get("type", ""),
+                    "attribute_elements_count": None,
+                })
+            
+            elif "attributeFilter" in filter_obj:
+                attr_filter = filter_obj["attributeFilter"]
+                display_form_id = (
+                    attr_filter.get("displayForm", {})
+                    .get("identifier", {})
+                    .get("id", "")
+                )
+                
+                # Count attribute elements
+                attribute_elements = attr_filter.get("attributeElements", {}).get("uris", [])
+                elements_count = len(attribute_elements) if attribute_elements else 0
+                
+                processed_fields.append({
+                    "filter_context_id": filter_context_id,
+                    "workspace_id": workspace_id,
+                    "filter_index": filter_index,
+                    "filter_type": "attributeFilter",
+                    "local_identifier": attr_filter.get("localIdentifier", ""),
+                    "display_form_id": display_form_id,
+                    "title": attr_filter.get("title", ""),
+                    "negative_selection": attr_filter.get("negativeSelection"),
+                    "selection_mode": attr_filter.get("selectionMode", ""),
+                    "date_granularity": None,
+                    "date_from": None,
+                    "date_to": None,
+                    "date_type": None,
+                    "attribute_elements_count": elements_count,
+                })
+    
+    return processed_fields
 
 
 def fetch_child_workspaces(client=None, config=None, size=2000):
@@ -804,7 +908,11 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
                 raise RuntimeError(error_msg)
 
         if all_workspaces:
-            logging.info(f"Found {len(all_workspaces)} total child workspaces across {page} pages")
+            # Log with page count only if more than 1 page
+            if page > 1:
+                logging.info(f"Found {len(all_workspaces)} total child workspaces across {page} pages")
+            else:
+                logging.info(f"Found {len(all_workspaces)} total child workspaces")
             for child in all_workspaces:
                 logging.debug(f"Child workspace: {child['attributes']['name']} ({child['id']})")
             return all_workspaces

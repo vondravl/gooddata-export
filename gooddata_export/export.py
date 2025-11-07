@@ -17,6 +17,7 @@ from gooddata_export.process import (
     process_dashboard_visualizations,
     process_dashboards,
     process_filter_contexts,
+    process_filter_context_fields,
     process_ldm,
     process_metrics,
     process_rich_text_metrics,
@@ -875,6 +876,7 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         "title": "TEXT",
         "description": "TEXT",
         "id": "TEXT PRIMARY KEY",
+        "tags": "TEXT",
         "attributes_count": "INTEGER",
         "facts_count": "INTEGER",
         "references_count": "INTEGER",
@@ -900,16 +902,17 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO ldm_datasets 
-        (title, description, id, attributes_count, facts_count, references_count, 
+        (title, description, id, tags, attributes_count, facts_count, references_count, 
          workspace_data_filter_columns_count, total_columns, 
          data_source_id, source_table, source_table_path, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
                 d["title"],
                 d["description"],
                 d["id"],
+                d["tags"],
                 d["attributes_count"],
                 d["facts_count"],
                 d["references_count"],
@@ -987,8 +990,9 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
 
 
 def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
-    """Export filter contexts to both CSV and SQLite"""
+    """Export filter contexts and filter context fields to both CSV and SQLite"""
     all_processed_data = []
+    all_processed_fields = []
 
     # Process filter contexts from all workspaces
     for workspace_info in all_workspace_data:
@@ -998,6 +1002,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         if raw_data is None:
             continue
 
+        # Process main filter contexts table
         processed = process_filter_contexts(raw_data, workspace_id)
 
         # Always load the full entity via single-entity endpoint and store it in content (no extra validity checks)
@@ -1013,13 +1018,21 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
             pass
 
         all_processed_data.extend(processed)
+        
+        # Process filter context fields (individual filters)
+        processed_fields = process_filter_context_fields(raw_data, workspace_id)
+        all_processed_fields.extend(processed_fields)
 
     if not all_processed_data:
         raise RuntimeError("No filter contexts data found in any workspace")
 
+    # Export main filter_contexts table
     filter_contexts_columns = {
         "filter_context_id": "TEXT",
         "workspace_id": "TEXT",
+        "title": "TEXT",
+        "description": "TEXT",
+        "origin_type": "TEXT",
         "content": "JSON",
         "PRIMARY KEY": "(filter_context_id, workspace_id)",
     }
@@ -1033,7 +1046,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
             export_dir,
             csv_filename,
             fieldnames=filter_contexts_columns.keys(),
-            exclude_fields={"content"},
+            exclude_fields={"content"},  # Exclude JSON content from CSV
         )
 
     # Export to SQLite
@@ -1044,24 +1057,97 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO filter_contexts 
-        (filter_context_id, workspace_id, content)
-        VALUES (?, ?, ?)
+        (filter_context_id, workspace_id, title, description, origin_type, content)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         [
             (
                 d["filter_context_id"],
                 d["workspace_id"],
-                json.dumps(d.get("content")) if d.get("content") is not None else None,
+                d["title"],
+                d["description"],
+                d["origin_type"],
+                json.dumps(d["content"]),
             )
             for d in all_processed_data
         ],
     )
 
+    # Export filter_context_fields table
+    filter_context_fields_columns = {
+        "filter_context_id": "TEXT",
+        "workspace_id": "TEXT",
+        "filter_index": "INTEGER",
+        "filter_type": "TEXT",
+        "local_identifier": "TEXT",
+        "display_form_id": "TEXT",
+        "title": "TEXT",
+        "negative_selection": "BOOLEAN",
+        "selection_mode": "TEXT",
+        "date_granularity": "TEXT",
+        "date_from": "INTEGER",
+        "date_to": "INTEGER",
+        "date_type": "TEXT",
+        "attribute_elements_count": "INTEGER",
+        "PRIMARY KEY": "(filter_context_id, workspace_id, filter_index)",
+    }
+
+    fields_count = len(all_processed_fields)
+    if export_dir is not None and fields_count > 0:
+        fields_csv = "gooddata_filter_context_fields.csv"
+        fields_count = write_to_csv(
+            all_processed_fields,
+            export_dir,
+            fields_csv,
+            fieldnames=filter_context_fields_columns.keys(),
+        )
+
+    cursor = setup_table(conn, "filter_context_fields", filter_context_fields_columns)
+    
+    if all_processed_fields:
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO filter_context_fields 
+            (filter_context_id, workspace_id, filter_index, filter_type, local_identifier,
+             display_form_id, title, negative_selection, selection_mode, date_granularity,
+             date_from, date_to, date_type, attribute_elements_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["filter_context_id"],
+                    d["workspace_id"],
+                    d["filter_index"],
+                    d["filter_type"],
+                    d["local_identifier"],
+                    d["display_form_id"],
+                    d["title"],
+                    d["negative_selection"],
+                    d["selection_mode"],
+                    d["date_granularity"],
+                    d["date_from"],
+                    d["date_to"],
+                    d["date_type"],
+                    d["attribute_elements_count"],
+                )
+                for d in all_processed_fields
+            ],
+        )
+
     conn.commit()
     if export_dir is not None:
         log_export("filter contexts", records_count, os.path.join(export_dir, "gooddata_filter_contexts.csv"))
+        if fields_count > 0:
+            log_export(
+                "filter context fields",
+                fields_count,
+                os.path.join(export_dir, "gooddata_filter_context_fields.csv"),
+            )
     else:
         print(f"Exported {records_count} filter contexts to {db_name}")
+        if fields_count > 0:
+            print(f"Exported {fields_count} filter context fields to {db_name}")
     conn.close()
 
 

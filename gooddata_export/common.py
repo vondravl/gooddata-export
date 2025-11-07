@@ -17,6 +17,6 @@ def get_api_client(config):
             "Authorization": f"Bearer {config.BEARER_TOKEN}",
             "X-GDC-VALIDATE-RELATIONS": "true",
         },
-        "params": {"origin": "ALL", "size": "10000"},
+        "params": {"origin": "ALL", "size": "2000"},
     }
 
