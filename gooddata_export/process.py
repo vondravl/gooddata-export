@@ -1,8 +1,10 @@
-import logging
-import re
-import requests
 import json
+import logging
 import os
+import re
+
+import requests
+
 from gooddata_export.common import get_api_client
 
 logger = logging.getLogger(__name__)
@@ -383,11 +385,8 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
                 continue
 
             for item in bucket["items"]:
-                measure_def = (
-                    item.get("measure", {})
-                    .get("definition", {})
-                    .get("measureDefinition", {})
-                )
+                measure = item.get("measure", {})
+                measure_def = measure.get("definition", {}).get("measureDefinition", {})
                 metric_id = measure_def.get("item", {}).get("identifier", {}).get("id")
 
                 if metric_id:
@@ -416,8 +415,8 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
         }
 
         try:
-            import os
             import json
+            import os
 
             output_file = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
@@ -429,6 +428,78 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
                 f.write(json.dumps(debug_data, indent=2) + "\n\n")
             logger.info(
                 f"Debug info for visualization metrics written to {output_file}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to write debug info to file: {str(e)}")
+
+    return result
+
+
+def process_visualization_attributes(visualization_data, workspace_id=None):
+    """Extract unique attribute IDs (display forms) used in each visualization"""
+    # Using set to store unique combinations including workspace context
+    unique_relationships = set()
+
+    # For debugging
+    attributes_found = 0
+    visualizations_with_attributes = 0
+
+    for viz in visualization_data:
+        content = viz["attributes"]["content"]
+        viz_attributes_found = 0
+
+        if "buckets" not in content:
+            continue
+
+        for bucket in content["buckets"]:
+            if "items" not in bucket:
+                continue
+
+            for item in bucket["items"]:
+                # Attributes are stored with displayForm reference
+                attribute_def = item.get("attribute", {})
+                display_form = attribute_def.get("displayForm", {})
+                attribute_id = display_form.get("identifier", {}).get("id")
+
+                if attribute_id:
+                    unique_relationships.add((viz["id"], attribute_id, workspace_id))
+                    viz_attributes_found += 1
+
+        if viz_attributes_found > 0:
+            attributes_found += viz_attributes_found
+            visualizations_with_attributes += 1
+
+    # Convert set of tuples back to list of dictionaries
+    result = [
+        {"visualization_id": viz_id, "attribute_id": attr_id, "workspace_id": ws_id}
+        for viz_id, attr_id, ws_id in sorted(unique_relationships)
+    ]
+
+    # Write debug data if debugging is enabled
+    if DEBUG_RICH_TEXT:
+        debug_data = {
+            "extraction_type": "visualization_attributes",
+            "timestamp": import_time_iso(),
+            "attributes_found": attributes_found,
+            "visualizations_with_attributes": visualizations_with_attributes,
+            "total_visualizations": len(visualization_data),
+            "unique_relationships": len(result),
+        }
+
+        try:
+            import json
+            import os
+
+            output_file = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "debug_output",
+                "visualization_attributes_extraction.json",
+            )
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            with open(output_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(debug_data, indent=2) + "\n\n")
+            logger.info(
+                f"Debug info for visualization attributes written to {output_file}"
             )
         except Exception as e:
             logger.warning(f"Failed to write debug info to file: {str(e)}")
@@ -1094,8 +1165,8 @@ def extract_all_ids_from_content(content_str):
     # Write detailed debug info for UUID matches
     if DEBUG_RICH_TEXT and len(matches) > 0:
         try:
-            import os
             import json
+            import os
             import random
 
             # Only write debug data for a sample of calls to avoid flooding the disk
@@ -1118,7 +1189,7 @@ def extract_all_ids_from_content(content_str):
                 }
                 with open(output_file, "a", encoding="utf-8") as f:
                     f.write(json.dumps(debug_data, indent=2) + "\n\n")
-        except Exception as e:
+        except Exception:
             # Don't fail the main function for debug issues
             pass
 
@@ -1449,8 +1520,8 @@ def extract_values_from_curly_braces(content_str):
     # Write detailed debug info for complex pattern matches
     if DEBUG_RICH_TEXT and len(matches) > 0:
         try:
-            import os
             import json
+            import os
             import random
 
             # Only write debug data for a sample of calls to avoid flooding the disk
@@ -1471,7 +1542,7 @@ def extract_values_from_curly_braces(content_str):
                 }
                 with open(output_file, "a", encoding="utf-8") as f:
                     f.write(json.dumps(debug_data, indent=2) + "\n\n")
-        except Exception as e:
+        except Exception:
             # Don't fail the main function for debug issues
             pass
 

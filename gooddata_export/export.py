@@ -7,28 +7,28 @@ import shutil
 import sqlite3
 import time
 
-
 from gooddata_export.common import get_api_client
-from gooddata_export.post_export import run_post_export_sql
-from gooddata_export.process import (
-    fetch_data,
-    fetch_ldm,
-    fetch_child_workspaces,
-    process_dashboard_visualizations,
-    process_dashboards,
-    process_filter_contexts,
-    process_filter_context_fields,
-    process_ldm,
-    process_metrics,
-    process_rich_text_metrics,
-    process_visualization_metrics,
-    process_visualizations,
-    process_workspaces,
-)
 from gooddata_export.db import (
     connect_database,
     setup_table,
     store_workspace_metadata,
+)
+from gooddata_export.post_export import run_post_export_sql
+from gooddata_export.process import (
+    fetch_child_workspaces,
+    fetch_data,
+    fetch_ldm,
+    process_dashboard_visualizations,
+    process_dashboards,
+    process_filter_context_fields,
+    process_filter_contexts,
+    process_ldm,
+    process_metrics,
+    process_rich_text_metrics,
+    process_visualization_attributes,
+    process_visualization_metrics,
+    process_visualizations,
+    process_workspaces,
 )
 
 DB_EXPORT_DIR = "db"
@@ -526,7 +526,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO metrics 
+        INSERT INTO metrics
         (metric_id, workspace_id, title, description, tags, maql, format, created_at, modified_at, is_valid, is_hidden, origin_type, content)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -561,11 +561,12 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
 
 
 def export_visualizations(all_workspace_data, export_dir, config, db_name):
-    """Export visualizations and visualization-metrics relationships"""
+    """Export visualizations, visualization-metrics, and visualization-attributes relationships"""
 
     client = get_api_client(config)
     all_processed_visualizations = []
-    all_processed_relationships = []
+    all_processed_metric_relationships = []
+    all_processed_attribute_relationships = []
 
     # Process visualizations from all workspaces
     for workspace_info in all_workspace_data:
@@ -575,14 +576,20 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         if raw_data is None:
             continue
 
-        # Process both visualizations and relationships from same raw data
+        # Process visualizations and both relationship types from same raw data
         processed_visualizations = process_visualizations(
             raw_data, client["base_url"], workspace_id
         )
-        processed_relationships = process_visualization_metrics(raw_data, workspace_id)
+        processed_metric_relationships = process_visualization_metrics(
+            raw_data, workspace_id
+        )
+        processed_attribute_relationships = process_visualization_attributes(
+            raw_data, workspace_id
+        )
 
         all_processed_visualizations.extend(processed_visualizations)
-        all_processed_relationships.extend(processed_relationships)
+        all_processed_metric_relationships.extend(processed_metric_relationships)
+        all_processed_attribute_relationships.extend(processed_attribute_relationships)
 
     if not all_processed_visualizations:
         raise RuntimeError("No visualizations data found in any workspace")
@@ -622,7 +629,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO visualizations 
+        INSERT INTO visualizations
         (visualization_id, workspace_id, title, description, tags, visualization_url, created_at, modified_at, url_link, origin_type, content, is_valid, is_hidden)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -647,34 +654,68 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
     )
 
     # Export visualization-metrics relationships
-    relationship_columns = {
+    metric_relationship_columns = {
         "visualization_id": "TEXT",
         "metric_id": "TEXT",
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
     }
 
-    rel_count = len(all_processed_relationships)
+    metric_rel_count = len(all_processed_metric_relationships)
     if export_dir is not None:
         rel_csv = "gooddata_visualization_metrics.csv"
-        rel_count = write_to_csv(
-            all_processed_relationships,
+        metric_rel_count = write_to_csv(
+            all_processed_metric_relationships,
             export_dir,
             rel_csv,
             fieldnames=["visualization_id", "metric_id", "workspace_id"],
         )
 
-    cursor = setup_table(conn, "visualization_metrics", relationship_columns)
+    cursor = setup_table(conn, "visualization_metrics", metric_relationship_columns)
     execute_with_retry(
         cursor,
         """
-        INSERT INTO visualization_metrics 
+        INSERT INTO visualization_metrics
         (visualization_id, metric_id, workspace_id)
         VALUES (?, ?, ?)
         """,
         [
             (d["visualization_id"], d["metric_id"], d["workspace_id"])
-            for d in all_processed_relationships
+            for d in all_processed_metric_relationships
+        ],
+    )
+
+    # Export visualization-attributes relationships
+    attribute_relationship_columns = {
+        "visualization_id": "TEXT",
+        "attribute_id": "TEXT",
+        "workspace_id": "TEXT",
+        "PRIMARY KEY": "(visualization_id, attribute_id, workspace_id)",
+    }
+
+    attr_rel_count = len(all_processed_attribute_relationships)
+    if export_dir is not None:
+        attr_rel_csv = "gooddata_visualization_attributes.csv"
+        attr_rel_count = write_to_csv(
+            all_processed_attribute_relationships,
+            export_dir,
+            attr_rel_csv,
+            fieldnames=["visualization_id", "attribute_id", "workspace_id"],
+        )
+
+    cursor = setup_table(
+        conn, "visualization_attributes", attribute_relationship_columns
+    )
+    execute_with_retry(
+        cursor,
+        """
+        INSERT INTO visualization_attributes
+        (visualization_id, attribute_id, workspace_id)
+        VALUES (?, ?, ?)
+        """,
+        [
+            (d["visualization_id"], d["attribute_id"], d["workspace_id"])
+            for d in all_processed_attribute_relationships
         ],
     )
 
@@ -687,12 +728,22 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         )
         log_export(
             "visualization-metric relationships",
-            rel_count,
+            metric_rel_count,
             os.path.join(export_dir, "gooddata_visualization_metrics.csv"),
+        )
+        log_export(
+            "visualization-attribute relationships",
+            attr_rel_count,
+            os.path.join(export_dir, "gooddata_visualization_attributes.csv"),
         )
     else:
         print(f"Exported {vis_count} visualizations to {db_name}")
-        print(f"Exported {rel_count} visualization-metric relationships to {db_name}")
+        print(
+            f"Exported {metric_rel_count} visualization-metric relationships to {db_name}"
+        )
+        print(
+            f"Exported {attr_rel_count} visualization-attribute relationships to {db_name}"
+        )
     conn.close()
 
 
@@ -789,7 +840,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO dashboards 
+        INSERT INTO dashboards
         (dashboard_id, workspace_id, title, description, tags, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -841,7 +892,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO dashboard_visualizations 
+        INSERT INTO dashboard_visualizations
         (dashboard_id, visualization_id, from_rich_text, workspace_id)
         VALUES (?, ?, ?, ?)
         """,
@@ -923,9 +974,9 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO ldm_datasets 
-        (title, description, id, tags, attributes_count, facts_count, references_count, 
-         workspace_data_filter_columns_count, total_columns, 
+        INSERT INTO ldm_datasets
+        (title, description, id, tags, attributes_count, facts_count, references_count,
+         workspace_data_filter_columns_count, total_columns,
          data_source_id, source_table, source_table_path, workspace_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -977,7 +1028,7 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO ldm_columns 
+        INSERT INTO ldm_columns
         (dataset_id, dataset_name, title, description, id, tags, data_type, source_column, type, grain, reference_to_id, reference_to_title, workspace_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -1073,7 +1124,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO filter_contexts 
+        INSERT INTO filter_contexts
         (filter_context_id, workspace_id, title, description, origin_type, content)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
@@ -1125,7 +1176,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         execute_with_retry(
             cursor,
             """
-            INSERT INTO filter_context_fields 
+            INSERT INTO filter_context_fields
             (filter_context_id, workspace_id, filter_index, filter_type, local_identifier,
              display_form_id, title, negative_selection, selection_mode, date_granularity,
              date_from, date_to, date_type, attribute_elements_count)
@@ -1218,7 +1269,7 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
     execute_with_retry(
         cursor,
         """
-        INSERT INTO workspaces 
+        INSERT INTO workspaces
         (workspace_id, workspace_name, is_parent, parent_workspace_id, created_at, modified_at)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
@@ -1406,7 +1457,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         # Insert data into the table (table was already created earlier)
         cursor.executemany(
             """
-            INSERT INTO dashboard_metrics 
+            INSERT INTO dashboard_metrics
             (dashboard_id, metric_id, workspace_id)
             VALUES (?, ?, ?)
             """,

@@ -6,13 +6,15 @@ Configuration is loaded from sql/post_export_config.yaml and executed in
 dependency order using topological sort.
 """
 
+import logging
 import os
 import sqlite3
-import yaml
-import logging
 from collections import defaultdict, deque
-from gooddata_export.db import connect_database
+
+import yaml
+
 from gooddata_export.config import ExportConfig
+from gooddata_export.db import connect_database
 
 logger = logging.getLogger(__name__)
 
