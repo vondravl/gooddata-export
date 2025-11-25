@@ -1,0 +1,41 @@
+name: Python Formatting Check
+
+on:
+  pull_request:
+    branches:
+      - master
+      - main
+    paths:
+      - '**/*.py'
+      - '.github/workflows/formatting_check_python.yml'
+      - 'formatting_ruff.py'
+
+jobs:
+  check-formatting:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python Environment
+        uses: ./.github/actions/setup_python
+
+      - name: Check Python formatting
+        run: |
+          echo "Checking Python code formatting with ruff..."
+          venv/bin/python formatting_ruff.py --check
+
+      - name: Show diff if formatting issues found
+        if: failure()
+        run: |
+          echo "Files with formatting issues detected."
+          echo ""
+          echo "Run this locally to fix:"
+          echo "  python formatting_ruff.py"
+          echo ""
+          echo "This will format all Python files in:"
+          echo "  - gooddata_export/"
+          echo "  - main.py"
+          echo "  - setup.py"
+          echo "  - formatting_ruff.py"

@@ -1,0 +1,14 @@
+name: 'Custom Python Setup'
+description: 'Sets up Python environment with specific version and installs dependencies'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.13
+
+    - name: Install GoodData Python SDK and dependencies
+      shell: bash
+      run: make dev
