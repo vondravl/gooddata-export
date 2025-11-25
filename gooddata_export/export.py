@@ -127,7 +127,11 @@ def fetch_all_data_parallel(config):
             "args": ("visualizationObjects", client, config),
             "key": "visualizations",
         },
-        {"function": fetch_data, "args": ("filterContexts", client, config), "key": "filter_contexts"},
+        {
+            "function": fetch_data,
+            "args": ("filterContexts", client, config),
+            "key": "filter_contexts",
+        },
         {"function": fetch_ldm, "args": (client, config), "key": "ldm"},
         # Always fetch child workspaces list for workspaces table (quick operation)
         {
@@ -548,7 +552,9 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export("metrics", records_count, os.path.join(export_dir, "gooddata_metrics.csv"))
+        log_export(
+            "metrics", records_count, os.path.join(export_dir, "gooddata_metrics.csv")
+        )
     else:
         print(f"Exported {records_count} metrics to {db_name}")
     conn.close()
@@ -674,7 +680,11 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export("visualizations", vis_count, os.path.join(export_dir, "gooddata_visualizations.csv"))
+        log_export(
+            "visualizations",
+            vis_count,
+            os.path.join(export_dir, "gooddata_visualizations.csv"),
+        )
         log_export(
             "visualization-metric relationships",
             rel_count,
@@ -721,14 +731,19 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         # When child workspaces are included, only enable rich text extraction for parent workspace
         # Create a workspace-specific config to control rich text behavior per workspace
         workspace_config = config
-        if config.INCLUDE_CHILD_WORKSPACES and not workspace_info.get("is_parent", False):
+        if config.INCLUDE_CHILD_WORKSPACES and not workspace_info.get(
+            "is_parent", False
+        ):
             # For child workspaces, create a temporary config with rich text disabled
             from copy import copy
+
             workspace_config = copy(config)
             workspace_config._enable_rich_text_extraction = False
             workspace_config._rich_text_explicit = True
-            logging.debug(f"Rich text extraction disabled for child workspace: {workspace_id}")
-        
+            logging.debug(
+                f"Rich text extraction disabled for child workspace: {workspace_id}"
+            )
+
         processed_relationships = process_dashboard_visualizations(
             raw_data, workspace_id, known_insights, workspace_config
         )
@@ -843,7 +858,11 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export("dashboards", dash_count, os.path.join(export_dir, "gooddata_dashboards.csv"))
+        log_export(
+            "dashboards",
+            dash_count,
+            os.path.join(export_dir, "gooddata_dashboards.csv"),
+        )
         log_export(
             "dashboard-visualization relationships",
             rel_count,
@@ -851,7 +870,9 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         )
     else:
         print(f"Exported {dash_count} dashboards to {db_name}")
-        print(f"Exported {rel_count} dashboard-visualization relationships to {db_name}")
+        print(
+            f"Exported {rel_count} dashboard-visualization relationships to {db_name}"
+        )
     conn.close()
 
 
@@ -982,8 +1003,16 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export("datasets", dataset_count, os.path.join(export_dir, "gooddata_ldm_datasets.csv"))
-        log_export("columns", column_count, os.path.join(export_dir, "gooddata_ldm_columns.csv"))
+        log_export(
+            "datasets",
+            dataset_count,
+            os.path.join(export_dir, "gooddata_ldm_datasets.csv"),
+        )
+        log_export(
+            "columns",
+            column_count,
+            os.path.join(export_dir, "gooddata_ldm_columns.csv"),
+        )
     else:
         print(f"Exported {dataset_count} datasets to {db_name}")
         print(f"Exported {column_count} columns to {db_name}")
@@ -1006,7 +1035,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         # Process main filter contexts table
         processed = process_filter_contexts(raw_data, workspace_id)
         all_processed_data.extend(processed)
-        
+
         # Process filter context fields (individual filters)
         processed_fields = process_filter_context_fields(raw_data, workspace_id)
         all_processed_fields.extend(processed_fields)
@@ -1091,7 +1120,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         )
 
     cursor = setup_table(conn, "filter_context_fields", filter_context_fields_columns)
-    
+
     if all_processed_fields:
         execute_with_retry(
             cursor,
@@ -1125,7 +1154,11 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export("filter contexts", records_count, os.path.join(export_dir, "gooddata_filter_contexts.csv"))
+        log_export(
+            "filter contexts",
+            records_count,
+            os.path.join(export_dir, "gooddata_filter_contexts.csv"),
+        )
         if fields_count > 0:
             log_export(
                 "filter context fields",
@@ -1143,7 +1176,7 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
     """Export workspaces to both CSV and SQLite"""
     # Always export workspaces table (quick to create and useful for reference)
     # Note: Child workspace DATA (metrics, dashboards, etc.) is still conditional on INCLUDE_CHILD_WORKSPACES
-    
+
     # Get the parent workspace info
     client = get_api_client(config)
     parent_workspace_id = client["workspace_id"]
@@ -1204,7 +1237,11 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export("workspaces", records_count, os.path.join(export_dir, "gooddata_workspaces.csv"))
+        log_export(
+            "workspaces",
+            records_count,
+            os.path.join(export_dir, "gooddata_workspaces.csv"),
+        )
     else:
         print(f"Exported {records_count} workspaces to {db_name}")
     conn.close()
@@ -1212,7 +1249,7 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
 
 def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
     """Export metrics used in rich text widgets on dashboards across all workspaces"""
-    
+
     # Always create the table structure (even if empty) to ensure post-processing SQL works
     # This is needed because views like v_metric_usage depend on this table existing
     dashboard_metrics_columns = {
@@ -1221,7 +1258,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, metric_id, workspace_id)",
     }
-    
+
     # Connect to database and ensure table exists
     conn = connect_database(db_name)
     cursor = conn.cursor()
@@ -1229,11 +1266,13 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
     conn.commit()
     cursor = setup_table(conn, "dashboard_metrics", dashboard_metrics_columns)
     conn.commit()
-    
+
     # If rich text extraction is disabled, keep empty table and return
     if not config.ENABLE_RICH_TEXT_EXTRACTION:
         conn.close()
-        logging.info("Rich text extraction disabled - dashboard_metrics table created but empty")
+        logging.info(
+            "Rich text extraction disabled - dashboard_metrics table created but empty"
+        )
         return
 
     rich_text_metrics = []
@@ -1269,11 +1308,13 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         # When child workspaces are included, only process parent workspace for rich text
         workspaces_to_process = all_workspace_data
         if config.INCLUDE_CHILD_WORKSPACES:
-            workspaces_to_process = [ws for ws in all_workspace_data if ws.get("is_parent", False)]
+            workspaces_to_process = [
+                ws for ws in all_workspace_data if ws.get("is_parent", False)
+            ]
             logging.info(
                 f"Rich text extraction: Processing only parent workspace (found {len(workspaces_to_process)} parent workspace(s) out of {len(all_workspace_data)} total)"
             )
-        
+
         # Process dashboards from workspaces to extract metrics from rich text widgets
         for workspace_info in workspaces_to_process:
             workspace_id = workspace_info["workspace_id"]
@@ -1340,11 +1381,13 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             unique_metrics[key] = item
 
         rich_text_metrics = list(unique_metrics.values())
-        
+
         # If no metrics found, table already exists (created earlier), just log and return
         if not rich_text_metrics:
             conn.close()
-            logging.info("No metrics found in rich text widgets - dashboard_metrics table created but empty")
+            logging.info(
+                "No metrics found in rich text widgets - dashboard_metrics table created but empty"
+            )
             if export_dir is None:
                 print("No metrics found in rich text widgets")
             return
@@ -1367,7 +1410,10 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             (dashboard_id, metric_id, workspace_id)
             VALUES (?, ?, ?)
             """,
-            [(d["dashboard_id"], d["metric_id"], d["workspace_id"]) for d in rich_text_metrics],
+            [
+                (d["dashboard_id"], d["metric_id"], d["workspace_id"])
+                for d in rich_text_metrics
+            ],
         )
 
         conn.commit()
@@ -1378,7 +1424,9 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                 os.path.join(export_dir, "gooddata_dashboard_metrics.csv"),
             )
         else:
-            print(f"Exported {records_count} dashboard metrics from rich text to {db_name}")
+            print(
+                f"Exported {records_count} dashboard metrics from rich text to {db_name}"
+            )
         conn.close()
 
     except Exception as e:
@@ -1392,27 +1440,33 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         raise RuntimeError(f"Error processing dashboard metrics: {str(e)}")
 
 
-def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export.db", export_formats=None, run_post_export=True):
+def export_all_metadata(
+    config,
+    csv_dir=None,
+    db_path="output/db/gooddata_export.db",
+    export_formats=None,
+    run_post_export=True,
+):
     """Export all metadata to SQLite database and CSV files.
-    
+
     Args:
         config: ExportConfig instance with GoodData credentials and options
         csv_dir: Directory for CSV files (default: None, uses "output/metadata_csv" if csv in formats)
         db_path: Path to SQLite database file (default: "output/db/gooddata_export.db")
         export_formats: List of formats to export ("sqlite", "csv") (default: both)
         run_post_export: Whether to run post-export SQL processing (default: True)
-    
+
     Returns:
         dict: Export results with db_path, csv_dir, and workspace_count
     """
     if export_formats is None:
         export_formats = ["sqlite", "csv"]
-    
+
     # Set up CSV directory
     if "csv" in export_formats and csv_dir is None:
         csv_dir = "output/metadata_csv"
     export_dir = csv_dir if "csv" in export_formats else None
-    
+
     # Set up database path
     db_export_dir = os.path.dirname(db_path)
     errors = []
@@ -1420,12 +1474,12 @@ def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export
     # Ensure database directory exists (databases overwrite themselves, no cleanup needed)
     if db_export_dir:
         os.makedirs(db_export_dir, exist_ok=True)
-    
+
     # Clean CSV directory completely to avoid stale data (files mix together, so we need a clean slate)
     if export_dir and os.path.exists(export_dir):
         print(f"Cleaning CSV directory: {export_dir}")
         shutil.rmtree(export_dir)
-    
+
     # Ensure CSV directory exists if needed
     if export_dir:
         os.makedirs(export_dir, exist_ok=True)
@@ -1515,5 +1569,5 @@ def export_all_metadata(config, csv_dir=None, db_path="output/db/gooddata_export
         "workspace_db_path": workspace_db,
         "csv_dir": export_dir,
         "workspace_count": total_workspaces,
-        "workspace_id": workspace_id
+        "workspace_id": workspace_id,
     }

@@ -5,7 +5,7 @@ to SQLite databases and CSV files.
 
 Basic usage:
     from gooddata_export import export_metadata
-    
+
     result = export_metadata(
         base_url="https://your-instance.gooddata.com",
         workspace_id="your_workspace_id",
@@ -13,7 +13,7 @@ Basic usage:
         output_dir="output",
         export_formats=["sqlite", "csv"]
     )
-    
+
     print(f"Database created at: {result['db_path']}")
 """
 
@@ -33,10 +33,10 @@ def export_metadata(
     enable_rich_text_extraction: bool = False,
     run_post_export: bool = True,
     debug: bool = False,
-    db_path: str = "output/db/gooddata_export.db"
+    db_path: str = "output/db/gooddata_export.db",
 ):
     """Export GoodData metadata to SQLite and/or CSV.
-    
+
     Args:
         base_url: GoodData API base URL (e.g., "https://your-instance.gooddata.com")
         workspace_id: GoodData workspace ID to export
@@ -52,7 +52,7 @@ def export_metadata(
         run_post_export: Whether to run post-export SQL processing for duplicate detection (default: True)
         debug: Enable debug logging (default: False)
         db_path: Custom path for the SQLite database (default: "output/db/gooddata_export.db")
-    
+
     Returns:
         dict: Export results containing:
             - db_path: Path to the main SQLite database
@@ -60,7 +60,7 @@ def export_metadata(
             - csv_dir: Directory containing CSV files (if CSV export was requested)
             - workspace_count: Number of workspaces processed
             - workspace_id: ID of the exported workspace
-    
+
     Example:
         # Export everything to both SQLite and CSV
         result = export_metadata(
@@ -68,7 +68,7 @@ def export_metadata(
             workspace_id="production_workspace",
             bearer_token="your_token_here"
         )
-        
+
         # Export only to SQLite for maximum speed
         result = export_metadata(
             base_url="https://my-instance.gooddata.com",
@@ -77,7 +77,7 @@ def export_metadata(
             export_formats=["sqlite"],
             run_post_export=False  # Skip duplicate detection for speed
         )
-        
+
         # Export with child workspaces
         result = export_metadata(
             base_url="https://my-instance.gooddata.com",
@@ -90,7 +90,7 @@ def export_metadata(
     """
     if export_formats is None:
         export_formats = ["sqlite", "csv"]
-    
+
     # Create config object
     config = ExportConfig(
         base_url=base_url,
@@ -101,19 +101,18 @@ def export_metadata(
         max_parallel_workspaces=max_parallel_workspaces,
         enable_rich_text_extraction=enable_rich_text_extraction,
         debug_workspace_processing=debug,
-        load_from_env=False  # Don't load from .env when using this API
+        load_from_env=False,  # Don't load from .env when using this API
     )
-    
+
     # Call the export function
     return export_all_metadata(
         config=config,
         csv_dir=csv_dir if "csv" in export_formats else None,
         db_path=db_path,
         export_formats=export_formats,
-        run_post_export=run_post_export
+        run_post_export=run_post_export,
     )
 
 
-__all__ = ['export_metadata', 'ExportConfig', 'export_all_metadata']
-__version__ = '1.0.0'
-
+__all__ = ["export_metadata", "ExportConfig", "export_all_metadata"]
+__version__ = "1.0.0"
