@@ -1,4 +1,5 @@
 """Database utilities for GoodData metadata export."""
+
 import datetime
 import logging
 import os
@@ -11,7 +12,9 @@ logger = logging.getLogger(__name__)
 def connect_database(db_name):
     """Connect to SQLite database, creating directory if needed."""
     # Ensure the database directory exists
-    os.makedirs(os.path.dirname(db_name) if os.path.dirname(db_name) else ".", exist_ok=True)
+    os.makedirs(
+        os.path.dirname(db_name) if os.path.dirname(db_name) else ".", exist_ok=True
+    )
 
     # Create connection
     conn = sqlite3.connect(db_name)
@@ -83,13 +86,17 @@ def store_workspace_metadata(db_path, config, update_timestamp: bool = True):
             "base_url": config.BASE_URL or "",
         }
         if update_timestamp:
-            payload["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+            payload["last_updated"] = datetime.datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
         # Record child workspace processing flags if they were used
         if config.INCLUDE_CHILD_WORKSPACES:
             payload["include_child_workspaces"] = "true"
             if config.CHILD_WORKSPACE_DATA_TYPES:
-                payload["child_data_types"] = ",".join(config.CHILD_WORKSPACE_DATA_TYPES)
+                payload["child_data_types"] = ",".join(
+                    config.CHILD_WORKSPACE_DATA_TYPES
+                )
 
         upsert_dictionary_metadata(db, payload)
 
@@ -105,4 +112,3 @@ def store_workspace_metadata(db_path, config, update_timestamp: bool = True):
         db.close()
     except sqlite3.Error as e:
         logger.error(f"Failed to store workspace metadata: {str(e)}")
-

@@ -3,10 +3,10 @@
 
 def get_api_client(config):
     """Create API client with configuration.
-    
+
     Args:
         config: ExportConfig instance with BASE_URL, WORKSPACE_ID, BEARER_TOKEN
-        
+
     Returns:
         dict: API client configuration
     """
@@ -19,4 +19,3 @@ def get_api_client(config):
         },
         "params": {"origin": "ALL", "size": "2000"},
     }
-

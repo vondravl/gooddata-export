@@ -1,4 +1,5 @@
 """Setup configuration for gooddata-export."""
+
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -27,8 +28,12 @@ setup(
         "pyyaml>=6.0.0",
     ],
     package_data={
-        "gooddata_export": ["sql/*.sql", "sql/*.yaml", "sql/views/*.sql", "sql/updates/*.sql"],
+        "gooddata_export": [
+            "sql/*.sql",
+            "sql/*.yaml",
+            "sql/views/*.sql",
+            "sql/updates/*.sql",
+        ],
     },
     include_package_data=True,
 )
-
