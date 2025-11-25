@@ -26,6 +26,7 @@ setup(
         "python-dotenv>=1.0.0",
         "requests>=2.32.0",
         "pyyaml>=6.0.0",
+        "ruff>=0.8.0",
     ],
     package_data={
         "gooddata_export": [
