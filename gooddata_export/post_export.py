@@ -7,9 +7,9 @@ dependency order using topological sort.
 """
 
 import logging
-import os
 import sqlite3
 from collections import defaultdict, deque
+from pathlib import Path
 
 import yaml
 
@@ -25,9 +25,7 @@ def load_post_export_config():
     Returns:
         dict: Configuration with 'views' and 'updates' sections
     """
-    config_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "sql", "post_export_config.yaml"
-    )
+    config_path = Path(__file__).parent / "sql" / "post_export_config.yaml"
 
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
@@ -143,11 +141,12 @@ def execute_sql_file(cursor, sql_path, parameters=None, config=None):
     Returns:
         bool: True if successful, False otherwise
     """
-    if not os.path.exists(sql_path):
+    sql_path = Path(sql_path)
+    if not sql_path.exists():
         logger.warning(f"SQL file not found: {sql_path}")
         return False
 
-    logger.debug(f"  Executing: {os.path.basename(sql_path)}")
+    logger.debug(f"  Executing: {sql_path.name}")
 
     with open(sql_path, "r") as f:
         sql_script = f.read()
@@ -174,7 +173,7 @@ def execute_sql_file(cursor, sql_path, parameters=None, config=None):
                     raise
         return True
     except Exception as e:
-        logger.error(f"Error executing {os.path.basename(sql_path)}: {str(e)}")
+        logger.error(f"Error executing {sql_path.name}: {str(e)}")
         return False
 
 
@@ -219,7 +218,7 @@ def run_post_export_sql(db_path):
     try:
         # Load configuration
         yaml_config = load_post_export_config()
-        sql_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql")
+        sql_dir = Path(__file__).parent / "sql"
 
         # Load export config for parameter substitution
         export_config = ExportConfig(load_from_env=True)
@@ -286,7 +285,7 @@ def run_post_export_sql(db_path):
 
             # Execute SQL file
             sql_file = item_config["sql_file"]
-            sql_path = os.path.join(sql_dir, sql_file)
+            sql_path = sql_dir / sql_file
 
             # Get parameters for procedure items
             parameters = item_config.get("parameters", {}) if is_procedure else None

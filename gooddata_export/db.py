@@ -2,8 +2,8 @@
 
 import datetime
 import logging
-import os
 import sqlite3
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,9 +12,8 @@ logger = logging.getLogger(__name__)
 def connect_database(db_name):
     """Connect to SQLite database, creating directory if needed."""
     # Ensure the database directory exists
-    os.makedirs(
-        os.path.dirname(db_name) if os.path.dirname(db_name) else ".", exist_ok=True
-    )
+    db_path = Path(db_name)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create connection
     conn = sqlite3.connect(db_name)

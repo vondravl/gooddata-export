@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 
 import requests
 
@@ -38,10 +39,10 @@ def debug_rich_text_extraction(
 
     if not output_file:
         # Default to a debug file in the project
-        output_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "debug_output",
-            f"rich_text_{extraction_type}_extraction.json",
+        output_file = (
+            Path(__file__).parent.parent.parent
+            / "debug_output"
+            / f"rich_text_{extraction_type}_extraction.json"
         )
 
     # Prepare debug data structure
@@ -114,7 +115,7 @@ def debug_rich_text_extraction(
         }
 
     # Make sure directory exists
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
     # Write to file
     try:
@@ -1106,17 +1107,16 @@ def extract_all_ids_from_content(content_str):
     if DEBUG_RICH_TEXT and len(matches) > 0:
         try:
             import json
-            import os
             import random
 
             # Only write debug data for a sample of calls to avoid flooding the disk
             if random.random() < 0.1:  # 10% of calls
-                output_file = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                    "debug_output",
-                    "uuid_extraction.json",
+                output_file = (
+                    Path(__file__).parent.parent.parent
+                    / "debug_output"
+                    / "uuid_extraction.json"
                 )
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                output_file.parent.mkdir(parents=True, exist_ok=True)
                 debug_data = {
                     "timestamp": import_time_iso(),
                     "content_length": len(content_str),
@@ -1461,17 +1461,16 @@ def extract_values_from_curly_braces(content_str):
     if DEBUG_RICH_TEXT and len(matches) > 0:
         try:
             import json
-            import os
             import random
 
             # Only write debug data for a sample of calls to avoid flooding the disk
             if random.random() < 0.1:  # 10% of calls
-                output_file = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                    "debug_output",
-                    "curly_brace_extraction.json",
+                output_file = (
+                    Path(__file__).parent.parent.parent
+                    / "debug_output"
+                    / "curly_brace_extraction.json"
                 )
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                output_file.parent.mkdir(parents=True, exist_ok=True)
                 debug_data = {
                     "timestamp": import_time_iso(),
                     "content_preview": content_str[:100]

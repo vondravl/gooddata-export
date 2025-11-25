@@ -2,10 +2,10 @@ import concurrent.futures
 import csv
 import json
 import logging
-import os
 import shutil
 import sqlite3
 import time
+from pathlib import Path
 
 from gooddata_export.common import get_api_client
 from gooddata_export.db import (
@@ -31,8 +31,8 @@ from gooddata_export.process import (
     process_workspaces,
 )
 
-DB_EXPORT_DIR = "db"
-DB_NAME = os.path.join(DB_EXPORT_DIR, "gooddata_export.db")
+DB_EXPORT_DIR = Path("db")
+DB_NAME = DB_EXPORT_DIR / "gooddata_export.db"
 
 
 def execute_with_retry(cursor, sql, params=None, max_retries=5):
@@ -78,15 +78,14 @@ def clean_field(value):
 
 def ensure_export_directory(export_dir):
     """Create export directory if it doesn't exist"""
-    if not os.path.exists(export_dir):
-        os.makedirs(export_dir)
+    Path(export_dir).mkdir(parents=True, exist_ok=True)
     return export_dir
 
 
 def write_to_csv(data, export_dir, filename, fieldnames, exclude_fields=None):
     """Write data to CSV file in specified directory"""
     ensure_export_directory(export_dir)
-    filepath = os.path.join(export_dir, filename)
+    filepath = Path(export_dir) / filename
 
     if exclude_fields is None:
         exclude_fields = set()
@@ -552,9 +551,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
 
     conn.commit()
     if export_dir is not None:
-        log_export(
-            "metrics", records_count, os.path.join(export_dir, "gooddata_metrics.csv")
-        )
+        log_export("metrics", records_count, Path(export_dir) / "gooddata_metrics.csv")
     else:
         print(f"Exported {records_count} metrics to {db_name}")
     conn.close()
@@ -731,17 +728,17 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         log_export(
             "visualizations",
             vis_count,
-            os.path.join(export_dir, "gooddata_visualizations.csv"),
+            Path(export_dir) / "gooddata_visualizations.csv",
         )
         log_export(
             "visualization-metric relationships",
             metric_rel_count,
-            os.path.join(export_dir, "gooddata_visualization_metrics.csv"),
+            Path(export_dir) / "gooddata_visualization_metrics.csv",
         )
         log_export(
             "visualization-attribute relationships",
             attr_rel_count,
-            os.path.join(export_dir, "gooddata_visualization_attributes.csv"),
+            Path(export_dir) / "gooddata_visualization_attributes.csv",
         )
     else:
         print(f"Exported {vis_count} visualizations to {db_name}")
@@ -919,12 +916,12 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         log_export(
             "dashboards",
             dash_count,
-            os.path.join(export_dir, "gooddata_dashboards.csv"),
+            Path(export_dir) / "gooddata_dashboards.csv",
         )
         log_export(
             "dashboard-visualization relationships",
             rel_count,
-            os.path.join(export_dir, "gooddata_dashboard_visualizations.csv"),
+            Path(export_dir) / "gooddata_dashboard_visualizations.csv",
         )
     else:
         print(f"Exported {dash_count} dashboards to {db_name}")
@@ -1064,12 +1061,12 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         log_export(
             "datasets",
             dataset_count,
-            os.path.join(export_dir, "gooddata_ldm_datasets.csv"),
+            Path(export_dir) / "gooddata_ldm_datasets.csv",
         )
         log_export(
             "columns",
             column_count,
-            os.path.join(export_dir, "gooddata_ldm_columns.csv"),
+            Path(export_dir) / "gooddata_ldm_columns.csv",
         )
     else:
         print(f"Exported {dataset_count} datasets to {db_name}")
@@ -1215,13 +1212,13 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
         log_export(
             "filter contexts",
             records_count,
-            os.path.join(export_dir, "gooddata_filter_contexts.csv"),
+            Path(export_dir) / "gooddata_filter_contexts.csv",
         )
         if fields_count > 0:
             log_export(
                 "filter context fields",
                 fields_count,
-                os.path.join(export_dir, "gooddata_filter_context_fields.csv"),
+                Path(export_dir) / "gooddata_filter_context_fields.csv",
             )
     else:
         print(f"Exported {records_count} filter contexts to {db_name}")
@@ -1298,7 +1295,7 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
         log_export(
             "workspaces",
             records_count,
-            os.path.join(export_dir, "gooddata_workspaces.csv"),
+            Path(export_dir) / "gooddata_workspaces.csv",
         )
     else:
         print(f"Exported {records_count} workspaces to {db_name}")
@@ -1479,7 +1476,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             log_export(
                 "dashboard metrics from rich text",
                 records_count,
-                os.path.join(export_dir, "gooddata_dashboard_metrics.csv"),
+                Path(export_dir) / "gooddata_dashboard_metrics.csv",
             )
         else:
             print(
@@ -1526,21 +1523,20 @@ def export_all_metadata(
     export_dir = csv_dir if "csv" in export_formats else None
 
     # Set up database path
-    db_export_dir = os.path.dirname(db_path)
+    db_path_obj = Path(db_path)
     errors = []
 
     # Ensure database directory exists (databases overwrite themselves, no cleanup needed)
-    if db_export_dir:
-        os.makedirs(db_export_dir, exist_ok=True)
+    db_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
     # Clean CSV directory completely to avoid stale data (files mix together, so we need a clean slate)
-    if export_dir and os.path.exists(export_dir):
+    if export_dir and Path(export_dir).exists():
         print(f"Cleaning CSV directory: {export_dir}")
         shutil.rmtree(export_dir)
 
     # Ensure CSV directory exists if needed
     if export_dir:
-        os.makedirs(export_dir, exist_ok=True)
+        Path(export_dir).mkdir(parents=True, exist_ok=True)
 
     # Fetch all data from all workspaces
     print("Fetching data from GoodData API...")
@@ -1604,14 +1600,13 @@ def export_all_metadata(
 
     # Create workspace-specific database copy
     workspace_db = None
-    if db_export_dir:
-        try:
-            workspace_db = os.path.join(db_export_dir, f"{workspace_id}.db")
-            # Create a copy of the database with workspace_id name
-            shutil.copy(db_path, workspace_db)
-            print(f"Created workspace-specific database: {workspace_db}")
-        except Exception as e:
-            print(f"Warning: Could not create workspace-specific database: {str(e)}")
+    try:
+        workspace_db = db_path_obj.parent / f"{workspace_id}.db"
+        # Create a copy of the database with workspace_id name
+        shutil.copy(db_path, workspace_db)
+        print(f"Created workspace-specific database: {workspace_db}")
+    except Exception as e:
+        print(f"Warning: Could not create workspace-specific database: {str(e)}")
 
     # Success message
     total_workspaces = len(all_workspace_data)
