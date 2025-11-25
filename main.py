@@ -40,8 +40,8 @@ Configuration:
 """
 
 import argparse
-import os
 import sys
+from pathlib import Path
 
 from gooddata_export import export_metadata
 from gooddata_export.config import ExportConfig
@@ -191,7 +191,7 @@ def run_enrich_command(args):
         print("\nExample: python main.py enrich --db-path output/db/gooddata_export.db")
         return 1
 
-    if not os.path.exists(args.db_path):
+    if not Path(args.db_path).exists():
         print(f"\n❌ Error: Database not found: {args.db_path}")
         return 1
 
@@ -256,7 +256,7 @@ def run_export_command(args):
         print("\nℹ️  Loading configuration from .env.gdcloud file...")
 
         # Check if .env.gdcloud exists
-        if not os.path.exists(".env.gdcloud"):
+        if not Path(".env.gdcloud").exists():
             print(
                 "\n❌ Error: No .env.gdcloud file found and no command-line arguments provided."
             )
@@ -358,14 +358,15 @@ def run_export_command(args):
         # Set up database path
         if args.db_name:
             # Custom database path provided
+            db_name_path = Path(args.db_name)
             db_path = (
-                args.db_name
-                if os.path.isabs(args.db_name)
-                else os.path.join(args.db_dir, args.db_name)
+                str(db_name_path)
+                if db_name_path.is_absolute()
+                else str(Path(args.db_dir) / args.db_name)
             )
         else:
             # Default database name
-            db_path = os.path.join(args.db_dir, "gooddata_export.db")
+            db_path = str(Path(args.db_dir) / "gooddata_export.db")
 
         # Run the export
         result = export_metadata(

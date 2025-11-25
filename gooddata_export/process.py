@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 
 import requests
 
@@ -38,12 +39,10 @@ def debug_rich_text_extraction(
 
     if not output_file:
         # Default to a debug file in the project
-        import os
-
-        output_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "debug_output",
-            f"rich_text_{extraction_type}_extraction.json",
+        output_file = (
+            Path(__file__).parent.parent.parent
+            / "debug_output"
+            / f"rich_text_{extraction_type}_extraction.json"
         )
 
     # Prepare debug data structure
@@ -116,9 +115,7 @@ def debug_rich_text_extraction(
         }
 
     # Make sure directory exists
-    import os
-
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
     # Write to file
     try:
@@ -370,13 +367,8 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
     # Key: (viz_id, metric_id, workspace_id), Value: label
     unique_relationships = {}
 
-    # For debugging
-    metrics_found = 0
-    visualizations_with_metrics = 0
-
     for viz in visualization_data:
         content = viz["attributes"]["content"]
-        viz_metrics_found = 0
 
         if "buckets" not in content:
             continue
@@ -397,11 +389,6 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
                     # Only store if not already present (keep first occurrence)
                     if key not in unique_relationships:
                         unique_relationships[key] = label
-                    viz_metrics_found += 1
-
-        if viz_metrics_found > 0:
-            metrics_found += viz_metrics_found
-            visualizations_with_metrics += 1
 
     # Convert dict to list of dictionaries
     result = [
@@ -414,35 +401,6 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
         for (viz_id, metric_id, ws_id), label in sorted(unique_relationships.items())
     ]
 
-    # Write debug data if debugging is enabled
-    if DEBUG_RICH_TEXT:
-        debug_data = {
-            "extraction_type": "visualization_metrics",
-            "timestamp": import_time_iso(),
-            "metrics_found": metrics_found,
-            "visualizations_with_metrics": visualizations_with_metrics,
-            "total_visualizations": len(visualization_data),
-            "unique_relationships": len(result),
-        }
-
-        try:
-            import json
-            import os
-
-            output_file = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "debug_output",
-                "visualization_metrics_extraction.json",
-            )
-            os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            with open(output_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(debug_data, indent=2) + "\n\n")
-            logger.info(
-                f"Debug info for visualization metrics written to {output_file}"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to write debug info to file: {str(e)}")
-
     return result
 
 
@@ -452,13 +410,8 @@ def process_visualization_attributes(visualization_data, workspace_id=None):
     # Key: (viz_id, attribute_id, workspace_id), Value: label
     unique_relationships = {}
 
-    # For debugging
-    attributes_found = 0
-    visualizations_with_attributes = 0
-
     for viz in visualization_data:
         content = viz["attributes"]["content"]
-        viz_attributes_found = 0
 
         if "buckets" not in content:
             continue
@@ -480,11 +433,6 @@ def process_visualization_attributes(visualization_data, workspace_id=None):
                     # Only store if not already present (keep first occurrence)
                     if key not in unique_relationships:
                         unique_relationships[key] = label
-                    viz_attributes_found += 1
-
-        if viz_attributes_found > 0:
-            attributes_found += viz_attributes_found
-            visualizations_with_attributes += 1
 
     # Convert dict to list of dictionaries
     result = [
@@ -496,35 +444,6 @@ def process_visualization_attributes(visualization_data, workspace_id=None):
         }
         for (viz_id, attr_id, ws_id), label in sorted(unique_relationships.items())
     ]
-
-    # Write debug data if debugging is enabled
-    if DEBUG_RICH_TEXT:
-        debug_data = {
-            "extraction_type": "visualization_attributes",
-            "timestamp": import_time_iso(),
-            "attributes_found": attributes_found,
-            "visualizations_with_attributes": visualizations_with_attributes,
-            "total_visualizations": len(visualization_data),
-            "unique_relationships": len(result),
-        }
-
-        try:
-            import json
-            import os
-
-            output_file = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "debug_output",
-                "visualization_attributes_extraction.json",
-            )
-            os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            with open(output_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(debug_data, indent=2) + "\n\n")
-            logger.info(
-                f"Debug info for visualization attributes written to {output_file}"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to write debug info to file: {str(e)}")
 
     return result
 
@@ -1188,17 +1107,16 @@ def extract_all_ids_from_content(content_str):
     if DEBUG_RICH_TEXT and len(matches) > 0:
         try:
             import json
-            import os
             import random
 
             # Only write debug data for a sample of calls to avoid flooding the disk
             if random.random() < 0.1:  # 10% of calls
-                output_file = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                    "debug_output",
-                    "uuid_extraction.json",
+                output_file = (
+                    Path(__file__).parent.parent.parent
+                    / "debug_output"
+                    / "uuid_extraction.json"
                 )
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                output_file.parent.mkdir(parents=True, exist_ok=True)
                 debug_data = {
                     "timestamp": import_time_iso(),
                     "content_length": len(content_str),
@@ -1543,17 +1461,16 @@ def extract_values_from_curly_braces(content_str):
     if DEBUG_RICH_TEXT and len(matches) > 0:
         try:
             import json
-            import os
             import random
 
             # Only write debug data for a sample of calls to avoid flooding the disk
             if random.random() < 0.1:  # 10% of calls
-                output_file = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                    "debug_output",
-                    "curly_brace_extraction.json",
+                output_file = (
+                    Path(__file__).parent.parent.parent
+                    / "debug_output"
+                    / "curly_brace_extraction.json"
                 )
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                output_file.parent.mkdir(parents=True, exist_ok=True)
                 debug_data = {
                     "timestamp": import_time_iso(),
                     "content_preview": content_str[:100]
