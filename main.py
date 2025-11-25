@@ -40,8 +40,9 @@ Configuration:
 """
 
 import argparse
-import sys
 import os
+import sys
+
 from gooddata_export import export_metadata
 from gooddata_export.config import ExportConfig
 from gooddata_export.post_export import run_post_export_sql
@@ -194,7 +195,7 @@ def run_enrich_command(args):
         print(f"\n❌ Error: Database not found: {args.db_path}")
         return 1
 
-    print(f"\n📋 Configuration:")
+    print("\n📋 Configuration:")
     print(f"   Database: {args.db_path}")
     print(f"   Debug Mode: {'Enabled' if args.debug else 'Disabled'}")
     print()
@@ -331,7 +332,7 @@ def run_export_command(args):
         debug = args.debug
 
     # Display configuration
-    print(f"\n📋 Configuration:")
+    print("\n📋 Configuration:")
     print(f"   Base URL: {base_url}")
     print(f"   Workspace ID: {workspace_id}")
     if "sqlite" in args.format:
@@ -386,7 +387,7 @@ def run_export_command(args):
         print("\n" + "=" * 70)
         print("✅ Export Completed Successfully!")
         print("=" * 70)
-        print(f"\n📊 Results:")
+        print("\n📊 Results:")
         print(f"   Workspaces Processed: {result['workspace_count']}")
 
         if "sqlite" in args.format:

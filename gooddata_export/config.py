@@ -5,8 +5,9 @@ Unlike the dictionary app, this has no Flask dependencies.
 """
 
 from os import getenv
+from typing import List, Optional
+
 from dotenv import load_dotenv
-from typing import Optional, List
 
 
 class ExportConfig:
