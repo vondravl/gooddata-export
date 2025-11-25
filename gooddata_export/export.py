@@ -658,6 +658,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         "visualization_id": "TEXT",
         "metric_id": "TEXT",
         "workspace_id": "TEXT",
+        "label": "TEXT",
         "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
     }
 
@@ -668,7 +669,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
             all_processed_metric_relationships,
             export_dir,
             rel_csv,
-            fieldnames=["visualization_id", "metric_id", "workspace_id"],
+            fieldnames=["visualization_id", "metric_id", "workspace_id", "label"],
         )
 
     cursor = setup_table(conn, "visualization_metrics", metric_relationship_columns)
@@ -676,11 +677,11 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO visualization_metrics
-        (visualization_id, metric_id, workspace_id)
-        VALUES (?, ?, ?)
+        (visualization_id, metric_id, workspace_id, label)
+        VALUES (?, ?, ?, ?)
         """,
         [
-            (d["visualization_id"], d["metric_id"], d["workspace_id"])
+            (d["visualization_id"], d["metric_id"], d["workspace_id"], d.get("label"))
             for d in all_processed_metric_relationships
         ],
     )
@@ -690,6 +691,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         "visualization_id": "TEXT",
         "attribute_id": "TEXT",
         "workspace_id": "TEXT",
+        "label": "TEXT",
         "PRIMARY KEY": "(visualization_id, attribute_id, workspace_id)",
     }
 
@@ -700,7 +702,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
             all_processed_attribute_relationships,
             export_dir,
             attr_rel_csv,
-            fieldnames=["visualization_id", "attribute_id", "workspace_id"],
+            fieldnames=["visualization_id", "attribute_id", "workspace_id", "label"],
         )
 
     cursor = setup_table(
@@ -710,11 +712,16 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         cursor,
         """
         INSERT INTO visualization_attributes
-        (visualization_id, attribute_id, workspace_id)
-        VALUES (?, ?, ?)
+        (visualization_id, attribute_id, workspace_id, label)
+        VALUES (?, ?, ?, ?)
         """,
         [
-            (d["visualization_id"], d["attribute_id"], d["workspace_id"])
+            (
+                d["visualization_id"],
+                d["attribute_id"],
+                d["workspace_id"],
+                d.get("label"),
+            )
             for d in all_processed_attribute_relationships
         ],
     )

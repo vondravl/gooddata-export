@@ -365,9 +365,10 @@ def process_visualizations(data, base_url, workspace_id):
 
 
 def process_visualization_metrics(visualization_data, workspace_id=None):
-    """Extract unique metric IDs used in each visualization"""
-    # Using set to store unique combinations including workspace context
-    unique_relationships = set()
+    """Extract unique metric IDs used in each visualization with their labels"""
+    # Using dict to store unique combinations with labels
+    # Key: (viz_id, metric_id, workspace_id), Value: label
+    unique_relationships = {}
 
     # For debugging
     metrics_found = 0
@@ -390,17 +391,27 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
                 metric_id = measure_def.get("item", {}).get("identifier", {}).get("id")
 
                 if metric_id:
-                    unique_relationships.add((viz["id"], metric_id, workspace_id))
+                    # Get label: prefer alias, fall back to title, then None
+                    label = measure.get("alias") or measure.get("title")
+                    key = (viz["id"], metric_id, workspace_id)
+                    # Only store if not already present (keep first occurrence)
+                    if key not in unique_relationships:
+                        unique_relationships[key] = label
                     viz_metrics_found += 1
 
         if viz_metrics_found > 0:
             metrics_found += viz_metrics_found
             visualizations_with_metrics += 1
 
-    # Convert set of tuples back to list of dictionaries
+    # Convert dict to list of dictionaries
     result = [
-        {"visualization_id": viz_id, "metric_id": metric_id, "workspace_id": ws_id}
-        for viz_id, metric_id, ws_id in sorted(unique_relationships)
+        {
+            "visualization_id": viz_id,
+            "metric_id": metric_id,
+            "workspace_id": ws_id,
+            "label": label,
+        }
+        for (viz_id, metric_id, ws_id), label in sorted(unique_relationships.items())
     ]
 
     # Write debug data if debugging is enabled
@@ -436,9 +447,10 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
 
 
 def process_visualization_attributes(visualization_data, workspace_id=None):
-    """Extract unique attribute IDs (display forms) used in each visualization"""
-    # Using set to store unique combinations including workspace context
-    unique_relationships = set()
+    """Extract unique attribute IDs (display forms) used in each visualization with their labels"""
+    # Using dict to store unique combinations with labels
+    # Key: (viz_id, attribute_id, workspace_id), Value: label
+    unique_relationships = {}
 
     # For debugging
     attributes_found = 0
@@ -462,17 +474,27 @@ def process_visualization_attributes(visualization_data, workspace_id=None):
                 attribute_id = display_form.get("identifier", {}).get("id")
 
                 if attribute_id:
-                    unique_relationships.add((viz["id"], attribute_id, workspace_id))
+                    # Get label: prefer alias, fall back to None
+                    label = attribute_def.get("alias")
+                    key = (viz["id"], attribute_id, workspace_id)
+                    # Only store if not already present (keep first occurrence)
+                    if key not in unique_relationships:
+                        unique_relationships[key] = label
                     viz_attributes_found += 1
 
         if viz_attributes_found > 0:
             attributes_found += viz_attributes_found
             visualizations_with_attributes += 1
 
-    # Convert set of tuples back to list of dictionaries
+    # Convert dict to list of dictionaries
     result = [
-        {"visualization_id": viz_id, "attribute_id": attr_id, "workspace_id": ws_id}
-        for viz_id, attr_id, ws_id in sorted(unique_relationships)
+        {
+            "visualization_id": viz_id,
+            "attribute_id": attr_id,
+            "workspace_id": ws_id,
+            "label": label,
+        }
+        for (viz_id, attr_id, ws_id), label in sorted(unique_relationships.items())
     ]
 
     # Write debug data if debugging is enabled
