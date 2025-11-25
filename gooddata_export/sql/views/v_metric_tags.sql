@@ -4,7 +4,9 @@
 -- The tags column in the metrics table is stored as a string like "['tag1', 'tag2']"
 -- This view converts it to proper JSON and unnests each tag into its own row
 
-CREATE VIEW IF NOT EXISTS v_metric_tags AS
+DROP VIEW IF EXISTS v_metric_tags;
+
+CREATE VIEW v_metric_tags AS
 SELECT 
     m.metric_id,
     m.workspace_id,

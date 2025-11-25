@@ -4,7 +4,9 @@
 -- A metric can be a "component" metric used in other metrics' calculations
 -- This view shows parent-child relationships between metrics via MAQL references
 
-CREATE VIEW IF NOT EXISTS v_metric_dependencies AS
+DROP VIEW IF EXISTS v_metric_dependencies;
+
+CREATE VIEW v_metric_dependencies AS
 SELECT 
     m_child.metric_id AS used_metric_id,
     m_child.title AS used_metric_title,

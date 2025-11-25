@@ -4,7 +4,9 @@
 -- The tags column in the dashboards table is stored as a string like "['tag1', 'tag2']"
 -- This view converts it to proper JSON and unnests each tag into its own row
 
-CREATE VIEW IF NOT EXISTS v_dashboard_tags AS
+DROP VIEW IF EXISTS v_dashboard_tags;
+
+CREATE VIEW v_dashboard_tags AS
 SELECT 
     d.dashboard_id,
     d.workspace_id,
