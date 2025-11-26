@@ -13,17 +13,11 @@ Usage:
     # With command-line arguments:
     python main.py export --workspace-id your_workspace --db-dir my_databases --csv-dir my_csvs
 
-    # Export only SQLite (fastest):
+    # Export with format (sqlite/csv, default sqlite csv):
     python main.py export --format sqlite
 
-    # Export only CSV:
-    python main.py export --format csv
-
-    # Export both (default):
-    python main.py export --format sqlite csv
-
-    # With child workspaces:
-    python main.py export --include-child-workspaces --max-workers 10
+    # With child workspaces (fetch only dashboards from children):
+    python main.py export --include-child-workspaces --child-workspace-data-types dashboards
 
     # With debug mode:
     python main.py export --debug
