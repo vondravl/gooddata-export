@@ -1,9 +1,9 @@
 -- View showing where filter contexts are used
 -- Joins filter contexts with dashboards to show usage relationships
 
-DROP VIEW IF EXISTS v_filter_context_usage;
+DROP VIEW IF EXISTS v_filter_contexts_usage;
 
-CREATE VIEW v_filter_context_usage AS
+CREATE VIEW v_filter_contexts_usage AS
 SELECT 
     fc.filter_context_id,
     fc.workspace_id,

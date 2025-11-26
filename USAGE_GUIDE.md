@@ -111,15 +111,15 @@ python main.py export  # (enrichment runs by default)
 When you run enrichment, it executes all SQL operations defined in `gooddata_export/sql/post_export_config.yaml`:
 
 ### Views Created
-- `v_metric_tags` - Metric tags unnested
-- `v_visualization_tags` - Visualization tags unnested
-- `v_dashboard_tags` - Dashboard tags unnested
+- `v_metrics_tags` - Metric tags unnested
+- `v_visualizations_tags` - Visualization tags unnested
+- `v_dashboards_tags` - Dashboard tags unnested
 - `v_ldm_datasets_tags` - LDM dataset tags unnested
 - `v_ldm_columns_tags` - LDM column tags unnested
-- `v_metric_usage` - Where metrics are used
-- `v_metric_dependencies` - Metric MAQL dependencies
-- `v_visualization_usage` - Where visualizations are used
-- `v_filter_context_usage` - Where filter contexts are used in dashboards
+- `v_metrics_usage` - Where metrics are used
+- `v_metrics_dependencies` - Metric MAQL dependencies
+- `v_visualizations_usage` - Where visualizations are used
+- `v_filter_contexts_usage` - Where filter contexts are used in dashboards
 - `v_ldm_dataset_column_tag_check` - Validates dataset-column tag consistency
 
 ### Procedures Executed
@@ -204,7 +204,7 @@ After enrichment, query the enriched database:
 
 ```sql
 -- Use views
-SELECT * FROM v_metric_usage WHERE usage_count > 5;
+SELECT * FROM v_metrics_usage WHERE usage_count > 5;
 
 -- Call procedures (query parameterized views)
 SELECT * FROM v_procedures_api_metrics WHERE metric_id LIKE 'revenue%';

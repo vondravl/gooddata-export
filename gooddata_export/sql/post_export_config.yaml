@@ -22,45 +22,45 @@
 # ====================
 views:
   # Tag Views - Simple entity-specific views that unnest tags
-  v_metric_tags:
-    sql_file: views/v_metric_tags.sql
+  v_metrics_tags:
+    sql_file: views/v_metrics_tags.sql
     description: Unnests metric tags into individual rows
     category: tagging
     dependencies: []
   
-  v_visualization_tags:
-    sql_file: views/v_visualization_tags.sql
+  v_visualizations_tags:
+    sql_file: views/v_visualizations_tags.sql
     description: Unnests visualization tags into individual rows (used by duplicate detection)
     category: tagging
     dependencies: []
-  
-  v_dashboard_tags:
-    sql_file: views/v_dashboard_tags.sql
+
+  v_dashboards_tags:
+    sql_file: views/v_dashboards_tags.sql
     description: Unnests dashboard tags into individual rows
     category: tagging
     dependencies: []
   
   # Usage Views - Combined views joining multiple tables
-  v_metric_usage:
-    sql_file: views/v_metric_usage.sql
+  v_metrics_usage:
+    sql_file: views/v_metrics_usage.sql
     description: Shows where metrics are used across dashboards and visualizations
     category: usage
     dependencies: []
-  
-  v_metric_dependencies:
-    sql_file: views/v_metric_dependencies.sql
+
+  v_metrics_dependencies:
+    sql_file: views/v_metrics_dependencies.sql
     description: Shows metric dependencies via MAQL formula references
     category: usage
     dependencies: []
-  
-  v_visualization_usage:
-    sql_file: views/v_visualization_usage.sql
+
+  v_visualizations_usage:
+    sql_file: views/v_visualizations_usage.sql
     description: Shows where visualizations are used in dashboards
     category: usage
     dependencies: []
-  
-  v_filter_context_usage:
-    sql_file: views/v_filter_context_usage.sql
+
+  v_filter_contexts_usage:
+    sql_file: views/v_filter_contexts_usage.sql
     description: Shows where filter contexts are used in dashboards
     category: usage
     dependencies: []
@@ -120,7 +120,7 @@ updates:
     category: deduplication
     table: visualizations
     dependencies:
-      - v_visualization_tags  # Uses this view for tag comparison
+      - v_visualizations_tags  # Uses this view for tag comparison
     required_columns:
       columns: TEXT
       same_columns_id: INTEGER

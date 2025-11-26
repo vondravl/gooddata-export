@@ -42,12 +42,12 @@ Scripts that modify existing tables (ALTER TABLE, UPDATE).
 Operations are executed in **dependency order** using topological sort. The actual execution order is determined automatically based on the `dependencies` field in the YAML configuration.
 
 ### Phase 1: Views (no dependencies between them currently)
-1. **`v_metric_tags`** - Unnests metric tags into individual rows
-2. **`v_visualization_tags`** - Unnests visualization tags into individual rows
-3. **`v_dashboard_tags`** - Unnests dashboard tags into individual rows
-4. **`v_metric_usage`** - Shows where metrics are used
-5. **`v_metric_dependencies`** - Shows metric dependencies via MAQL
-6. **`v_visualization_usage`** - Shows where visualizations are used
+1. **`v_metrics_tags`** - Unnests metric tags into individual rows
+2. **`v_visualizations_tags`** - Unnests visualization tags into individual rows
+3. **`v_dashboards_tags`** - Unnests dashboard tags into individual rows
+4. **`v_metrics_usage`** - Shows where metrics are used
+5. **`v_metrics_dependencies`** - Shows metric dependencies via MAQL
+6. **`v_visualizations_usage`** - Shows where visualizations are used
 
 ### Phase 1.5: Procedures (with parameter substitution)
 1. **`v_procedures_api_metrics`** - Procedure to generate curl commands for API metric operations
@@ -55,7 +55,7 @@ Operations are executed in **dependency order** using topological sort. The actu
    - Returns: POST, PUT, DELETE commands with Excel formula helpers
 
 ### Phase 2: Updates (executed in dependency order)
-1. **`visuals_with_same_content`** (depends on: `v_visualization_tags`)
+1. **`visuals_with_same_content`** (depends on: `v_visualizations_tags`)
    - Updates: `visualizations` table
    - Columns: `columns`, `same_columns_id`, `same_visuals_id`, `same_visuals_id_with_tags`
 
@@ -134,7 +134,7 @@ The system uses **Kahn's algorithm** for topological sorting:
 ## Critical Dependencies
 
 ⚠️ **Current critical dependency**:
-- `visuals_with_same_content` **depends on** `v_visualization_tags`
+- `visuals_with_same_content` **depends on** `v_visualizations_tags`
   - The update uses this view to compare visualization tags
   - The view MUST be created before the update runs
   - This is enforced automatically via dependency declaration
@@ -175,8 +175,8 @@ gooddata_export/sql/
 ├── EXECUTION_ORDER.md          # This documentation
 ├── DEPENDENCY_GRAPH.md         # Dependency visualization
 ├── views/                      # View SQL files
-│   ├── v_metric_tags.sql
-│   ├── v_visualization_tags.sql
+│   ├── v_metrics_tags.sql
+│   ├── v_visualizations_tags.sql
 │   └── ...
 ├── procedures/                 # Procedures (parameterized views)
 │   ├── v_procedures_api_metrics.sql

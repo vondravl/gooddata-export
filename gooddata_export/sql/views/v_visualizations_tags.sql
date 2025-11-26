@@ -4,9 +4,9 @@
 -- The tags column in the visualizations table is stored as a string like "['tag1', 'tag2']"
 -- This view converts it to proper JSON and unnests each tag into its own row
 
-DROP VIEW IF EXISTS v_visualization_tags;
+DROP VIEW IF EXISTS v_visualizations_tags;
 
-CREATE VIEW v_visualization_tags AS
+CREATE VIEW v_visualizations_tags AS
 SELECT 
     v.visualization_id,
     v.workspace_id,
