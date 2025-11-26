@@ -15,9 +15,12 @@ from gooddata_export.db import (
 )
 from gooddata_export.post_export import run_post_export_sql
 from gooddata_export.process import (
+    fetch_analytics_model,
     fetch_child_workspaces,
     fetch_data,
     fetch_ldm,
+    fetch_users_and_user_groups,
+    process_dashboard_permissions_from_analytics_model,
     process_dashboard_visualizations,
     process_dashboards,
     process_filter_context_fields,
@@ -25,6 +28,9 @@ from gooddata_export.process import (
     process_ldm,
     process_metrics,
     process_rich_text_metrics,
+    process_user_group_members,
+    process_user_groups,
+    process_users,
     process_visualization_attributes,
     process_visualization_metrics,
     process_visualizations,
@@ -114,6 +120,11 @@ def fetch_all_data_parallel(config):
     client = get_api_client(config)
 
     # Define fetch tasks with their data types and params
+    # NOTE: We fetch both entities API (analyticalDashboards) and layout API (analytics_model)
+    # because they serve different purposes:
+    # - Entities API: Used for relationship validation and child workspace selective fetching
+    # - Layout API (analytics_model): Contains permissions data not available in entities API
+    # Both are fetched in parallel so there's no latency impact.
     fetch_tasks = [
         {"function": fetch_data, "args": ("metrics", client, config), "key": "metrics"},
         {
@@ -137,6 +148,18 @@ def fetch_all_data_parallel(config):
             "function": fetch_child_workspaces,
             "args": (client, config),
             "key": "child_workspaces",
+        },
+        # Fetch users and user groups (organization-level, not workspace-specific)
+        {
+            "function": fetch_users_and_user_groups,
+            "args": (client, config),
+            "key": "users_and_user_groups",
+        },
+        # Fetch analytics model (layout API - includes permissions)
+        {
+            "function": fetch_analytics_model,
+            "args": (client, config),
+            "key": "analytics_model",
         },
     ]
 
@@ -180,6 +203,9 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
     workspace_data = {}
 
     # Define all possible fetch tasks (excluding LDM - it's shared across workspaces)
+    # NOTE: analytics_model (layout API) is intentionally NOT fetched for child workspaces
+    # to minimize API calls. This means dashboard_permissions will only contain parent
+    # workspace data. Can be added here later if child workspace permissions are needed.
     all_fetch_tasks = {
         "metrics": {
             "function": fetch_data,
@@ -1495,6 +1521,264 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         raise RuntimeError(f"Error processing dashboard metrics: {str(e)}")
 
 
+def export_users_and_user_groups(all_workspace_data, export_dir, config, db_name):
+    """Export users, user_groups, and user_group_members tables.
+
+    Users and user groups are organization-level (not workspace-specific),
+    so we only need data from the parent workspace.
+    """
+    # Users and user groups are fetched from the parent workspace only
+    if not all_workspace_data:
+        raise RuntimeError("No workspace data available")
+
+    parent_workspace_info = all_workspace_data[0]
+    raw_data = parent_workspace_info["data"].get("users_and_user_groups")
+
+    # Define table schemas upfront (needed for empty table creation)
+    users_columns = {
+        "user_id": "TEXT PRIMARY KEY",
+        "firstname": "TEXT",
+        "lastname": "TEXT",
+        "email": "TEXT",
+        "authentication_id": "TEXT",
+        "user_group_ids": "TEXT",
+        "user_group_count": "INTEGER",
+        "content": "JSON",
+    }
+    user_groups_columns = {
+        "user_group_id": "TEXT PRIMARY KEY",
+        "name": "TEXT",
+        "parent_ids": "TEXT",
+        "parent_count": "INTEGER",
+        "content": "JSON",
+    }
+    membership_columns = {
+        "user_id": "TEXT",
+        "user_group_id": "TEXT",
+        "PRIMARY KEY": "(user_id, user_group_id)",
+    }
+
+    # Always create tables (even if empty) for consistency with other export functions
+    conn = connect_database(db_name)
+    try:
+        setup_table(conn, "users", users_columns)
+        setup_table(conn, "user_groups", user_groups_columns)
+        setup_table(conn, "user_group_members", membership_columns)
+        conn.commit()
+
+        if raw_data is None:
+            logging.info(
+                "No users and user groups data found - tables created but empty"
+            )
+            return
+
+        # Process data
+        processed_users = process_users(raw_data)
+        processed_user_groups = process_user_groups(raw_data)
+        processed_memberships = process_user_group_members(raw_data)
+
+        # --- Export users ---
+        users_count = len(processed_users)
+        if export_dir is not None:
+            users_count = write_to_csv(
+                processed_users,
+                export_dir,
+                "gooddata_users.csv",
+                fieldnames=users_columns.keys(),
+                exclude_fields={"content"},
+            )
+
+        if processed_users:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO users
+                (user_id, firstname, lastname, email, authentication_id, user_group_ids, user_group_count, content)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["user_id"],
+                        d["firstname"],
+                        d["lastname"],
+                        d["email"],
+                        d["authentication_id"],
+                        d["user_group_ids"],
+                        d["user_group_count"],
+                        json.dumps(d["content"]),
+                    )
+                    for d in processed_users
+                ],
+            )
+            conn.commit()
+
+        # --- Export user_groups ---
+        user_groups_count = len(processed_user_groups)
+        if export_dir is not None:
+            user_groups_count = write_to_csv(
+                processed_user_groups,
+                export_dir,
+                "gooddata_user_groups.csv",
+                fieldnames=user_groups_columns.keys(),
+                exclude_fields={"content"},
+            )
+
+        if processed_user_groups:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO user_groups
+                (user_group_id, name, parent_ids, parent_count, content)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["user_group_id"],
+                        d["name"],
+                        d["parent_ids"],
+                        d["parent_count"],
+                        json.dumps(d["content"]),
+                    )
+                    for d in processed_user_groups
+                ],
+            )
+            conn.commit()
+
+        # --- Export user_group_members ---
+        membership_count = len(processed_memberships)
+        if export_dir is not None:
+            membership_count = write_to_csv(
+                processed_memberships,
+                export_dir,
+                "gooddata_user_group_members.csv",
+                fieldnames=["user_id", "user_group_id"],
+            )
+
+        if processed_memberships:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO user_group_members
+                (user_id, user_group_id)
+                VALUES (?, ?)
+                """,
+                [(d["user_id"], d["user_group_id"]) for d in processed_memberships],
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+    # Log exports
+    if export_dir is not None:
+        log_export("users", users_count, Path(export_dir) / "gooddata_users.csv")
+        log_export(
+            "user groups",
+            user_groups_count,
+            Path(export_dir) / "gooddata_user_groups.csv",
+        )
+        log_export(
+            "user-group memberships",
+            membership_count,
+            Path(export_dir) / "gooddata_user_group_members.csv",
+        )
+    else:
+        print(f"Exported {users_count} users to {db_name}")
+        print(f"Exported {user_groups_count} user groups to {db_name}")
+        print(f"Exported {membership_count} user-group memberships to {db_name}")
+
+
+def export_dashboard_permissions(all_workspace_data, export_dir, _config, db_name):
+    """Export dashboard permissions (assignee relationships) to database and CSV.
+
+    Permissions are extracted from the analytics model (layout API).
+
+    NOTE: analytics_model is only fetched for the parent workspace to minimize API calls.
+    Child workspace permissions are not included. To add them, fetch analytics_model
+    in fetch_data_from_workspace() and add 'analytics_model' to CHILD_WORKSPACE_DATA_TYPES.
+    """
+    all_permissions = []
+
+    # Process permissions from parent workspace only (analytics_model not fetched for children)
+    for workspace_info in all_workspace_data:
+        workspace_id = workspace_info["workspace_id"]
+        analytics_model = workspace_info["data"].get("analytics_model")
+
+        if analytics_model is None:
+            continue
+
+        permissions = process_dashboard_permissions_from_analytics_model(
+            analytics_model, workspace_id
+        )
+        all_permissions.extend(permissions)
+
+    # Define columns for permissions table
+    permissions_columns = {
+        "dashboard_id": "TEXT",
+        "workspace_id": "TEXT",
+        "assignee_id": "TEXT",
+        "assignee_type": "TEXT",
+        "permission_name": "TEXT",
+        "PRIMARY KEY": "(dashboard_id, workspace_id, assignee_id, assignee_type)",
+    }
+
+    # Always create the table (even if empty) for consistency
+    conn = connect_database(db_name)
+    try:
+        setup_table(conn, "dashboard_permissions", permissions_columns)
+        conn.commit()
+
+        if not all_permissions:
+            logging.info("No dashboard permissions found - table created but empty")
+            return
+
+        # Export to CSV (if requested)
+        permissions_count = len(all_permissions)
+        if export_dir is not None:
+            permissions_count = write_to_csv(
+                all_permissions,
+                export_dir,
+                "gooddata_dashboard_permissions.csv",
+                fieldnames=[
+                    "dashboard_id",
+                    "workspace_id",
+                    "assignee_id",
+                    "assignee_type",
+                    "permission_name",
+                ],
+            )
+
+        execute_with_retry(
+            conn.cursor(),
+            """
+            INSERT INTO dashboard_permissions
+            (dashboard_id, workspace_id, assignee_id, assignee_type, permission_name)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["dashboard_id"],
+                    d["workspace_id"],
+                    d["assignee_id"],
+                    d["assignee_type"],
+                    d["permission_name"],
+                )
+                for d in all_permissions
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    if export_dir is not None:
+        log_export(
+            "dashboard permissions",
+            permissions_count,
+            Path(export_dir) / "gooddata_dashboard_permissions.csv",
+        )
+    else:
+        print(f"Exported {permissions_count} dashboard permissions to {db_name}")
+
+
 def export_all_metadata(
     config,
     csv_dir=None,
@@ -1555,8 +1839,10 @@ def export_all_metadata(
         {"func": export_visualizations, "data_key": "visualizations"},
         {"func": export_dashboards, "data_key": "dashboards"},
         {"func": export_dashboard_metrics, "data_key": "dashboard_metrics"},
+        {"func": export_dashboard_permissions, "data_key": "dashboard_permissions"},
         {"func": export_ldm, "data_key": "ldm"},
         {"func": export_filter_contexts, "data_key": "filter_contexts"},
+        {"func": export_users_and_user_groups, "data_key": "users_and_user_groups"},
     ]
 
     # Execute each export function with all workspace data
