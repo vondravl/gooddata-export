@@ -3,9 +3,9 @@
 -- Combines both direct dashboard usage (from rich text) and indirect usage (through visualizations)
 -- Note: dashboard_metrics table is always created (may be empty if rich text extraction disabled)
 
-DROP VIEW IF EXISTS v_metric_usage;
+DROP VIEW IF EXISTS v_metrics_usage;
 
-CREATE VIEW v_metric_usage AS
+CREATE VIEW v_metrics_usage AS
 -- Direct dashboard usage (from rich text)
 SELECT 
     m.metric_id,

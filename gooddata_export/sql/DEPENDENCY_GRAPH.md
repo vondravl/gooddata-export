@@ -63,12 +63,12 @@ This document visualizes the dependencies between views, procedures, and updates
 
 | Operation | Type | Depends On | Used By |
 |-----------|------|------------|---------|
-| `v_metric_tags` | VIEW | (none) | (none) |
-| `v_visualization_tags` | VIEW | (none) | `visuals_with_same_content` ⚠️ |
-| `v_dashboard_tags` | VIEW | (none) | (none) |
-| `v_metric_usage` | VIEW | (none) | (none) |
-| `v_metric_dependencies` | VIEW | (none) | (none) |
-| `v_visualization_usage` | VIEW | (none) | (none) |
+| `v_metrics_tags` | VIEW | (none) | (none) |
+| `v_visualizations_tags` | VIEW | (none) | `visuals_with_same_content` ⚠️ |
+| `v_dashboards_tags` | VIEW | (none) | (none) |
+| `v_metrics_usage` | VIEW | (none) | (none) |
+| `v_metrics_dependencies` | VIEW | (none) | (none) |
+| `v_visualizations_usage` | VIEW | (none) | (none) |
 | `v_procedures_api_metrics` | PROCEDURE | (none) | (none) |
 | `metrics_probable_duplicates` | UPDATE | (none) | (none) |
 | `metrics_usage_check` | UPDATE | (none) | (none) |
@@ -79,7 +79,7 @@ This document visualizes the dependencies between views, procedures, and updates
 
 ### ⚠️ Current Dependencies
 
-**`visuals_with_same_content` → `v_visualization_tags`**
+**`visuals_with_same_content` → `v_visualizations_tags`**
 - The update script uses this view to compare visualization tags
 - Topological sort ensures the view is created before the update runs
 - Declared in `post_export_config.yaml`:
@@ -97,13 +97,13 @@ The system automatically computes this execution order:
 ```
 1. metrics_probable_duplicates    ← UPDATE (no dependencies)
 2. metrics_usage_check             ← UPDATE (no dependencies)
-3. v_dashboard_tags                ← VIEW (no dependencies)
-4. v_metric_dependencies           ← VIEW (no dependencies)
-5. v_metric_tags                   ← VIEW (no dependencies)
-6. v_metric_usage                  ← VIEW (no dependencies)
+3. v_dashboards_tags               ← VIEW (no dependencies)
+4. v_metrics_dependencies          ← VIEW (no dependencies)
+5. v_metrics_tags                  ← VIEW (no dependencies)
+6. v_metrics_usage                 ← VIEW (no dependencies)
 7. v_procedures_api_metrics        ← PROCEDURE (no dependencies, with parameters)
-8. v_visualization_tags            ← VIEW (no dependencies) ⚠️
-9. v_visualization_usage           ← VIEW (no dependencies)
+8. v_visualizations_tags           ← VIEW (no dependencies) ⚠️
+9. v_visualizations_usage          ← VIEW (no dependencies)
 10. visualizations_usage_check     ← UPDATE (no dependencies)
 11. visuals_with_same_content      ← UPDATE (depends on #8) ⚠️
 ```
@@ -115,8 +115,8 @@ The system automatically computes this execution order:
 ### 1. Configuration (YAML)
 ```yaml
 views:
-  v_visualization_tags:
-    sql_file: views/v_visualization_tags.sql
+  v_visualizations_tags:
+    sql_file: views/v_visualizations_tags.sql
     dependencies: []
 
 procedures:
@@ -131,7 +131,7 @@ updates:
   visuals_with_same_content:
     sql_file: updates/visuals_with_same_content.sql
     dependencies:
-      - v_visualization_tags  # Explicit dependency
+      - v_visualizations_tags  # Explicit dependency
 ```
 
 ### 2. Topological Sort
@@ -194,7 +194,7 @@ Don't add a dependency when your SQL script:
 
 ### Example: Adding a New Dependent Operation
 
-If you create a new update that uses `v_metric_usage`:
+If you create a new update that uses `v_metrics_usage`:
 
 ```yaml
 updates:
@@ -204,7 +204,7 @@ updates:
     category: analytics
     table: metrics
     dependencies:
-      - v_metric_usage  # ← Explicit dependency
+      - v_metrics_usage  # ← Explicit dependency
     required_columns:
       usage_pattern: TEXT
 ```

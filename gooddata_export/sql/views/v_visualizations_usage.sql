@@ -4,9 +4,9 @@
 -- The from_rich_text column (from dashboard_visualizations table) indicates whether 
 -- the visualization appears in a rich text widget (1) or standard dashboard widget (0).
 
-DROP VIEW IF EXISTS v_visualization_usage;
+DROP VIEW IF EXISTS v_visualizations_usage;
 
-CREATE VIEW v_visualization_usage AS
+CREATE VIEW v_visualizations_usage AS
 SELECT 
     DISTINCT 
     v.visualization_id,

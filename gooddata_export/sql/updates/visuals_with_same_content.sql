@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS duplicities;
 
 -- Create temporary table with duplicities
--- Uses v_visualization_tags view to simplify tag handling
+-- Uses v_visualizations_tags view to simplify tag handling
 CREATE TEMPORARY TABLE duplicities AS
 WITH same_columns AS (
     SELECT visualization_id, workspace_id, title, visualization_url, columns, tags
@@ -31,7 +31,7 @@ with_tags AS (
         sc.same_columns_count,
         GROUP_CONCAT(vt.tag, ',' ORDER BY vt.tag) AS tags_sorted
     FROM same_columns sc
-    LEFT JOIN v_visualization_tags vt ON sc.visualization_id = vt.visualization_id 
+    LEFT JOIN v_visualizations_tags vt ON sc.visualization_id = vt.visualization_id 
         AND sc.workspace_id = vt.workspace_id
     WHERE sc.same_columns_count > 1
     GROUP BY sc.visualization_id, sc.workspace_id, sc.title, sc.visualization_url, sc.columns, sc.same_columns_count

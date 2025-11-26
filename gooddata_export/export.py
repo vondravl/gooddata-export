@@ -1306,7 +1306,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
     """Export metrics used in rich text widgets on dashboards across all workspaces"""
 
     # Always create the table structure (even if empty) to ensure post-processing SQL works
-    # This is needed because views like v_metric_usage depend on this table existing
+    # This is needed because views like v_metrics_usage depend on this table existing
     dashboard_metrics_columns = {
         "dashboard_id": "TEXT",
         "metric_id": "TEXT",
