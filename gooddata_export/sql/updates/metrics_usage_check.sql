@@ -21,14 +21,14 @@ SET is_used_insight = CASE
 END;
 
 -- Update is_used_maql: Check if metric is referenced in other metrics' MAQL formulas
+-- Uses metrics_relationships table (populated by Python regex extraction)
 UPDATE metrics
-SET is_used_maql = CASE 
+SET is_used_maql = CASE
     WHEN EXISTS (
         SELECT 1
-        FROM metrics m2
-        WHERE m2.metric_id != metrics.metric_id
-        AND m2.workspace_id = metrics.workspace_id
-        AND m2.maql LIKE '%{metric/' || metrics.metric_id || '}%'
+        FROM metrics_relationships mr
+        WHERE mr.referenced_metric_id = metrics.metric_id
+          AND mr.source_workspace_id = metrics.workspace_id
     ) THEN 1
     ELSE 0
 END;

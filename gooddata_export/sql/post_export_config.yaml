@@ -4,6 +4,7 @@
 # Operations are executed in dependency order using topological sort.
 #
 # Structure:
+#   - tables: New tables created via SQL (some may need Python populate step)
 #   - views: Read-only database views (SELECT)
 #   - updates: Table modifications (ALTER TABLE, UPDATE)
 #   - procedures: Parameterized procedures (SQLite stored procedure simulation)
@@ -16,6 +17,27 @@
 #   - table: (updates only) Which table this modifies
 #   - required_columns: (updates only) Columns to ensure exist before running
 #   - parameters: (procedures only) Variables to substitute in the procedure
+#   - python_populate: (tables only) Python function to call after table creation
+
+# ====================
+# TABLES (Created Tables)
+# ====================
+# Tables that need to be created for derived data.
+# Some tables need Python populate step (e.g., regex extraction).
+tables:
+  metrics_relationships:
+    sql_file: tables/metrics_relationships.sql
+    description: Direct metric-to-metric references extracted from MAQL formulas
+    category: usage
+    dependencies: []
+    python_populate: populate_metrics_relationships  # Requires Python regex extraction
+
+  metrics_ancestry:
+    sql_file: tables/metrics_ancestry.sql
+    description: Full transitive metric ancestry using recursive CTE
+    category: usage
+    dependencies:
+      - metrics_relationships  # Must be populated first
 
 # ====================
 # VIEWS (Read-Only)
@@ -47,11 +69,27 @@ views:
     category: usage
     dependencies: []
 
-  v_metrics_dependencies:
-    sql_file: views/v_metrics_dependencies.sql
-    description: Shows metric dependencies via MAQL formula references
+  # Metric Relationship Views - Based on metrics_relationships and metrics_ancestry tables
+  v_metrics_relationships:
+    sql_file: views/v_metrics_relationships.sql
+    description: Direct metric-to-metric relationships with titles and reference status
     category: usage
-    dependencies: []
+    dependencies:
+      - metrics_relationships
+
+  v_metrics_relationships_ancestry:
+    sql_file: views/v_metrics_relationships_ancestry.sql
+    description: Full metric ancestry with titles and tags
+    category: usage
+    dependencies:
+      - metrics_ancestry
+
+  v_metrics_relationships_root:
+    sql_file: views/v_metrics_relationships_root.sql
+    description: Root metrics that don't depend on other metrics
+    category: usage
+    dependencies:
+      - metrics_relationships
 
   v_visualizations_usage:
     sql_file: views/v_visualizations_usage.sql
@@ -151,7 +189,8 @@ updates:
     description: Marks metrics as used in insights or MAQL formulas
     category: usage
     table: metrics
-    dependencies: []
+    dependencies:
+      - metrics_relationships  # is_used_maql uses this table
     required_columns:
       is_used_insight: INTEGER DEFAULT 0
       is_used_maql: INTEGER DEFAULT 0
