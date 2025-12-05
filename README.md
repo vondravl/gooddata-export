@@ -239,6 +239,8 @@ The SQLite database contains the following tables:
 - **dashboard_visualizations**: Visualization-to-dashboard relationships
 - **dashboard_metrics**: Metric-to-dashboard relationships (rich text only)
 - **dictionary_metadata**: Export metadata (timestamp, workspace ID, etc.)
+- **metrics_relationships**: Direct metric-to-metric references (created by post-export)
+- **metrics_ancestry**: Full transitive metric ancestry (created by post-export)
 
 ### CSV Files
 
@@ -260,9 +262,18 @@ When CSV export is enabled, the following files are created:
 
 When `run_post_export=True` (default for single workspace exports), the library runs SQL scripts to:
 
-1. **Detect duplicate visualizations**: Identifies visualizations with identical content
-2. **Detect similar metrics**: Finds metrics with similar MAQL definitions
-3. **Add helper columns**: Adds grouping IDs for duplicate analysis
+1. **Build metric relationships**: Extracts metric-to-metric references from MAQL formulas
+2. **Compute metric ancestry**: Creates transitive closure of metric dependencies
+3. **Detect duplicates**: Identifies visualizations and metrics with identical content
+4. **Track usage**: Marks which metrics/visualizations are used in dashboards
+5. **Create analytical views**: Tag views, usage views, relationship views
+
+Key views created:
+- `v_metrics_relationships_*` - Metric dependency analysis and tag inheritance
+- `v_metrics_usage`, `v_visualizations_usage` - Usage tracking
+- `v_*_tags` - Unnested tag views for filtering
+
+See [USAGE_GUIDE.md](USAGE_GUIDE.md) for detailed post-processing documentation.
 
 Note: Post-export processing is automatically skipped for multi-workspace exports to avoid confusion.
 

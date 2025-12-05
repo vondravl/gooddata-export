@@ -7,6 +7,7 @@ dependency order using topological sort.
 """
 
 import logging
+import re
 import sqlite3
 from collections import defaultdict, deque
 from pathlib import Path
@@ -17,6 +18,52 @@ from gooddata_export.config import ExportConfig
 from gooddata_export.db import connect_database
 
 logger = logging.getLogger(__name__)
+
+
+def populate_metrics_relationships(cursor):
+    """Populate metrics_relationships table by extracting references from MAQL.
+
+    This requires Python regex since SQLite doesn't support regex extraction.
+    The table must already exist (created via SQL file in post_export_config.yaml).
+
+    Pattern matched: {metric/metric_id}
+    """
+    cursor.execute("""
+        SELECT metric_id, workspace_id, maql
+        FROM metrics
+        WHERE maql IS NOT NULL AND workspace_id IS NOT NULL
+    """)
+
+    metric_pattern = re.compile(r"\{metric/([^}]+)\}")
+    relationships = []
+
+    for row in cursor.fetchall():
+        source_metric_id, workspace_id, maql = row
+        referenced_metrics = metric_pattern.findall(maql)
+
+        for ref_metric_id in referenced_metrics:
+            if ref_metric_id != source_metric_id:
+                relationships.append((source_metric_id, workspace_id, ref_metric_id))
+
+    cursor.executemany(
+        """
+        INSERT OR IGNORE INTO metrics_relationships
+        (source_metric_id, source_workspace_id, referenced_metric_id)
+        VALUES (?, ?, ?)
+    """,
+        relationships,
+    )
+
+    logger.info(
+        f"Populated metrics_relationships table with {len(relationships)} relationships"
+    )
+
+
+# Registry of Python populate functions that can be called from YAML config
+# These are used for operations that require Python (e.g., regex extraction)
+PYTHON_POPULATE_FUNCTIONS = {
+    "populate_metrics_relationships": populate_metrics_relationships,
+}
 
 
 def load_post_export_config():
@@ -228,8 +275,10 @@ def run_post_export_sql(db_path):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Combine views, updates, and procedures for dependency sorting
+        # Combine tables, views, updates, and procedures for dependency sorting
         all_items = {}
+        if "tables" in yaml_config:
+            all_items.update(yaml_config["tables"])
         if "views" in yaml_config:
             all_items.update(yaml_config["views"])
         if "updates" in yaml_config:
@@ -254,13 +303,16 @@ def run_post_export_sql(db_path):
         for item_name in execution_order:
             item_config = all_items[item_name]
 
-            # Determine type: view, update, or procedure
+            # Determine type: table, view, update, or procedure
+            is_table = item_name in yaml_config.get("tables", {})
             is_view = item_name in yaml_config.get("views", {})
             is_update = item_name in yaml_config.get("updates", {})
             is_procedure = item_name in yaml_config.get("procedures", {})
 
             if is_procedure:
                 item_type = "PROCEDURE"
+            elif is_table:
+                item_type = "TABLE"
             elif is_view:
                 item_type = "VIEW"
             else:
@@ -293,6 +345,18 @@ def run_post_export_sql(db_path):
             if execute_sql_file(
                 cursor, sql_path, parameters=parameters, config=export_config
             ):
+                # Run Python populate function if specified (for tables needing regex)
+                python_populate = item_config.get("python_populate")
+                if python_populate:
+                    populate_func = PYTHON_POPULATE_FUNCTIONS.get(python_populate)
+                    if populate_func:
+                        logger.debug(f"  Running Python populate: {python_populate}")
+                        populate_func(cursor)
+                    else:
+                        logger.warning(
+                            f"  Unknown python_populate function: {python_populate}"
+                        )
+
                 success_count += 1
                 logger.debug("  ✓ Success")
             else:
@@ -312,12 +376,14 @@ def run_post_export_sql(db_path):
         logger.debug("=" * 70)
 
         # Simple info message for regular users
+        table_count = len(yaml_config.get("tables", {}))
         view_count = len(yaml_config.get("views", {}))
         update_count = len(yaml_config.get("updates", {}))
         procedure_count = len(yaml_config.get("procedures", {}))
 
         logger.info(
-            f"Successfully created {view_count} views, {procedure_count} procedures, and {update_count} table updates in database"
+            f"Successfully created {table_count} tables, {view_count} views, "
+            f"{procedure_count} procedures, and {update_count} table updates in database"
         )
 
         return True

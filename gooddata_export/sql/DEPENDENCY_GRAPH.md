@@ -17,10 +17,18 @@ This document visualizes the dependencies between views, procedures, and updates
     │  _tags  │          │   _tags     │        │    _tags      │ ◄───┐
     └────┬────┘          └─────────────┘        └───────────────┘     │
          │                                                             │
-    ┌────▼────┐                                                       │
-    │ v_metric│                                                       │
-    │_dependencies│                                                   │
-    └─────────┘                                                       │
+    ┌────▼────────────┐                                               │
+    │metrics_         │                                               │
+    │relationships    │ ◄─ TABLE (Python populates)                   │
+    └────┬────────────┘                                               │
+         │                                                            │
+    ┌────▼────────────┐                                               │
+    │metrics_ancestry │ ◄─ TABLE (recursive CTE)                      │
+    └────┬────────────┘                                               │
+         │                                                            │
+    ┌────▼────────────────────────┐                                   │
+    │v_metrics_relationships_*    │ ◄─ VIEWS (ancestry, root, etc)    │
+    └─────────────────────────────┘                                   │
          │                                                            │
     ┌────▼────┐                                                       │
     │ v_metric│                                                       │
@@ -67,11 +75,15 @@ This document visualizes the dependencies between views, procedures, and updates
 | `v_visualizations_tags` | VIEW | (none) | `visuals_with_same_content` ⚠️ |
 | `v_dashboards_tags` | VIEW | (none) | (none) |
 | `v_metrics_usage` | VIEW | (none) | (none) |
-| `v_metrics_dependencies` | VIEW | (none) | (none) |
+| `metrics_relationships` | TABLE | (none) | `metrics_ancestry`, `v_metrics_relationships_*` |
+| `metrics_ancestry` | TABLE | `metrics_relationships` | `v_metrics_relationships_ancestry` |
+| `v_metrics_relationships` | VIEW | `metrics_relationships` | (none) |
+| `v_metrics_relationships_ancestry` | VIEW | `metrics_ancestry` | (none) |
+| `v_metrics_relationships_root` | VIEW | `metrics_relationships` | (none) |
 | `v_visualizations_usage` | VIEW | (none) | (none) |
 | `v_procedures_api_metrics` | PROCEDURE | (none) | (none) |
 | `metrics_probable_duplicates` | UPDATE | (none) | (none) |
-| `metrics_usage_check` | UPDATE | (none) | (none) |
+| `metrics_usage_check` | UPDATE | `metrics_relationships` | (none) |
 | `visualizations_usage_check` | UPDATE | (none) | (none) |
 | `visuals_with_same_content` | UPDATE | `v_visualization_tags` | (none) |
 
@@ -96,19 +108,23 @@ The system automatically computes this execution order:
 
 ```
 1. metrics_probable_duplicates    ← UPDATE (no dependencies)
-2. metrics_usage_check             ← UPDATE (no dependencies)
+2. metrics_usage_check             ← UPDATE (depends on #4)
 3. v_dashboards_tags               ← VIEW (no dependencies)
-4. v_metrics_dependencies          ← VIEW (no dependencies)
-5. v_metrics_tags                  ← VIEW (no dependencies)
-6. v_metrics_usage                 ← VIEW (no dependencies)
-7. v_procedures_api_metrics        ← PROCEDURE (no dependencies, with parameters)
-8. v_visualizations_tags           ← VIEW (no dependencies) ⚠️
-9. v_visualizations_usage          ← VIEW (no dependencies)
-10. visualizations_usage_check     ← UPDATE (no dependencies)
-11. visuals_with_same_content      ← UPDATE (depends on #8) ⚠️
+4. metrics_relationships           ← TABLE (Python populate, no dependencies)
+5. metrics_ancestry                ← TABLE (depends on #4)
+6. v_metrics_relationships         ← VIEW (depends on #4)
+7. v_metrics_relationships_ancestry← VIEW (depends on #5)
+8. v_metrics_relationships_root    ← VIEW (depends on #4)
+9. v_metrics_tags                  ← VIEW (no dependencies)
+10. v_metrics_usage                ← VIEW (no dependencies)
+11. v_procedures_api_metrics       ← PROCEDURE (no dependencies, with parameters)
+12. v_visualizations_tags          ← VIEW (no dependencies) ⚠️
+13. v_visualizations_usage         ← VIEW (no dependencies)
+14. visualizations_usage_check     ← UPDATE (no dependencies)
+15. visuals_with_same_content      ← UPDATE (depends on #12) ⚠️
 ```
 
-**Key observation**: Items 1-10 have no dependencies, so they can execute in any order (alphabetically sorted for determinism). Item 11 MUST come after item 8.
+**Key observation**: Items without dependencies can execute in any order (alphabetically sorted for determinism). Metric relationship tables/views have dependencies on `metrics_relationships` table which must be populated by Python first. `visuals_with_same_content` MUST come after `v_visualizations_tags`.
 
 ## How Dependencies Work
 
