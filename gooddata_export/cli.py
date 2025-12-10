@@ -42,8 +42,8 @@ from gooddata_export.config import ExportConfig
 from gooddata_export.post_export import run_post_export_sql
 
 
-def parse_args():
-    """Parse command-line arguments."""
+def _create_parser():
+    """Create and return the argument parser."""
     parser = argparse.ArgumentParser(
         description="Export GoodData workspace metadata to SQLite and/or CSV",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -96,7 +96,7 @@ Examples:
     # Add export arguments to export_parser
     _add_export_arguments(export_parser)
 
-    return parser.parse_args()
+    return parser
 
 
 def _add_export_arguments(parser):
@@ -262,7 +262,7 @@ def run_export_command(args):
                 "  2. Provide --base-url, --workspace-id, and --bearer-token arguments"
             )
             print("\nFor help: gooddata-export --help")
-            sys.exit(1)
+            return 1
 
         # Load config from env
         loaded_config = ExportConfig(load_from_env=True)
@@ -284,7 +284,7 @@ def run_export_command(args):
         print("  - BASE_URL (or --base-url)")
         print("  - WORKSPACE_ID (or --workspace-id)")
         print("  - BEARER_TOKEN (or --bearer-token)")
-        sys.exit(1)
+        return 1
 
     # Determine effective settings (from .env or args)
     if loaded_config:
@@ -414,12 +414,17 @@ def run_export_command(args):
         return 1
 
 
-def main():
-    """Main entry point for the CLI."""
-    args = parse_args()
+def main(argv=None):
+    """Main entry point for the CLI.
 
-    # Default to export+enrich if no command specified (backward compatibility)
-    if not args.command:
+    Args:
+        argv: Command line arguments (defaults to sys.argv[1:])
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Default to 'export' command if no command specified (backward compatibility)
+    if not argv or (argv[0].startswith("-") and argv[0] not in ["-h", "--help"]):
         print(
             "No command specified. Use 'gooddata-export export' or 'gooddata-export enrich'"
         )
@@ -427,9 +432,11 @@ def main():
             "   Defaulting to 'export' (with enrichment) for backward compatibility..."
         )
         print()
-        # Re-parse with 'export' command to get all default values automatically
-        sys.argv.append("export")
-        args = parse_args()
+        argv = ["export"] + list(argv)
+
+    # Parse with potentially modified argv
+    parser = _create_parser()
+    args = parser.parse_args(argv)
 
     if args.command == "enrich":
         return run_enrich_command(args)
