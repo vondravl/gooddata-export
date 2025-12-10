@@ -244,18 +244,6 @@ make export  # or python main.py export --skip-post-export
 make enrich
 ```
 
-## Legacy Command
-
-The old `make run` command still works but shows a deprecation warning. Use the new commands:
-
-```bash
-# Old
-make run
-
-# New (equivalent)
-make export-enrich
-```
-
 ## Advanced: Custom Procedures
 
 You can add your own procedures to `gooddata_export/sql/procedures/`:
@@ -270,10 +258,9 @@ See `gooddata_export/sql/procedures/README.md` for details.
 
 | Command | Exports Data | Runs Enrichment | Use Case |
 |---------|--------------|-----------------|----------|
-| `make export` | ✅ Yes | ❌ No | Quick raw data export |
-| `make enrich` | ❌ No | ✅ Yes | Re-process existing DB |
-| `make export-enrich` | ✅ Yes | ✅ Yes | Full workflow (default) |
-| `make run` | ✅ Yes | ✅ Yes | Legacy (use export-enrich) |
+| `make export` | Yes | No | Quick raw data export |
+| `make enrich` | No | Yes | Re-process existing DB |
+| `make export-enrich` | Yes | Yes | Full workflow (default) |
 
 ## Getting Help
 

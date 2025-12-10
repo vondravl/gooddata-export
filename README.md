@@ -14,23 +14,23 @@ A Python library for exporting GoodData workspace metadata to SQLite databases a
 
 ## Installation
 
+### From Git
+
+```bash
+pip install git+https://github.com/vondravl/gooddata-export.git
+```
+
 ### From source (local development)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/vondravl/gooddata-export.git
 cd gooddata-export
 pip install -e .
 ```
 
-### As a dependency
-
-```bash
-pip install git+<repository-url>
-```
-
 ## Quick Start
 
-### Command Line Interface (Easiest)
+### Command Line Interface
 
 1. Create a `.env.gdcloud` configuration file:
 
@@ -44,22 +44,25 @@ BEARER_TOKEN=your_api_token
 
 ```bash
 # Basic export (both SQLite and CSV)
-python main.py
+gooddata-export export
 
 # Export only SQLite (fastest)
-python main.py --format sqlite
+gooddata-export export --format sqlite
 
 # Export with child workspaces
-python main.py --include-child-workspaces --max-workers 10
+gooddata-export export --include-child-workspaces --max-workers 10
 
 # Custom directories
-python main.py --db-dir my_databases --csv-dir my_csvs
+gooddata-export export --db-dir my_databases --csv-dir my_csvs
 
 # Enable debug mode
-python main.py --debug
+gooddata-export export --debug
+
+# Run enrichment on existing database
+gooddata-export enrich --db-path output/db/gooddata_export.db
 
 # Get help
-python main.py --help
+gooddata-export --help
 ```
 
 ### Python API
@@ -105,7 +108,10 @@ result = export_all_metadata(
 
 ## CLI Options
 
-The `main.py` script supports the following command-line options:
+### Commands
+
+- `gooddata-export export` - Export metadata from GoodData
+- `gooddata-export enrich` - Run post-export enrichment on existing database
 
 ### Connection Options
 - `--base-url URL` - GoodData API base URL (overrides .env.gdcloud)
@@ -132,16 +138,16 @@ The `main.py` script supports the following command-line options:
 
 ```bash
 # SQLite only (fastest)
-python main.py --format sqlite --skip-post-export
+gooddata-export export --format sqlite --skip-post-export
 
 # CSV only
-python main.py --format csv
+gooddata-export export --format csv
 
 # Multi-workspace with specific data types
-python main.py --include-child-workspaces --child-workspace-data-types dashboards visualizations --max-workers 15
+gooddata-export export --include-child-workspaces --child-workspace-data-types dashboards visualizations --max-workers 15
 
 # Override config with command-line args
-python main.py --workspace-id prod_workspace --db-dir exports/prod/db --debug
+gooddata-export export --workspace-id prod_workspace --db-dir exports/prod/db --debug
 ```
 
 ## Usage Examples
@@ -327,6 +333,7 @@ pytest
 gooddata-export/
 ├── gooddata_export/           # Core library package
 │   ├── __init__.py           # Main API exports
+│   ├── cli.py                # Command-line interface
 │   ├── config.py             # Configuration handling
 │   ├── export.py             # Export orchestration
 │   ├── process.py            # Data processing logic
@@ -338,9 +345,10 @@ gooddata-export/
 │       ├── updates/          # Data enrichment scripts (duplicates, usage analysis)
 │       ├── views/            # Analytical views (dependencies, tags, usage)
 │       └── *.yaml, *.md      # Execution config and documentation
-├── main.py                   # Command-line interface
-├── setup.py                  # Package configuration
+├── main.py                   # Development CLI wrapper (convenience for local dev)
+├── pyproject.toml            # Package configuration
 ├── README.md                 # This file
+├── LICENSE                   # MIT License
 ├── USAGE_GUIDE.md            # Detailed usage examples
 ├── .env.gdcloud              # Configuration file (create this)
 └── output/                   # Export destination (auto-created)
@@ -352,7 +360,7 @@ gooddata-export/
 
 ## License
 
-[Your License Here]
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
@@ -361,4 +369,3 @@ Contributions are welcome! Please submit pull requests or open issues on GitHub.
 ## Support
 
 For issues and questions, please open an issue on GitHub.
-

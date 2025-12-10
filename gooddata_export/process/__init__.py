@@ -8,7 +8,7 @@ It is organized into submodules:
 - common: Shared utilities (sort_tags, etc.)
 """
 
-# Re-export everything for backward compatibility
+# Re-export public API from submodules
 from gooddata_export.process.common import (
     DEBUG_RICH_TEXT,
     get_debug_output_dir,

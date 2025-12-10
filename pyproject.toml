@@ -1,3 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gooddata-export"
+version = "1.0.0"
+description = "Export GoodData workspace metadata to SQLite and CSV"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Vlastimil Vondra"}
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "requests>=2.32.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+gooddata-export = "gooddata_export.cli:main"
+
+[project.urls]
+Repository = "https://github.com/vondravl/gooddata-export"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gooddata_export*"]
+
+[tool.setuptools.package-data]
+gooddata_export = [
+    "sql/*.yaml",
+    "sql/*.md",
+    "sql/tables/*.sql",
+    "sql/views/*.sql",
+    "sql/updates/*.sql",
+    "sql/procedures/*.sql",
+]
+
 [tool.ruff]
 # Target Python 3.13+
 target-version = "py313"

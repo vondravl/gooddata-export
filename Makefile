@@ -18,18 +18,17 @@ help:
 	@echo "  make ruff-format  - Format code with ruff"
 	@echo ""
 	@echo "Other:"
-	@echo "  make run          - Run the export script (legacy, use export-enrich)"
 	@echo "  make clean        - Remove build artifacts and virtual environment"
 
-venv: setup.py
+venv: pyproject.toml
 	@if [ ! -d "venv" ]; then \
 		python3 -m venv venv --upgrade-deps; \
-		venv/bin/pip3 install -e .; \
+		venv/bin/pip3 install -e ".[dev]"; \
 		touch venv/bin/activate; \
 	elif [ ! -f "venv/bin/activate" ]; then \
 		rm -rf venv; \
 		python3 -m venv venv --upgrade-deps; \
-		venv/bin/pip3 install -e .; \
+		venv/bin/pip3 install -e ".[dev]"; \
 		touch venv/bin/activate; \
 	fi
 
@@ -37,14 +36,6 @@ dev: venv
 
 install:
 	pip install -e .
-
-run:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
-	@echo "⚠️  Note: 'make run' is legacy. Use 'make export-enrich' instead."
-	venv/bin/python main.py export
 
 export:
 	@if [ ! -d "venv" ]; then \
@@ -94,5 +85,5 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-.PHONY: help venv dev install run export enrich export-enrich ruff-lint ruff-format clean
+.PHONY: help venv dev install export enrich export-enrich ruff-lint ruff-format clean
 
