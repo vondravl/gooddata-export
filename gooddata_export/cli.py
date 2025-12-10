@@ -446,7 +446,3 @@ def main(argv=None):
         print(f"Unknown command: {args.command}")
         print("   Available commands: export, enrich")
         return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
