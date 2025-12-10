@@ -34,7 +34,6 @@ Configuration:
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 from gooddata_export import export_metadata
