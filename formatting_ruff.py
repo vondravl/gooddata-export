@@ -193,15 +193,14 @@ def main():
         paths = [
             str(script_dir / "gooddata_export"),
             str(script_dir / "main.py"),
-            str(script_dir / "setup.py"),
             str(script_dir / "formatting_ruff.py"),
         ]
 
-    # Verify paths exist
-    for path in paths:
-        if not Path(path).exists():
-            print(f"❌ Error: Path not found: {path}")
-            return 1
+    # Filter to existing paths only
+    paths = [p for p in paths if Path(p).exists()]
+    if not paths:
+        print("Error: No valid paths to format")
+        return 1
 
     # Run appropriate mode
     if args.check:

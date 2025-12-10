@@ -420,21 +420,6 @@ def main(argv=None):
     Args:
         argv: Command line arguments (defaults to sys.argv[1:])
     """
-    if argv is None:
-        argv = sys.argv[1:]
-
-    # Default to 'export' command if no command specified (backward compatibility)
-    if not argv or (argv[0].startswith("-") and argv[0] not in ["-h", "--help"]):
-        print(
-            "No command specified. Use 'gooddata-export export' or 'gooddata-export enrich'"
-        )
-        print(
-            "   Defaulting to 'export' (with enrichment) for backward compatibility..."
-        )
-        print()
-        argv = ["export"] + list(argv)
-
-    # Parse with potentially modified argv
     parser = _create_parser()
     args = parser.parse_args(argv)
 
@@ -443,6 +428,5 @@ def main(argv=None):
     elif args.command == "export":
         return run_export_command(args)
     else:
-        print(f"Unknown command: {args.command}")
-        print("   Available commands: export, enrich")
+        parser.print_help()
         return 1
