@@ -23,12 +23,12 @@ help:
 venv: pyproject.toml
 	@if [ ! -d "venv" ]; then \
 		python3 -m venv venv --upgrade-deps; \
-		venv/bin/pip3 install -e .; \
+		venv/bin/pip3 install -e ".[dev]"; \
 		touch venv/bin/activate; \
 	elif [ ! -f "venv/bin/activate" ]; then \
 		rm -rf venv; \
 		python3 -m venv venv --upgrade-deps; \
-		venv/bin/pip3 install -e .; \
+		venv/bin/pip3 install -e ".[dev]"; \
 		touch venv/bin/activate; \
 	fi
 
