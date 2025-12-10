@@ -10,3 +10,4 @@ output
 debug_output
 *.egg-info
 *.egg
+.claude
