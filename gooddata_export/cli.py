@@ -181,7 +181,9 @@ def run_enrich_command(args):
     # Validate db_path
     if not args.db_path:
         print("\nError: --db-path is required for enrich command")
-        print("\nExample: gooddata-export enrich --db-path output/db/gooddata_export.db")
+        print(
+            "\nExample: gooddata-export enrich --db-path output/db/gooddata_export.db"
+        )
         return 1
 
     if not Path(args.db_path).exists():
