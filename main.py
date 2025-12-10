@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-GoodData Export - Command Line Interface
+GoodData Export - Development CLI wrapper.
 
-This script provides backward compatibility.
-For the installed package, use: gooddata-export
+Convenience script for running the CLI without installing the package.
+For production use, install the package and use: gooddata-export
 
 Usage:
     python main.py export
     python main.py enrich --db-path output/db/gooddata_export.db
-
-For help: python main.py --help
 """
 
 import sys

@@ -345,7 +345,7 @@ gooddata-export/
 │       ├── updates/          # Data enrichment scripts (duplicates, usage analysis)
 │       ├── views/            # Analytical views (dependencies, tags, usage)
 │       └── *.yaml, *.md      # Execution config and documentation
-├── main.py                   # Legacy CLI wrapper (use gooddata-export instead)
+├── main.py                   # Development CLI wrapper (convenience for local dev)
 ├── pyproject.toml            # Package configuration
 ├── README.md                 # This file
 ├── LICENSE                   # MIT License
