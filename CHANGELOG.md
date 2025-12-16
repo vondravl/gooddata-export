@@ -14,8 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLAUDE.md: Versioning reminder for package releases
 
 ### Changed
+- **Breaking**: Minimum Python version raised from 3.11 to 3.13
 - Use `astral-sh/ruff-action@v3` in GitHub workflow instead of custom script
-- Simplify Makefile ruff targets to use ruff directly
+- Makefile ruff targets now use venv for consistency with other targets
 - Update config.py to use modern Python 3.13+ type hints (`list[str] | None` instead of `Optional[List[str]]`)
 - Renamed junction tables for consistency: `dashboard_*` → `dashboards_*`
   - `dashboards_visualizations` (was `dashboard_visualizations`)

@@ -8,7 +8,6 @@ on:
     paths:
       - '**/*.py'
       - 'pyproject.toml'
-      - 'ruff.toml'
       - '.github/workflows/formatting_check_python.yml'
 
 jobs:
@@ -26,12 +25,10 @@ jobs:
           version: "latest"
           args: check
 
-      # Run format directly - the action's RUFF_OUTPUT_FORMAT=github
-      # causes warnings since formatter doesn't support it in stable mode
+      # Run format directly - the action sets RUFF_OUTPUT_FORMAT=github
+      # which the formatter doesn't support, so we run without that env var
       - name: Check Python formatting (ruff format)
-        run: ruff format --check --diff .
-        env:
-          RUFF_OUTPUT_FORMAT: ""
+        run: env -u RUFF_OUTPUT_FORMAT ruff format --check --diff .
 
       - name: Show diff if formatting issues found
         if: failure()

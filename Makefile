@@ -12,7 +12,7 @@ help:
 	@echo "  make run          - Full export + enrichment (alias for export-enrich)"
 	@echo "  make export       - Export data only (skip post-processing)"
 	@echo "  make enrich       - Run enrichment/procedures on existing database"
-	@echo "  make export-enrich- Full export + enrichment"
+	@echo "  make export-enrich - Full export + enrichment"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make ruff-lint    - Check and auto-fix linting issues with ruff"
@@ -70,12 +70,20 @@ export-enrich:
 	venv/bin/python main.py export
 
 ruff-lint:
+	@if [ ! -d "venv" ]; then \
+		echo "Virtual environment not found. Run 'make venv' first."; \
+		exit 1; \
+	fi
 	@echo "🔍 Checking Python with Ruff..."
-	@ruff check . && ruff format --check --diff .
+	@venv/bin/ruff check . && venv/bin/ruff format --check --diff .
 
 ruff-format:
+	@if [ ! -d "venv" ]; then \
+		echo "Virtual environment not found. Run 'make venv' first."; \
+		exit 1; \
+	fi
 	@echo "🔧 Formatting Python with Ruff..."
-	@ruff check --fix . && ruff format .
+	@venv/bin/ruff check --fix . && venv/bin/ruff format .
 
 clean:
 	rm -rf venv build/ dist/ *.egg-info
