@@ -18,8 +18,8 @@ from gooddata_export.process.common import (
 from gooddata_export.process.entities import (
     fetch_child_workspaces,
     fetch_data,
-    process_dashboard_visualizations,
     process_dashboards,
+    process_dashboards_visualizations,
     process_filter_context_fields,
     process_filter_contexts,
     process_metrics,
@@ -32,7 +32,7 @@ from gooddata_export.process.layout import (
     fetch_analytics_model,
     fetch_ldm,
     fetch_users_and_user_groups,
-    process_dashboard_permissions_from_analytics_model,
+    process_dashboards_permissions_from_analytics_model,
     process_ldm,
     process_user_group_members,
     process_user_groups,
@@ -43,7 +43,7 @@ from gooddata_export.process.rich_text import (
     extract_all_ids_from_content,
     extract_from_rich_text,
     extract_values_from_curly_braces,
-    process_dashboard_metrics_from_rich_text,
+    process_dashboards_metrics_from_rich_text,
     process_rich_text_insights,
     process_rich_text_metrics,
 )
@@ -62,7 +62,7 @@ __all__ = [
     "process_visualization_metrics",
     "process_visualization_attributes",
     "process_dashboards",
-    "process_dashboard_visualizations",
+    "process_dashboards_visualizations",
     "process_filter_contexts",
     "process_filter_context_fields",
     "process_workspaces",
@@ -74,7 +74,7 @@ __all__ = [
     "process_users",
     "process_user_groups",
     "process_user_group_members",
-    "process_dashboard_permissions_from_analytics_model",
+    "process_dashboards_permissions_from_analytics_model",
     # Rich text
     "debug_rich_text_extraction",
     "extract_all_ids_from_content",
@@ -82,5 +82,5 @@ __all__ = [
     "extract_values_from_curly_braces",
     "process_rich_text_insights",
     "process_rich_text_metrics",
-    "process_dashboard_metrics_from_rich_text",
+    "process_dashboards_metrics_from_rich_text",
 ]

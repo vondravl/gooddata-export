@@ -466,7 +466,7 @@ def process_dashboards(data, base_url, workspace_id):
     return processed_data
 
 
-def process_dashboard_visualizations(
+def process_dashboards_visualizations(
     dashboard_data, workspace_id=None, known_insights=None, config=None
 ):
     """Extract unique visualization IDs used in each dashboard, including rich text references"""

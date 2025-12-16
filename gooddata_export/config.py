@@ -5,7 +5,6 @@ Unlike the dictionary app, this has no Flask dependencies.
 """
 
 from os import getenv
-from typing import List, Optional
 
 from dotenv import load_dotenv
 
@@ -15,15 +14,15 @@ class ExportConfig:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        workspace_id: Optional[str] = None,
-        bearer_token: Optional[str] = None,
-        include_child_workspaces: Optional[bool] = None,
-        child_workspace_data_types: Optional[List[str]] = None,
-        max_parallel_workspaces: Optional[int] = None,
-        enable_rich_text_extraction: Optional[bool] = None,
-        enable_post_export: Optional[bool] = None,
-        debug_workspace_processing: Optional[bool] = None,
+        base_url: str | None = None,
+        workspace_id: str | None = None,
+        bearer_token: str | None = None,
+        include_child_workspaces: bool | None = None,
+        child_workspace_data_types: list[str] | None = None,
+        max_parallel_workspaces: int | None = None,
+        enable_rich_text_extraction: bool | None = None,
+        enable_post_export: bool | None = None,
+        debug_workspace_processing: bool | None = None,
         load_from_env: bool = True,
     ):
         """Initialize export configuration.
@@ -154,7 +153,7 @@ class ExportConfig:
             return base_value
 
         # Always return base_value (default True)
-        # When child workspaces are included, filtering happens in export_dashboard_metrics
+        # When child workspaces are included, filtering happens in export_dashboards_metrics
         return base_value
 
     @ENABLE_RICH_TEXT_EXTRACTION.setter

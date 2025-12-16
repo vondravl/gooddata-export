@@ -20,9 +20,9 @@ from gooddata_export.process import (
     fetch_data,
     fetch_ldm,
     fetch_users_and_user_groups,
-    process_dashboard_permissions_from_analytics_model,
-    process_dashboard_visualizations,
     process_dashboards,
+    process_dashboards_permissions_from_analytics_model,
+    process_dashboards_visualizations,
     process_filter_context_fields,
     process_filter_contexts,
     process_ldm,
@@ -204,7 +204,7 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
 
     # Define all possible fetch tasks (excluding LDM - it's shared across workspaces)
     # NOTE: analytics_model (layout API) is intentionally NOT fetched for child workspaces
-    # to minimize API calls. This means dashboard_permissions will only contain parent
+    # to minimize API calls. This means dashboards_permissions will only contain parent
     # workspace data. Can be added here later if child workspace permissions are needed.
     all_fetch_tasks = {
         "metrics": {
@@ -825,7 +825,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
                 f"Rich text extraction disabled for child workspace: {workspace_id}"
             )
 
-        processed_relationships = process_dashboard_visualizations(
+        processed_relationships = process_dashboards_visualizations(
             raw_data, workspace_id, known_insights, workspace_config
         )
 
@@ -905,7 +905,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
 
     rel_count = len(all_processed_relationships)
     if export_dir is not None:
-        rel_csv = "gooddata_dashboard_visualizations.csv"
+        rel_csv = "gooddata_dashboards_visualizations.csv"
         rel_count = write_to_csv(
             all_processed_relationships,
             export_dir,
@@ -918,11 +918,11 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
             ],
         )
 
-    cursor = setup_table(conn, "dashboard_visualizations", relationship_columns)
+    cursor = setup_table(conn, "dashboards_visualizations", relationship_columns)
     execute_with_retry(
         cursor,
         """
-        INSERT INTO dashboard_visualizations
+        INSERT INTO dashboards_visualizations
         (dashboard_id, visualization_id, from_rich_text, workspace_id)
         VALUES (?, ?, ?, ?)
         """,
@@ -947,7 +947,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         log_export(
             "dashboard-visualization relationships",
             rel_count,
-            Path(export_dir) / "gooddata_dashboard_visualizations.csv",
+            Path(export_dir) / "gooddata_dashboards_visualizations.csv",
         )
     else:
         print(f"Exported {dash_count} dashboards to {db_name}")
@@ -1328,12 +1328,12 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
     conn.close()
 
 
-def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
+def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name):
     """Export metrics used in rich text widgets on dashboards across all workspaces"""
 
     # Always create the table structure (even if empty) to ensure post-processing SQL works
     # This is needed because views like v_metrics_usage depend on this table existing
-    dashboard_metrics_columns = {
+    dashboards_metrics_columns = {
         "dashboard_id": "TEXT",
         "metric_id": "TEXT",
         "workspace_id": "TEXT",
@@ -1343,16 +1343,16 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
     # Connect to database and ensure table exists
     conn = connect_database(db_name)
     cursor = conn.cursor()
-    cursor.execute("DROP TABLE IF EXISTS dashboard_metrics")
+    cursor.execute("DROP TABLE IF EXISTS dashboards_metrics")
     conn.commit()
-    cursor = setup_table(conn, "dashboard_metrics", dashboard_metrics_columns)
+    cursor = setup_table(conn, "dashboards_metrics", dashboards_metrics_columns)
     conn.commit()
 
     # If rich text extraction is disabled, keep empty table and return
     if not config.ENABLE_RICH_TEXT_EXTRACTION:
         conn.close()
         logging.info(
-            "Rich text extraction disabled - dashboard_metrics table created but empty"
+            "Rich text extraction disabled - dashboards_metrics table created but empty"
         )
         return
 
@@ -1424,14 +1424,14 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
                                 "content", ""
                             )
                             # Extract metrics from rich text content using known metrics for filtering
-                            dashboard_metrics = process_rich_text_metrics(
+                            dashboards_metrics = process_rich_text_metrics(
                                 rich_text_content, dashboard_id, known_metrics
                             )
-                            if dashboard_metrics:
+                            if dashboards_metrics:
                                 # Add workspace_id to each metric
-                                for metric in dashboard_metrics:
+                                for metric in dashboards_metrics:
                                     metric["workspace_id"] = workspace_id
-                                rich_text_metrics.extend(dashboard_metrics)
+                                rich_text_metrics.extend(dashboards_metrics)
 
                         # Check for any widget content field that might contain metric references
                         widget_content = item.get("widget", {}).get("content")
@@ -1467,7 +1467,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         if not rich_text_metrics:
             conn.close()
             logging.info(
-                "No metrics found in rich text widgets - dashboard_metrics table created but empty"
+                "No metrics found in rich text widgets - dashboards_metrics table created but empty"
             )
             if export_dir is None:
                 print("No metrics found in rich text widgets")
@@ -1476,7 +1476,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         # Export to CSV (if requested)
         records_count = len(rich_text_metrics)
         if export_dir is not None:
-            csv_filename = "gooddata_dashboard_metrics.csv"
+            csv_filename = "gooddata_dashboards_metrics.csv"
             records_count = write_to_csv(
                 rich_text_metrics,
                 export_dir,
@@ -1487,7 +1487,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
         # Insert data into the table (table was already created earlier)
         cursor.executemany(
             """
-            INSERT INTO dashboard_metrics
+            INSERT INTO dashboards_metrics
             (dashboard_id, metric_id, workspace_id)
             VALUES (?, ?, ?)
             """,
@@ -1502,7 +1502,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             log_export(
                 "dashboard metrics from rich text",
                 records_count,
-                Path(export_dir) / "gooddata_dashboard_metrics.csv",
+                Path(export_dir) / "gooddata_dashboards_metrics.csv",
             )
         else:
             print(
@@ -1516,7 +1516,7 @@ def export_dashboard_metrics(all_workspace_data, export_dir, config, db_name):
             conn.close()
         except Exception:
             pass  # Connection may already be closed or invalid
-        print(f"Error in export_dashboard_metrics: {str(e)}")
+        print(f"Error in export_dashboards_metrics: {str(e)}")
         # Re-raise with more specific message
         raise RuntimeError(f"Error processing dashboard metrics: {str(e)}")
 
@@ -1687,7 +1687,7 @@ def export_users_and_user_groups(all_workspace_data, export_dir, config, db_name
         print(f"Exported {membership_count} user-group memberships to {db_name}")
 
 
-def export_dashboard_permissions(all_workspace_data, export_dir, _config, db_name):
+def export_dashboards_permissions(all_workspace_data, export_dir, _config, db_name):
     """Export dashboard permissions (assignee relationships) to database and CSV.
 
     Permissions are extracted from the analytics model (layout API).
@@ -1706,25 +1706,27 @@ def export_dashboard_permissions(all_workspace_data, export_dir, _config, db_nam
         if analytics_model is None:
             continue
 
-        permissions = process_dashboard_permissions_from_analytics_model(
+        permissions = process_dashboards_permissions_from_analytics_model(
             analytics_model, workspace_id
         )
         all_permissions.extend(permissions)
 
     # Define columns for permissions table
+    # Note: PRIMARY KEY includes permission_name to allow multiple permission levels
+    # (e.g., VIEW, EDIT) for the same assignee on the same dashboard
     permissions_columns = {
         "dashboard_id": "TEXT",
         "workspace_id": "TEXT",
         "assignee_id": "TEXT",
         "assignee_type": "TEXT",
         "permission_name": "TEXT",
-        "PRIMARY KEY": "(dashboard_id, workspace_id, assignee_id, assignee_type)",
+        "PRIMARY KEY": "(dashboard_id, workspace_id, assignee_id, assignee_type, permission_name)",
     }
 
     # Always create the table (even if empty) for consistency
     conn = connect_database(db_name)
     try:
-        setup_table(conn, "dashboard_permissions", permissions_columns)
+        setup_table(conn, "dashboards_permissions", permissions_columns)
         conn.commit()
 
         if not all_permissions:
@@ -1737,7 +1739,7 @@ def export_dashboard_permissions(all_workspace_data, export_dir, _config, db_nam
             permissions_count = write_to_csv(
                 all_permissions,
                 export_dir,
-                "gooddata_dashboard_permissions.csv",
+                "gooddata_dashboards_permissions.csv",
                 fieldnames=[
                     "dashboard_id",
                     "workspace_id",
@@ -1750,7 +1752,7 @@ def export_dashboard_permissions(all_workspace_data, export_dir, _config, db_nam
         execute_with_retry(
             conn.cursor(),
             """
-            INSERT INTO dashboard_permissions
+            INSERT INTO dashboards_permissions
             (dashboard_id, workspace_id, assignee_id, assignee_type, permission_name)
             VALUES (?, ?, ?, ?, ?)
             """,
@@ -1773,7 +1775,7 @@ def export_dashboard_permissions(all_workspace_data, export_dir, _config, db_nam
         log_export(
             "dashboard permissions",
             permissions_count,
-            Path(export_dir) / "gooddata_dashboard_permissions.csv",
+            Path(export_dir) / "gooddata_dashboards_permissions.csv",
         )
     else:
         print(f"Exported {permissions_count} dashboard permissions to {db_name}")
@@ -1838,8 +1840,8 @@ def export_all_metadata(
         {"func": export_metrics, "data_key": "metrics"},
         {"func": export_visualizations, "data_key": "visualizations"},
         {"func": export_dashboards, "data_key": "dashboards"},
-        {"func": export_dashboard_metrics, "data_key": "dashboard_metrics"},
-        {"func": export_dashboard_permissions, "data_key": "dashboard_permissions"},
+        {"func": export_dashboards_metrics, "data_key": "dashboards_metrics"},
+        {"func": export_dashboards_permissions, "data_key": "dashboards_permissions"},
         {"func": export_ldm, "data_key": "ldm"},
         {"func": export_filter_contexts, "data_key": "filter_contexts"},
         {"func": export_users_and_user_groups, "data_key": "users_and_user_groups"},

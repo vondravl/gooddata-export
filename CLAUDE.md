@@ -6,11 +6,20 @@ This file provides guidance to Claude Code (claude.ai/claude-code) when working 
 
 GoodData Export is a Python library for exporting GoodData workspace metadata to SQLite databases and CSV files. It fetches metrics, dashboards, visualizations, and LDM (Logical Data Model) information from the GoodData API and stores them locally for analysis.
 
+**This is primarily used as a package.** When making changes:
+
+1. Bump the version in `pyproject.toml`:
+   ```toml
+   version = "1.0.0"  # Increment appropriately
+   ```
+
+2. Update `CHANGELOG.md` with the changes (follow [Keep a Changelog](https://keepachangelog.com/) format)
+
 ## Key Commands
 
 ```bash
 # Full workflow: export + enrichment
-make export-enrich
+make run              # or: make export-enrich
 
 # Export only (skip post-processing)
 make export
@@ -150,7 +159,35 @@ make export-enrich
 
 ## Code Style
 
-- Uses `ruff` for formatting: `python formatting_ruff.py`
+### Python Formatting (Ruff)
+
+Python files must be formatted and linted with [Ruff](https://docs.astral.sh/ruff/) after changes:
+
+```bash
+make ruff-format
+# or directly: ruff check --fix . && ruff format .
+```
+
+### Type Hints (Modern Syntax)
+
+This project targets **Python 3.13+**. Use built-in generics and `|` union syntax - no `typing` imports needed:
+
+```python
+def process(items: list[str], config: dict[str, int] | None = None) -> set[str]: ...
+def get_class() -> type[MyClass]: ...
+def fetch(id: str | int) -> tuple[str, bool]: ...
+```
+
+**Only import from `typing`:** `Any`, `TypeVar`, `TYPE_CHECKING`, `Protocol`, `Literal`, `TypedDict`
+
+### SQL Style
+
 - SQL files use `DROP ... IF EXISTS` then `CREATE`
 - SQL comments explain purpose at top of file
-- Python follows standard PEP 8 with type hints where beneficial
+- **Table naming convention**: Use plural form for grouping
+  - Main tables: `dashboards`, `metrics`, `visualizations`
+  - Junction tables: `dashboards_visualizations`, `dashboards_metrics`, `dashboards_permissions`
+- **View naming convention**: `v_{table_plural}_{suffix}` - views are grouped by table name
+  - `v_dashboards_tags` (dashboards group)
+  - `v_metrics_tags`, `v_metrics_usage`, `v_metrics_relationships` (metrics group)
+  - `v_visualizations_tags`, `v_visualizations_usage` (visualizations group)

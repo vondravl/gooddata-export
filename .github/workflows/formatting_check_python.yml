@@ -7,8 +7,8 @@ on:
       - main
     paths:
       - '**/*.py'
+      - 'pyproject.toml'
       - '.github/workflows/formatting_check_python.yml'
-      - 'formatting_ruff.py'
 
 jobs:
   check-formatting:
@@ -18,24 +18,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python Environment
-        uses: ./.github/actions/setup_python
+      # Use action for linting - output-format=github enables annotations
+      - name: Check Python linting (ruff check)
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: "latest"
+          args: check
 
-      - name: Check Python formatting
-        run: |
-          echo "Checking Python code formatting with ruff..."
-          venv/bin/python formatting_ruff.py --check
+      # Run format directly - the action sets RUFF_OUTPUT_FORMAT=github
+      # which the formatter doesn't support, so we run without that env var
+      - name: Check Python formatting (ruff format)
+        run: env -u RUFF_OUTPUT_FORMAT ruff format --check --diff .
 
       - name: Show diff if formatting issues found
         if: failure()
         run: |
-          echo "Files with formatting issues detected."
+          echo "Formatting issues detected. Run locally to fix:"
           echo ""
-          echo "Run this locally to fix:"
-          echo "  python formatting_ruff.py"
+          echo "  make ruff-format"
           echo ""
-          echo "This will format all Python files in:"
-          echo "  - gooddata_export/"
-          echo "  - main.py"
-          echo "  - setup.py"
-          echo "  - formatting_ruff.py"
+          echo "Or directly with ruff:"
+          echo "  ruff check --fix . && ruff format ."
