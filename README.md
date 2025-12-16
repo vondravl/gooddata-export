@@ -242,8 +242,8 @@ The SQLite database contains the following tables:
 - **filter_context_fields**: Individual filters within each filter context (date filters and attribute filters)
 - **workspaces**: Workspace information (always included; child workspaces listed when available)
 - **visualization_metrics**: Metric-to-visualization relationships
-- **dashboard_visualizations**: Visualization-to-dashboard relationships
-- **dashboard_metrics**: Metric-to-dashboard relationships (rich text only)
+- **dashboards_visualizations**: Visualization-to-dashboard relationships
+- **dashboards_metrics**: Metric-to-dashboard relationships (rich text only)
 - **dictionary_metadata**: Export metadata (timestamp, workspace ID, etc.)
 - **metrics_relationships**: Direct metric-to-metric references (created by post-export)
 - **metrics_ancestry**: Full transitive metric ancestry (created by post-export)
@@ -261,8 +261,8 @@ When CSV export is enabled, the following files are created:
 - `gooddata_filter_context_fields.csv`
 - `gooddata_workspaces.csv` (always included; child workspaces listed when available)
 - `gooddata_visualization_metrics.csv`
-- `gooddata_dashboard_visualizations.csv`
-- `gooddata_dashboard_metrics.csv` (rich text only)
+- `gooddata_dashboards_visualizations.csv`
+- `gooddata_dashboards_metrics.csv` (rich text only)
 
 ## Post-Export Processing
 

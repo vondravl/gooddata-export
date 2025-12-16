@@ -102,7 +102,7 @@ views:
     description: Shows where filter contexts are used in dashboards
     category: usage
     dependencies: []
-  
+
   # Data Model Views - LDM-specific tag views
   v_ldm_datasets_tags:
     sql_file: views/v_ldm_datasets_tags.sql

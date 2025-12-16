@@ -9,9 +9,10 @@ help:
 	@echo "  make install      - Install package in development mode (current env)"
 	@echo ""
 	@echo "Export & Enrichment:"
+	@echo "  make run          - Full export + enrichment (alias for export-enrich)"
 	@echo "  make export       - Export data only (skip post-processing)"
 	@echo "  make enrich       - Run enrichment/procedures on existing database"
-	@echo "  make export-enrich- Full export + enrichment (default workflow)"
+	@echo "  make export-enrich- Full export + enrichment"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make ruff-lint    - Check and auto-fix linting issues with ruff"
@@ -58,6 +59,8 @@ enrich:
 		venv/bin/python main.py enrich --db-path $(DB); \
 	fi
 
+run: export-enrich
+
 export-enrich:
 	@if [ ! -d "venv" ]; then \
 		echo "Virtual environment not found. Run 'make venv' first."; \
@@ -67,23 +70,17 @@ export-enrich:
 	venv/bin/python main.py export
 
 ruff-lint:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
-	venv/bin/ruff check --fix .
+	@echo "🔍 Checking Python with Ruff..."
+	@ruff check . && ruff format --check --diff .
 
 ruff-format:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
-	venv/bin/python formatting_ruff.py
+	@echo "🔧 Formatting Python with Ruff..."
+	@ruff check --fix . && ruff format .
 
 clean:
 	rm -rf venv build/ dist/ *.egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-.PHONY: help venv dev install export enrich export-enrich ruff-lint ruff-format clean
+.PHONY: help venv dev install export enrich run export-enrich ruff-lint ruff-format clean
 

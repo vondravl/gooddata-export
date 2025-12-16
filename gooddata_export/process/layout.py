@@ -388,7 +388,7 @@ def process_user_group_members(data):
     return sorted(relationships, key=lambda x: (x["user_id"], x["user_group_id"]))
 
 
-def process_dashboard_permissions_from_analytics_model(analytics_model, workspace_id):
+def process_dashboards_permissions_from_analytics_model(analytics_model, workspace_id):
     """Extract permissions from dashboards in the analytics model.
 
     Args:

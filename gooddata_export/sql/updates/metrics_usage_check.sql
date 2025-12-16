@@ -8,7 +8,7 @@ UPDATE metrics
 SET is_used_insight = CASE 
     WHEN EXISTS (
         SELECT 1 
-        FROM dashboard_metrics dm 
+        FROM dashboards_metrics dm 
         WHERE dm.metric_id = metrics.metric_id
           AND dm.workspace_id = metrics.workspace_id
     ) OR EXISTS (

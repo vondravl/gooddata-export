@@ -410,7 +410,7 @@ def process_rich_text_insights(content_str, dashboard_id, known_insights=None):
                         ):
                             unique_ids.add(id)
 
-    # Create result in the same format as dashboard_visualizations
+    # Create result in the same format as dashboards_visualizations
     result = [
         {"dashboard_id": dashboard_id, "visualization_id": viz_id, "from_rich_text": 1}
         for viz_id in unique_ids
@@ -527,7 +527,7 @@ def process_rich_text_metrics(content_str, dashboard_id, known_metrics=None):
     return result
 
 
-def process_dashboard_metrics_from_rich_text(dashboard_data, config=None):
+def process_dashboards_metrics_from_rich_text(dashboard_data, config=None):
     """Extract metrics directly referenced in dashboard rich text"""
     # Import here to avoid circular imports
     from gooddata_export.process.entities import fetch_data
@@ -549,7 +549,7 @@ def process_dashboard_metrics_from_rich_text(dashboard_data, config=None):
     try:
         if not config:
             raise ValueError(
-                "Config must be provided for process_dashboard_metrics_from_rich_text"
+                "Config must be provided for process_dashboards_metrics_from_rich_text"
             )
         client = get_api_client(config)
         metrics_data = fetch_data("metrics", client, config)
