@@ -13,7 +13,7 @@ SET is_used_insight = CASE
           AND dm.workspace_id = metrics.workspace_id
     ) OR EXISTS (
         SELECT 1 
-        FROM visualization_metrics vm 
+        FROM visualizations_metrics vm
         WHERE vm.metric_id = metrics.metric_id
           AND vm.workspace_id = metrics.workspace_id
     ) THEN 1

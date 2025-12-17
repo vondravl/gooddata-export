@@ -33,7 +33,7 @@ SELECT
     v.title AS visualization_title,
     dv.from_rich_text
 FROM metrics m
-JOIN visualization_metrics vm ON m.metric_id = vm.metric_id AND m.workspace_id = vm.workspace_id
+JOIN visualizations_metrics vm ON m.metric_id = vm.metric_id AND m.workspace_id = vm.workspace_id
 JOIN visualizations v ON vm.visualization_id = v.visualization_id AND vm.workspace_id = v.workspace_id
 JOIN dashboards_visualizations dv ON v.visualization_id = dv.visualization_id AND v.workspace_id = dv.workspace_id
 JOIN dashboards d ON dv.dashboard_id = d.dashboard_id AND dv.workspace_id = d.workspace_id

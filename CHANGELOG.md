@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-12-17
+
+### Changed
+- Renamed visualization junction tables for consistency with dashboards pattern:
+  - `visualizations_metrics` (was `visualization_metrics`)
+  - `visualizations_attributes` (was `visualization_attributes`)
+  - CSV files renamed accordingly (`gooddata_visualizations_metrics.csv`, `gooddata_visualizations_attributes.csv`)
+
 ## [1.1.0] - 2025-12-16
 
 ### Added

@@ -31,9 +31,9 @@ from gooddata_export.process import (
     process_user_group_members,
     process_user_groups,
     process_users,
-    process_visualization_attributes,
-    process_visualization_metrics,
     process_visualizations,
+    process_visualizations_attributes,
+    process_visualizations_metrics,
     process_workspaces,
 )
 
@@ -603,10 +603,10 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         processed_visualizations = process_visualizations(
             raw_data, client["base_url"], workspace_id
         )
-        processed_metric_relationships = process_visualization_metrics(
+        processed_metric_relationships = process_visualizations_metrics(
             raw_data, workspace_id
         )
-        processed_attribute_relationships = process_visualization_attributes(
+        processed_attribute_relationships = process_visualizations_attributes(
             raw_data, workspace_id
         )
 
@@ -687,7 +687,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
 
     metric_rel_count = len(all_processed_metric_relationships)
     if export_dir is not None:
-        rel_csv = "gooddata_visualization_metrics.csv"
+        rel_csv = "gooddata_visualizations_metrics.csv"
         metric_rel_count = write_to_csv(
             all_processed_metric_relationships,
             export_dir,
@@ -695,11 +695,11 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
             fieldnames=["visualization_id", "metric_id", "workspace_id", "label"],
         )
 
-    cursor = setup_table(conn, "visualization_metrics", metric_relationship_columns)
+    cursor = setup_table(conn, "visualizations_metrics", metric_relationship_columns)
     execute_with_retry(
         cursor,
         """
-        INSERT INTO visualization_metrics
+        INSERT INTO visualizations_metrics
         (visualization_id, metric_id, workspace_id, label)
         VALUES (?, ?, ?, ?)
         """,
@@ -720,7 +720,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
 
     attr_rel_count = len(all_processed_attribute_relationships)
     if export_dir is not None:
-        attr_rel_csv = "gooddata_visualization_attributes.csv"
+        attr_rel_csv = "gooddata_visualizations_attributes.csv"
         attr_rel_count = write_to_csv(
             all_processed_attribute_relationships,
             export_dir,
@@ -729,12 +729,12 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         )
 
     cursor = setup_table(
-        conn, "visualization_attributes", attribute_relationship_columns
+        conn, "visualizations_attributes", attribute_relationship_columns
     )
     execute_with_retry(
         cursor,
         """
-        INSERT INTO visualization_attributes
+        INSERT INTO visualizations_attributes
         (visualization_id, attribute_id, workspace_id, label)
         VALUES (?, ?, ?, ?)
         """,
@@ -759,12 +759,12 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         log_export(
             "visualization-metric relationships",
             metric_rel_count,
-            Path(export_dir) / "gooddata_visualization_metrics.csv",
+            Path(export_dir) / "gooddata_visualizations_metrics.csv",
         )
         log_export(
             "visualization-attribute relationships",
             attr_rel_count,
-            Path(export_dir) / "gooddata_visualization_attributes.csv",
+            Path(export_dir) / "gooddata_visualizations_attributes.csv",
         )
     else:
         print(f"Exported {vis_count} visualizations to {db_name}")

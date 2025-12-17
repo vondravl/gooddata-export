@@ -340,7 +340,7 @@ def process_visualizations(data, base_url, workspace_id):
     return processed_data
 
 
-def process_visualization_metrics(visualization_data, workspace_id=None):
+def process_visualizations_metrics(visualization_data, workspace_id=None):
     """Extract unique metric IDs used in each visualization with their labels"""
     # Using dict to store unique combinations with labels
     # Key: (viz_id, metric_id, workspace_id), Value: label
@@ -383,7 +383,7 @@ def process_visualization_metrics(visualization_data, workspace_id=None):
     return result
 
 
-def process_visualization_attributes(visualization_data, workspace_id=None):
+def process_visualizations_attributes(visualization_data, workspace_id=None):
     """Extract unique attribute IDs (display forms) used in each visualization with their labels"""
     # Using dict to store unique combinations with labels
     # Key: (viz_id, attribute_id, workspace_id), Value: label
