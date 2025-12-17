@@ -23,9 +23,9 @@ from gooddata_export.process.entities import (
     process_filter_context_fields,
     process_filter_contexts,
     process_metrics,
-    process_visualization_attributes,
-    process_visualization_metrics,
     process_visualizations,
+    process_visualizations_attributes,
+    process_visualizations_metrics,
     process_workspaces,
 )
 from gooddata_export.process.layout import (
@@ -59,8 +59,8 @@ __all__ = [
     "fetch_child_workspaces",
     "process_metrics",
     "process_visualizations",
-    "process_visualization_metrics",
-    "process_visualization_attributes",
+    "process_visualizations_metrics",
+    "process_visualizations_attributes",
     "process_dashboards",
     "process_dashboards_visualizations",
     "process_filter_contexts",
