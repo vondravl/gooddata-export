@@ -56,6 +56,12 @@ views:
     category: tagging
     dependencies: []
 
+  v_dashboards_visualizations:
+    sql_file: views/v_dashboards_visualizations.sql
+    description: Dashboard-visualization relationships showing all visualizations per dashboard
+    category: usage
+    dependencies: []
+
   v_dashboards_tags:
     sql_file: views/v_dashboards_tags.sql
     description: Unnests dashboard tags into individual rows
