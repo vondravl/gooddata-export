@@ -22,11 +22,13 @@ from gooddata_export.process import (
     fetch_users_and_user_groups,
     process_dashboards,
     process_dashboards_permissions_from_analytics_model,
+    process_dashboards_plugins,
     process_dashboards_visualizations,
     process_filter_context_fields,
     process_filter_contexts,
     process_ldm,
     process_metrics,
+    process_plugins,
     process_rich_text_metrics,
     process_user_group_members,
     process_user_groups,
@@ -142,6 +144,11 @@ def fetch_all_data_parallel(config):
             "args": ("filterContexts", client, config),
             "key": "filter_contexts",
         },
+        {
+            "function": fetch_data,
+            "args": ("dashboardPlugins", client, config),
+            "key": "plugins",
+        },
         {"function": fetch_ldm, "args": (client, config), "key": "ldm"},
         # Always fetch child workspaces list for workspaces table (quick operation)
         {
@@ -226,6 +233,11 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
             "function": fetch_data,
             "args": ("filterContexts", workspace_client, config),
             "key": "filter_contexts",
+        },
+        "plugins": {
+            "function": fetch_data,
+            "args": ("dashboardPlugins", workspace_client, config),
+            "key": "plugins",
         },
     }
 
@@ -545,42 +557,46 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
 
     # Export to SQLite
     conn = connect_database(db_name)
-    cursor = setup_table(conn, "metrics", metrics_columns)
+    try:
+        cursor = setup_table(conn, "metrics", metrics_columns)
 
-    # Minify content for child references to parent objects
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO metrics
-        (metric_id, workspace_id, title, description, tags, maql, format, created_at, modified_at, is_valid, is_hidden, origin_type, content)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["metric_id"],
-                d["workspace_id"],
-                d["title"],
-                d["description"],
-                d["tags"],
-                d["maql"],
-                d["format"],
-                d["created_at"],
-                d["modified_at"],
-                d["is_valid"],
-                d["is_hidden"],
-                d["origin_type"],
-                json.dumps(d["content"]),
+        # Minify content for child references to parent objects
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO metrics
+            (metric_id, workspace_id, title, description, tags, maql, format, created_at, modified_at, is_valid, is_hidden, origin_type, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["metric_id"],
+                    d["workspace_id"],
+                    d["title"],
+                    d["description"],
+                    d["tags"],
+                    d["maql"],
+                    d["format"],
+                    d["created_at"],
+                    d["modified_at"],
+                    d["is_valid"],
+                    d["is_hidden"],
+                    d["origin_type"],
+                    json.dumps(d["content"]),
+                )
+                for d in all_processed_data
+            ],
+        )
+
+        conn.commit()
+        if export_dir is not None:
+            log_export(
+                "metrics", records_count, Path(export_dir) / "gooddata_metrics.csv"
             )
-            for d in all_processed_data
-        ],
-    )
-
-    conn.commit()
-    if export_dir is not None:
-        log_export("metrics", records_count, Path(export_dir) / "gooddata_metrics.csv")
-    else:
-        print(f"Exported {records_count} metrics to {db_name}")
-    conn.close()
+        else:
+            print(f"Exported {records_count} metrics to {db_name}")
+    finally:
+        conn.close()
 
 
 def export_visualizations(all_workspace_data, export_dir, config, db_name):
@@ -647,142 +663,157 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
         )
 
     conn = connect_database(db_name)
-    cursor = setup_table(conn, "visualizations", visualization_columns)
+    try:
+        cursor = setup_table(conn, "visualizations", visualization_columns)
 
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO visualizations
-        (visualization_id, workspace_id, title, description, tags, visualization_url, created_at, modified_at, url_link, origin_type, content, is_valid, is_hidden)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["visualization_id"],
-                d["workspace_id"],
-                d["title"],
-                d["description"],
-                d["tags"],
-                d["visualization_url"],
-                d["created_at"],
-                d["modified_at"],
-                d["url_link"],
-                d["origin_type"],
-                json.dumps(d["content"]),
-                d["is_valid"],
-                d["is_hidden"],
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO visualizations
+            (visualization_id, workspace_id, title, description, tags, visualization_url, created_at, modified_at, url_link, origin_type, content, is_valid, is_hidden)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["visualization_id"],
+                    d["workspace_id"],
+                    d["title"],
+                    d["description"],
+                    d["tags"],
+                    d["visualization_url"],
+                    d["created_at"],
+                    d["modified_at"],
+                    d["url_link"],
+                    d["origin_type"],
+                    json.dumps(d["content"]),
+                    d["is_valid"],
+                    d["is_hidden"],
+                )
+                for d in all_processed_visualizations
+            ],
+        )
+
+        # Export visualization-metrics relationships
+        metric_relationship_columns = {
+            "visualization_id": "TEXT",
+            "metric_id": "TEXT",
+            "workspace_id": "TEXT",
+            "label": "TEXT",
+            "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
+        }
+
+        metric_rel_count = len(all_processed_metric_relationships)
+        if export_dir is not None:
+            rel_csv = "gooddata_visualizations_metrics.csv"
+            metric_rel_count = write_to_csv(
+                all_processed_metric_relationships,
+                export_dir,
+                rel_csv,
+                fieldnames=["visualization_id", "metric_id", "workspace_id", "label"],
             )
-            for d in all_processed_visualizations
-        ],
-    )
 
-    # Export visualization-metrics relationships
-    metric_relationship_columns = {
-        "visualization_id": "TEXT",
-        "metric_id": "TEXT",
-        "workspace_id": "TEXT",
-        "label": "TEXT",
-        "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
-    }
-
-    metric_rel_count = len(all_processed_metric_relationships)
-    if export_dir is not None:
-        rel_csv = "gooddata_visualizations_metrics.csv"
-        metric_rel_count = write_to_csv(
-            all_processed_metric_relationships,
-            export_dir,
-            rel_csv,
-            fieldnames=["visualization_id", "metric_id", "workspace_id", "label"],
+        cursor = setup_table(
+            conn, "visualizations_metrics", metric_relationship_columns
+        )
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO visualizations_metrics
+            (visualization_id, metric_id, workspace_id, label)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["visualization_id"],
+                    d["metric_id"],
+                    d["workspace_id"],
+                    d.get("label"),
+                )
+                for d in all_processed_metric_relationships
+            ],
         )
 
-    cursor = setup_table(conn, "visualizations_metrics", metric_relationship_columns)
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO visualizations_metrics
-        (visualization_id, metric_id, workspace_id, label)
-        VALUES (?, ?, ?, ?)
-        """,
-        [
-            (d["visualization_id"], d["metric_id"], d["workspace_id"], d.get("label"))
-            for d in all_processed_metric_relationships
-        ],
-    )
+        # Export visualization-attributes relationships
+        attribute_relationship_columns = {
+            "visualization_id": "TEXT",
+            "attribute_id": "TEXT",
+            "workspace_id": "TEXT",
+            "label": "TEXT",
+            "PRIMARY KEY": "(visualization_id, attribute_id, workspace_id)",
+        }
 
-    # Export visualization-attributes relationships
-    attribute_relationship_columns = {
-        "visualization_id": "TEXT",
-        "attribute_id": "TEXT",
-        "workspace_id": "TEXT",
-        "label": "TEXT",
-        "PRIMARY KEY": "(visualization_id, attribute_id, workspace_id)",
-    }
-
-    attr_rel_count = len(all_processed_attribute_relationships)
-    if export_dir is not None:
-        attr_rel_csv = "gooddata_visualizations_attributes.csv"
-        attr_rel_count = write_to_csv(
-            all_processed_attribute_relationships,
-            export_dir,
-            attr_rel_csv,
-            fieldnames=["visualization_id", "attribute_id", "workspace_id", "label"],
-        )
-
-    cursor = setup_table(
-        conn, "visualizations_attributes", attribute_relationship_columns
-    )
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO visualizations_attributes
-        (visualization_id, attribute_id, workspace_id, label)
-        VALUES (?, ?, ?, ?)
-        """,
-        [
-            (
-                d["visualization_id"],
-                d["attribute_id"],
-                d["workspace_id"],
-                d.get("label"),
+        attr_rel_count = len(all_processed_attribute_relationships)
+        if export_dir is not None:
+            attr_rel_csv = "gooddata_visualizations_attributes.csv"
+            attr_rel_count = write_to_csv(
+                all_processed_attribute_relationships,
+                export_dir,
+                attr_rel_csv,
+                fieldnames=[
+                    "visualization_id",
+                    "attribute_id",
+                    "workspace_id",
+                    "label",
+                ],
             )
-            for d in all_processed_attribute_relationships
-        ],
-    )
 
-    conn.commit()
-    if export_dir is not None:
-        log_export(
-            "visualizations",
-            vis_count,
-            Path(export_dir) / "gooddata_visualizations.csv",
+        cursor = setup_table(
+            conn, "visualizations_attributes", attribute_relationship_columns
         )
-        log_export(
-            "visualization-metric relationships",
-            metric_rel_count,
-            Path(export_dir) / "gooddata_visualizations_metrics.csv",
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO visualizations_attributes
+            (visualization_id, attribute_id, workspace_id, label)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["visualization_id"],
+                    d["attribute_id"],
+                    d["workspace_id"],
+                    d.get("label"),
+                )
+                for d in all_processed_attribute_relationships
+            ],
         )
-        log_export(
-            "visualization-attribute relationships",
-            attr_rel_count,
-            Path(export_dir) / "gooddata_visualizations_attributes.csv",
-        )
-    else:
-        print(f"Exported {vis_count} visualizations to {db_name}")
-        print(
-            f"Exported {metric_rel_count} visualization-metric relationships to {db_name}"
-        )
-        print(
-            f"Exported {attr_rel_count} visualization-attribute relationships to {db_name}"
-        )
-    conn.close()
+
+        conn.commit()
+        if export_dir is not None:
+            log_export(
+                "visualizations",
+                vis_count,
+                Path(export_dir) / "gooddata_visualizations.csv",
+            )
+            log_export(
+                "visualization-metric relationships",
+                metric_rel_count,
+                Path(export_dir) / "gooddata_visualizations_metrics.csv",
+            )
+            log_export(
+                "visualization-attribute relationships",
+                attr_rel_count,
+                Path(export_dir) / "gooddata_visualizations_attributes.csv",
+            )
+        else:
+            print(f"Exported {vis_count} visualizations to {db_name}")
+            print(
+                f"Exported {metric_rel_count} visualization-metric relationships to {db_name}"
+            )
+            print(
+                f"Exported {attr_rel_count} visualization-attribute relationships to {db_name}"
+            )
+    finally:
+        conn.close()
 
 
 def export_dashboards(all_workspace_data, export_dir, config, db_name):
-    """Export dashboards and dashboard-visualization relationships"""
+    """Export dashboards, dashboard-visualization relationships, and dashboard-plugin relationships"""
 
     client = get_api_client(config)
     all_processed_dashboards = []
     all_processed_relationships = []
+    all_processed_plugin_relationships = []
 
     # Process dashboards from all workspaces
     for workspace_info in all_workspace_data:
@@ -829,8 +860,14 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
             raw_data, workspace_id, known_insights, workspace_config
         )
 
+        # Process dashboard-plugin relationships
+        processed_plugin_relationships = process_dashboards_plugins(
+            raw_data, workspace_id
+        )
+
         all_processed_dashboards.extend(processed_dashboards)
         all_processed_relationships.extend(processed_relationships)
+        all_processed_plugin_relationships.extend(processed_plugin_relationships)
 
     if not all_processed_dashboards:
         raise RuntimeError("No dashboards data found in any workspace")
@@ -865,96 +902,141 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name):
         )
 
     conn = connect_database(db_name)
-    cursor = setup_table(conn, "dashboards", dashboard_columns)
+    try:
+        cursor = setup_table(conn, "dashboards", dashboard_columns)
 
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO dashboards
-        (dashboard_id, workspace_id, title, description, tags, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["dashboard_id"],
-                d["workspace_id"],
-                d["title"],
-                d["description"],
-                d["tags"],
-                d["created_at"],
-                d["modified_at"],
-                d["dashboard_url"],
-                d["origin_type"],
-                json.dumps(d["content"]),
-                d["is_valid"],
-                d["is_hidden"],
-                d.get("filter_context_id"),  # Use get() to handle potential None values
-            )
-            for d in all_processed_dashboards
-        ],
-    )
-
-    # Export dashboard-visualization relationships
-    relationship_columns = {
-        "dashboard_id": "TEXT",
-        "visualization_id": "TEXT",
-        "from_rich_text": "INTEGER DEFAULT 0",
-        "workspace_id": "TEXT",
-        "PRIMARY KEY": "(dashboard_id, visualization_id, from_rich_text, workspace_id)",
-    }
-
-    rel_count = len(all_processed_relationships)
-    if export_dir is not None:
-        rel_csv = "gooddata_dashboards_visualizations.csv"
-        rel_count = write_to_csv(
-            all_processed_relationships,
-            export_dir,
-            rel_csv,
-            fieldnames=[
-                "dashboard_id",
-                "visualization_id",
-                "from_rich_text",
-                "workspace_id",
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO dashboards
+            (dashboard_id, workspace_id, title, description, tags, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["dashboard_id"],
+                    d["workspace_id"],
+                    d["title"],
+                    d["description"],
+                    d["tags"],
+                    d["created_at"],
+                    d["modified_at"],
+                    d["dashboard_url"],
+                    d["origin_type"],
+                    json.dumps(d["content"]),
+                    d["is_valid"],
+                    d["is_hidden"],
+                    d.get("filter_context_id"),
+                )
+                for d in all_processed_dashboards
             ],
         )
 
-    cursor = setup_table(conn, "dashboards_visualizations", relationship_columns)
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO dashboards_visualizations
-        (dashboard_id, visualization_id, from_rich_text, workspace_id)
-        VALUES (?, ?, ?, ?)
-        """,
-        [
-            (
-                d["dashboard_id"],
-                d["visualization_id"],
-                d.get("from_rich_text", 0),
-                d["workspace_id"],
-            )
-            for d in all_processed_relationships
-        ],
-    )
+        # Export dashboard-visualization relationships
+        relationship_columns = {
+            "dashboard_id": "TEXT",
+            "visualization_id": "TEXT",
+            "from_rich_text": "INTEGER DEFAULT 0",
+            "workspace_id": "TEXT",
+            "PRIMARY KEY": "(dashboard_id, visualization_id, from_rich_text, workspace_id)",
+        }
 
-    conn.commit()
-    if export_dir is not None:
-        log_export(
-            "dashboards",
-            dash_count,
-            Path(export_dir) / "gooddata_dashboards.csv",
+        rel_count = len(all_processed_relationships)
+        if export_dir is not None:
+            rel_csv = "gooddata_dashboards_visualizations.csv"
+            rel_count = write_to_csv(
+                all_processed_relationships,
+                export_dir,
+                rel_csv,
+                fieldnames=[
+                    "dashboard_id",
+                    "visualization_id",
+                    "from_rich_text",
+                    "workspace_id",
+                ],
+            )
+
+        cursor = setup_table(conn, "dashboards_visualizations", relationship_columns)
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO dashboards_visualizations
+            (dashboard_id, visualization_id, from_rich_text, workspace_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["dashboard_id"],
+                    d["visualization_id"],
+                    d.get("from_rich_text", 0),
+                    d["workspace_id"],
+                )
+                for d in all_processed_relationships
+            ],
         )
-        log_export(
-            "dashboard-visualization relationships",
-            rel_count,
-            Path(export_dir) / "gooddata_dashboards_visualizations.csv",
-        )
-    else:
-        print(f"Exported {dash_count} dashboards to {db_name}")
-        print(
-            f"Exported {rel_count} dashboard-visualization relationships to {db_name}"
-        )
-    conn.close()
+
+        # Export dashboard-plugin relationships
+        plugin_relationship_columns = {
+            "dashboard_id": "TEXT",
+            "plugin_id": "TEXT",
+            "workspace_id": "TEXT",
+            "PRIMARY KEY": "(dashboard_id, plugin_id, workspace_id)",
+        }
+
+        plugin_rel_count = len(all_processed_plugin_relationships)
+        if export_dir is not None and plugin_rel_count > 0:
+            plugin_rel_csv = "gooddata_dashboards_plugins.csv"
+            plugin_rel_count = write_to_csv(
+                all_processed_plugin_relationships,
+                export_dir,
+                plugin_rel_csv,
+                fieldnames=["dashboard_id", "plugin_id", "workspace_id"],
+            )
+
+        cursor = setup_table(conn, "dashboards_plugins", plugin_relationship_columns)
+        if all_processed_plugin_relationships:
+            execute_with_retry(
+                cursor,
+                """
+                INSERT INTO dashboards_plugins
+                (dashboard_id, plugin_id, workspace_id)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    (d["dashboard_id"], d["plugin_id"], d["workspace_id"])
+                    for d in all_processed_plugin_relationships
+                ],
+            )
+
+        conn.commit()
+        if export_dir is not None:
+            log_export(
+                "dashboards",
+                dash_count,
+                Path(export_dir) / "gooddata_dashboards.csv",
+            )
+            log_export(
+                "dashboard-visualization relationships",
+                rel_count,
+                Path(export_dir) / "gooddata_dashboards_visualizations.csv",
+            )
+            if plugin_rel_count > 0:
+                log_export(
+                    "dashboard-plugin relationships",
+                    plugin_rel_count,
+                    Path(export_dir) / "gooddata_dashboards_plugins.csv",
+                )
+        else:
+            print(f"Exported {dash_count} dashboards to {db_name}")
+            print(
+                f"Exported {rel_count} dashboard-visualization relationships to {db_name}"
+            )
+            if plugin_rel_count > 0:
+                print(
+                    f"Exported {plugin_rel_count} dashboard-plugin relationships to {db_name}"
+                )
+    finally:
+        conn.close()
 
 
 def export_ldm(all_workspace_data, export_dir, config, db_name):
@@ -999,105 +1081,107 @@ def export_ldm(all_workspace_data, export_dir, config, db_name):
         )
 
     conn = connect_database(db_name)
-    cursor = setup_table(conn, "ldm_datasets", dataset_columns)
+    try:
+        cursor = setup_table(conn, "ldm_datasets", dataset_columns)
 
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO ldm_datasets
-        (title, description, id, tags, attributes_count, facts_count, references_count,
-         workspace_data_filter_columns_count, total_columns,
-         data_source_id, source_table, source_table_path, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["title"],
-                d["description"],
-                d["id"],
-                d["tags"],
-                d["attributes_count"],
-                d["facts_count"],
-                d["references_count"],
-                d["workspace_data_filter_columns_count"],
-                d["total_columns"],
-                d["data_source_id"],
-                d["source_table"],
-                d["source_table_path"],
-                d["workspace_id"],
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO ldm_datasets
+            (title, description, id, tags, attributes_count, facts_count, references_count,
+             workspace_data_filter_columns_count, total_columns,
+             data_source_id, source_table, source_table_path, workspace_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["title"],
+                    d["description"],
+                    d["id"],
+                    d["tags"],
+                    d["attributes_count"],
+                    d["facts_count"],
+                    d["references_count"],
+                    d["workspace_data_filter_columns_count"],
+                    d["total_columns"],
+                    d["data_source_id"],
+                    d["source_table"],
+                    d["source_table_path"],
+                    d["workspace_id"],
+                )
+                for d in datasets
+            ],
+        )
+
+        # Export columns
+        column_columns = {
+            "dataset_id": "TEXT",
+            "dataset_name": "TEXT",
+            "title": "TEXT",
+            "description": "TEXT",
+            "id": "TEXT",
+            "tags": "TEXT",
+            "data_type": "TEXT",
+            "source_column": "TEXT",
+            "type": "TEXT",
+            "grain": "TEXT",
+            "reference_to_id": "TEXT",
+            "reference_to_title": "TEXT",
+            "workspace_id": "TEXT",
+        }
+
+        column_count = len(column_records)
+        if export_dir is not None:
+            column_csv = "gooddata_ldm_columns.csv"
+            column_count = write_to_csv(
+                column_records, export_dir, column_csv, fieldnames=column_columns.keys()
             )
-            for d in datasets
-        ],
-    )
 
-    # Export columns
-    column_columns = {
-        "dataset_id": "TEXT",
-        "dataset_name": "TEXT",
-        "title": "TEXT",
-        "description": "TEXT",
-        "id": "TEXT",
-        "tags": "TEXT",
-        "data_type": "TEXT",
-        "source_column": "TEXT",
-        "type": "TEXT",
-        "grain": "TEXT",
-        "reference_to_id": "TEXT",
-        "reference_to_title": "TEXT",
-        "workspace_id": "TEXT",
-    }
-
-    column_count = len(column_records)
-    if export_dir is not None:
-        column_csv = "gooddata_ldm_columns.csv"
-        column_count = write_to_csv(
-            column_records, export_dir, column_csv, fieldnames=column_columns.keys()
+        cursor = setup_table(conn, "ldm_columns", column_columns)
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO ldm_columns
+            (dataset_id, dataset_name, title, description, id, tags, data_type, source_column, type, grain, reference_to_id, reference_to_title, workspace_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["dataset_id"],
+                    d["dataset_name"],
+                    d["title"],
+                    d["description"],
+                    d["id"],
+                    d["tags"],
+                    d["data_type"],
+                    d["source_column"],
+                    d["type"],
+                    d["grain"],
+                    d["reference_to_id"],
+                    d["reference_to_title"],
+                    d["workspace_id"],
+                )
+                for d in column_records
+            ],
         )
 
-    cursor = setup_table(conn, "ldm_columns", column_columns)
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO ldm_columns
-        (dataset_id, dataset_name, title, description, id, tags, data_type, source_column, type, grain, reference_to_id, reference_to_title, workspace_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["dataset_id"],
-                d["dataset_name"],
-                d["title"],
-                d["description"],
-                d["id"],
-                d["tags"],
-                d["data_type"],
-                d["source_column"],
-                d["type"],
-                d["grain"],
-                d["reference_to_id"],
-                d["reference_to_title"],
-                d["workspace_id"],
+        conn.commit()
+        if export_dir is not None:
+            log_export(
+                "datasets",
+                dataset_count,
+                Path(export_dir) / "gooddata_ldm_datasets.csv",
             )
-            for d in column_records
-        ],
-    )
-
-    conn.commit()
-    if export_dir is not None:
-        log_export(
-            "datasets",
-            dataset_count,
-            Path(export_dir) / "gooddata_ldm_datasets.csv",
-        )
-        log_export(
-            "columns",
-            column_count,
-            Path(export_dir) / "gooddata_ldm_columns.csv",
-        )
-    else:
-        print(f"Exported {dataset_count} datasets to {db_name}")
-        print(f"Exported {column_count} columns to {db_name}")
-    conn.close()
+            log_export(
+                "columns",
+                column_count,
+                Path(export_dir) / "gooddata_ldm_columns.csv",
+            )
+        else:
+            print(f"Exported {dataset_count} datasets to {db_name}")
+            print(f"Exported {column_count} columns to {db_name}")
+    finally:
+        conn.close()
 
 
 def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
@@ -1149,108 +1233,112 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name):
 
     # Export to SQLite
     conn = connect_database(db_name)
-    cursor = setup_table(conn, "filter_contexts", filter_contexts_columns)
+    try:
+        cursor = setup_table(conn, "filter_contexts", filter_contexts_columns)
 
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO filter_contexts
-        (filter_context_id, workspace_id, title, description, origin_type, content)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["filter_context_id"],
-                d["workspace_id"],
-                d["title"],
-                d["description"],
-                d["origin_type"],
-                json.dumps(d["content"]),
-            )
-            for d in all_processed_data
-        ],
-    )
-
-    # Export filter_context_fields table
-    filter_context_fields_columns = {
-        "filter_context_id": "TEXT",
-        "workspace_id": "TEXT",
-        "filter_index": "INTEGER",
-        "filter_type": "TEXT",
-        "local_identifier": "TEXT",
-        "display_form_id": "TEXT",
-        "title": "TEXT",
-        "negative_selection": "BOOLEAN",
-        "selection_mode": "TEXT",
-        "date_granularity": "TEXT",
-        "date_from": "INTEGER",
-        "date_to": "INTEGER",
-        "date_type": "TEXT",
-        "attribute_elements_count": "INTEGER",
-        "PRIMARY KEY": "(filter_context_id, workspace_id, filter_index)",
-    }
-
-    fields_count = len(all_processed_fields)
-    if export_dir is not None and fields_count > 0:
-        fields_csv = "gooddata_filter_context_fields.csv"
-        fields_count = write_to_csv(
-            all_processed_fields,
-            export_dir,
-            fields_csv,
-            fieldnames=filter_context_fields_columns.keys(),
-        )
-
-    cursor = setup_table(conn, "filter_context_fields", filter_context_fields_columns)
-
-    if all_processed_fields:
         execute_with_retry(
             cursor,
             """
-            INSERT INTO filter_context_fields
-            (filter_context_id, workspace_id, filter_index, filter_type, local_identifier,
-             display_form_id, title, negative_selection, selection_mode, date_granularity,
-             date_from, date_to, date_type, attribute_elements_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO filter_contexts
+            (filter_context_id, workspace_id, title, description, origin_type, content)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     d["filter_context_id"],
                     d["workspace_id"],
-                    d["filter_index"],
-                    d["filter_type"],
-                    d["local_identifier"],
-                    d["display_form_id"],
                     d["title"],
-                    d["negative_selection"],
-                    d["selection_mode"],
-                    d["date_granularity"],
-                    d["date_from"],
-                    d["date_to"],
-                    d["date_type"],
-                    d["attribute_elements_count"],
+                    d["description"],
+                    d["origin_type"],
+                    json.dumps(d["content"]),
                 )
-                for d in all_processed_fields
+                for d in all_processed_data
             ],
         )
 
-    conn.commit()
-    if export_dir is not None:
-        log_export(
-            "filter contexts",
-            records_count,
-            Path(export_dir) / "gooddata_filter_contexts.csv",
-        )
-        if fields_count > 0:
-            log_export(
-                "filter context fields",
-                fields_count,
-                Path(export_dir) / "gooddata_filter_context_fields.csv",
+        # Export filter_context_fields table
+        filter_context_fields_columns = {
+            "filter_context_id": "TEXT",
+            "workspace_id": "TEXT",
+            "filter_index": "INTEGER",
+            "filter_type": "TEXT",
+            "local_identifier": "TEXT",
+            "display_form_id": "TEXT",
+            "title": "TEXT",
+            "negative_selection": "BOOLEAN",
+            "selection_mode": "TEXT",
+            "date_granularity": "TEXT",
+            "date_from": "INTEGER",
+            "date_to": "INTEGER",
+            "date_type": "TEXT",
+            "attribute_elements_count": "INTEGER",
+            "PRIMARY KEY": "(filter_context_id, workspace_id, filter_index)",
+        }
+
+        fields_count = len(all_processed_fields)
+        if export_dir is not None and fields_count > 0:
+            fields_csv = "gooddata_filter_context_fields.csv"
+            fields_count = write_to_csv(
+                all_processed_fields,
+                export_dir,
+                fields_csv,
+                fieldnames=filter_context_fields_columns.keys(),
             )
-    else:
-        print(f"Exported {records_count} filter contexts to {db_name}")
-        if fields_count > 0:
-            print(f"Exported {fields_count} filter context fields to {db_name}")
-    conn.close()
+
+        cursor = setup_table(
+            conn, "filter_context_fields", filter_context_fields_columns
+        )
+
+        if all_processed_fields:
+            execute_with_retry(
+                cursor,
+                """
+                INSERT INTO filter_context_fields
+                (filter_context_id, workspace_id, filter_index, filter_type, local_identifier,
+                 display_form_id, title, negative_selection, selection_mode, date_granularity,
+                 date_from, date_to, date_type, attribute_elements_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["filter_context_id"],
+                        d["workspace_id"],
+                        d["filter_index"],
+                        d["filter_type"],
+                        d["local_identifier"],
+                        d["display_form_id"],
+                        d["title"],
+                        d["negative_selection"],
+                        d["selection_mode"],
+                        d["date_granularity"],
+                        d["date_from"],
+                        d["date_to"],
+                        d["date_type"],
+                        d["attribute_elements_count"],
+                    )
+                    for d in all_processed_fields
+                ],
+            )
+
+        conn.commit()
+        if export_dir is not None:
+            log_export(
+                "filter contexts",
+                records_count,
+                Path(export_dir) / "gooddata_filter_contexts.csv",
+            )
+            if fields_count > 0:
+                log_export(
+                    "filter context fields",
+                    fields_count,
+                    Path(export_dir) / "gooddata_filter_context_fields.csv",
+                )
+        else:
+            print(f"Exported {records_count} filter contexts to {db_name}")
+            if fields_count > 0:
+                print(f"Exported {fields_count} filter context fields to {db_name}")
+    finally:
+        conn.close()
 
 
 def export_workspaces(all_workspace_data, export_dir, config, db_name):
@@ -1294,38 +1382,40 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
 
     # Export to SQLite
     conn = connect_database(db_name)
-    cursor = setup_table(conn, "workspaces", workspaces_columns)
+    try:
+        cursor = setup_table(conn, "workspaces", workspaces_columns)
 
-    execute_with_retry(
-        cursor,
-        """
-        INSERT INTO workspaces
-        (workspace_id, workspace_name, is_parent, parent_workspace_id, created_at, modified_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                d["workspace_id"],
-                d["workspace_name"],
-                d["is_parent"],
-                d["parent_workspace_id"],
-                d["created_at"],
-                d["modified_at"],
-            )
-            for d in processed_data
-        ],
-    )
-
-    conn.commit()
-    if export_dir is not None:
-        log_export(
-            "workspaces",
-            records_count,
-            Path(export_dir) / "gooddata_workspaces.csv",
+        execute_with_retry(
+            cursor,
+            """
+            INSERT INTO workspaces
+            (workspace_id, workspace_name, is_parent, parent_workspace_id, created_at, modified_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["workspace_id"],
+                    d["workspace_name"],
+                    d["is_parent"],
+                    d["parent_workspace_id"],
+                    d["created_at"],
+                    d["modified_at"],
+                )
+                for d in processed_data
+            ],
         )
-    else:
-        print(f"Exported {records_count} workspaces to {db_name}")
-    conn.close()
+
+        conn.commit()
+        if export_dir is not None:
+            log_export(
+                "workspaces",
+                records_count,
+                Path(export_dir) / "gooddata_workspaces.csv",
+            )
+        else:
+            print(f"Exported {records_count} workspaces to {db_name}")
+    finally:
+        conn.close()
 
 
 def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name):
@@ -1342,50 +1432,51 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name):
 
     # Connect to database and ensure table exists
     conn = connect_database(db_name)
-    cursor = conn.cursor()
-    cursor.execute("DROP TABLE IF EXISTS dashboards_metrics")
-    conn.commit()
-    cursor = setup_table(conn, "dashboards_metrics", dashboards_metrics_columns)
-    conn.commit()
-
-    # If rich text extraction is disabled, keep empty table and return
-    if not config.ENABLE_RICH_TEXT_EXTRACTION:
-        conn.close()
-        logging.info(
-            "Rich text extraction disabled - dashboards_metrics table created but empty"
-        )
-        return
-
-    rich_text_metrics = []
-
-    # First get a list of all known metric IDs for better matching
-    known_metrics = set()
-
-    # Prefer in-memory metrics from already fetched workspace data
     try:
-        for workspace_info in all_workspace_data:
-            raw_metrics = workspace_info.get("data", {}).get("metrics")
-            if not raw_metrics:
-                continue
-            for metric in raw_metrics:
-                # Raw metric objects are dicts with an "id" field
-                metric_id = metric.get("id") if isinstance(metric, dict) else None
-                if metric_id:
-                    known_metrics.add(metric_id)
-        if known_metrics:
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS dashboards_metrics")
+        conn.commit()
+        cursor = setup_table(conn, "dashboards_metrics", dashboards_metrics_columns)
+        conn.commit()
+
+        # If rich text extraction is disabled, keep empty table and return
+        if not config.ENABLE_RICH_TEXT_EXTRACTION:
             logging.info(
-                f"Found {len(known_metrics)} known metrics for validation (source: memory)"
+                "Rich text extraction disabled - dashboards_metrics table created but empty"
             )
-    except Exception as e:
-        logging.warning(f"Failed to load in-memory metrics for validation: {str(e)}")
+            return
 
-    # If still empty, proceed without known metrics filtering (no API fallback)
-    if not known_metrics:
-        logging.info(
-            "No known metrics available for validation from memory or db; proceeding without filter"
-        )
+        rich_text_metrics = []
 
-    try:
+        # First get a list of all known metric IDs for better matching
+        known_metrics = set()
+
+        # Prefer in-memory metrics from already fetched workspace data
+        try:
+            for workspace_info in all_workspace_data:
+                raw_metrics = workspace_info.get("data", {}).get("metrics")
+                if not raw_metrics:
+                    continue
+                for metric in raw_metrics:
+                    # Raw metric objects are dicts with an "id" field
+                    metric_id = metric.get("id") if isinstance(metric, dict) else None
+                    if metric_id:
+                        known_metrics.add(metric_id)
+            if known_metrics:
+                logging.info(
+                    f"Found {len(known_metrics)} known metrics for validation (source: memory)"
+                )
+        except Exception as e:
+            logging.warning(
+                f"Failed to load in-memory metrics for validation: {str(e)}"
+            )
+
+        # If still empty, proceed without known metrics filtering (no API fallback)
+        if not known_metrics:
+            logging.info(
+                "No known metrics available for validation from memory or db; proceeding without filter"
+            )
+
         # When child workspaces are included, only process parent workspace for rich text
         workspaces_to_process = all_workspace_data
         if config.INCLUDE_CHILD_WORKSPACES:
@@ -1465,7 +1556,6 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name):
 
         # If no metrics found, table already exists (created earlier), just log and return
         if not rich_text_metrics:
-            conn.close()
             logging.info(
                 "No metrics found in rich text widgets - dashboards_metrics table created but empty"
             )
@@ -1508,17 +1598,8 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name):
             print(
                 f"Exported {records_count} dashboard metrics from rich text to {db_name}"
             )
+    finally:
         conn.close()
-
-    except Exception as e:
-        # Ensure connection is closed on error to prevent resource leak
-        try:
-            conn.close()
-        except Exception:
-            pass  # Connection may already be closed or invalid
-        print(f"Error in export_dashboards_metrics: {str(e)}")
-        # Re-raise with more specific message
-        raise RuntimeError(f"Error processing dashboard metrics: {str(e)}")
 
 
 def export_users_and_user_groups(all_workspace_data, export_dir, config, db_name):
@@ -1781,6 +1862,94 @@ def export_dashboards_permissions(all_workspace_data, export_dir, _config, db_na
         print(f"Exported {permissions_count} dashboard permissions to {db_name}")
 
 
+def export_plugins(all_workspace_data, export_dir, config, db_name):
+    """Export dashboard plugins to both CSV and SQLite"""
+    all_processed_data = []
+
+    # Process plugins from all workspaces
+    for workspace_info in all_workspace_data:
+        workspace_id = workspace_info["workspace_id"]
+        raw_data = workspace_info["data"].get("plugins")
+
+        if raw_data is None:
+            if config.DEBUG_WORKSPACE_PROCESSING:
+                print(f"No plugins data for workspace {workspace_id}")
+            continue
+
+        processed_data = process_plugins(raw_data, workspace_id)
+        all_processed_data.extend(processed_data)
+
+    # Define columns for plugins table
+    plugins_columns = {
+        "plugin_id": "TEXT",
+        "workspace_id": "TEXT",
+        "title": "TEXT",
+        "description": "TEXT",
+        "url": "TEXT",
+        "version": "TEXT",
+        "created_at": "DATE",
+        "origin_type": "TEXT",
+        "content": "JSON",
+        "PRIMARY KEY": "(plugin_id, workspace_id)",
+    }
+
+    # Always create the table (even if empty) for consistency
+    conn = connect_database(db_name)
+    try:
+        setup_table(conn, "plugins", plugins_columns)
+        conn.commit()
+
+        if not all_processed_data:
+            logging.info("No plugins found - table created but empty")
+            return
+
+        # Export to CSV (if requested)
+        records_count = len(all_processed_data)
+        if export_dir is not None:
+            records_count = write_to_csv(
+                all_processed_data,
+                export_dir,
+                "gooddata_plugins.csv",
+                fieldnames=plugins_columns.keys(),
+                exclude_fields={"content"},
+            )
+
+        execute_with_retry(
+            conn.cursor(),
+            """
+            INSERT INTO plugins
+            (plugin_id, workspace_id, title, description, url, version, created_at, origin_type, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    d["plugin_id"],
+                    d["workspace_id"],
+                    d["title"],
+                    d["description"],
+                    d["url"],
+                    d["version"],
+                    d["created_at"],
+                    d["origin_type"],
+                    json.dumps(d["content"]),
+                )
+                for d in all_processed_data
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    if export_dir is not None:
+        log_export(
+            "plugins",
+            records_count,
+            Path(export_dir) / "gooddata_plugins.csv",
+        )
+    else:
+        print(f"Exported {records_count} plugins to {db_name}")
+
+
 def export_all_metadata(
     config,
     csv_dir=None,
@@ -1842,6 +2011,7 @@ def export_all_metadata(
         {"func": export_dashboards, "data_key": "dashboards"},
         {"func": export_dashboards_metrics, "data_key": "dashboards_metrics"},
         {"func": export_dashboards_permissions, "data_key": "dashboards_permissions"},
+        {"func": export_plugins, "data_key": "plugins"},
         {"func": export_ldm, "data_key": "ldm"},
         {"func": export_filter_contexts, "data_key": "filter_contexts"},
         {"func": export_users_and_user_groups, "data_key": "users_and_user_groups"},

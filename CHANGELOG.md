@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-07
+
+### Added
+- New `plugins` table: exports dashboard plugin definitions from `/api/v1/entities/workspaces/:workspaceId/dashboardPlugins`
+- New `dashboards_plugins` junction table: links dashboards to their plugins (extracted from dashboard content)
+- New view `v_dashboards_plugins`: shows dashboard-plugin relationships with plugin details
+- Test suite with pytest (49 tests)
+  - SQL/YAML configuration validation tests
+  - Topological sort and parameter substitution tests
+  - ExportConfig tests with boolean parsing
+  - `sort_tags()` utility tests
+- `make test` and `make test-cov` targets
+- pytest configuration in `pyproject.toml`
+
 ## [1.1.2] - 2026-01-06
 
 ### Added
