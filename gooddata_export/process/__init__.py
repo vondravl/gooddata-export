@@ -29,6 +29,7 @@ from gooddata_export.process.entities import (
     process_visualizations_attributes,
     process_visualizations_metrics,
     process_workspaces,
+    validate_workspace_exists,
 )
 from gooddata_export.process.layout import (
     fetch_analytics_model,
@@ -59,6 +60,7 @@ __all__ = [
     # Entities
     "fetch_data",
     "fetch_child_workspaces",
+    "validate_workspace_exists",
     "process_metrics",
     "process_plugins",
     "process_visualizations",

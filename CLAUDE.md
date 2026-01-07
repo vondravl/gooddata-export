@@ -189,6 +189,10 @@ def fetch(id: str | int) -> tuple[str, bool]: ...
 
 **Only import from `typing`:** `Any`, `TypeVar`, `TYPE_CHECKING`, `Protocol`, `Literal`, `TypedDict`
 
+### Avoiding Over-Engineering
+
+Don't consolidate every repeated pattern. Small, simple duplications (2-3 lines appearing a few times) are often clearer than adding another abstraction layer. Consolidate when the pattern is complex (5+ lines), appears in many places (5+), or requires consistent behavior that might need updating.
+
 ### SQL Style
 
 - SQL files use `DROP ... IF EXISTS` then `CREATE`
