@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-01-07
+
+### Added
+- Fail-fast workspace validation at export start via `validate_workspace_exists()`
+- Retry logic for 5xx server errors in `fetch_data()` (uses existing exponential backoff)
+
+### Changed
+- Centralized API error handling into `raise_for_api_error()` in `common.py`
+- Centralized connection error handling into `raise_for_connection_error()` in `common.py`
+- Unified request exception handling via `raise_for_request_error()` (dispatches to appropriate handler based on exception type)
+- Refactored `get_api_client()` to use keyword-only arguments and handle client passthrough
+- Consistent 200-char truncation for all API error response messages
+
 ## [1.2.0] - 2026-01-07
 
 ### Added

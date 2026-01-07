@@ -551,7 +551,7 @@ def process_dashboards_metrics_from_rich_text(dashboard_data, config=None):
             raise ValueError(
                 "Config must be provided for process_dashboards_metrics_from_rich_text"
             )
-        client = get_api_client(config)
+        client = get_api_client(config=config)
         metrics_data = fetch_data("metrics", client, config)
         if metrics_data:
             for metric in metrics_data:

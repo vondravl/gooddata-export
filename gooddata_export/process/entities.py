@@ -2,10 +2,19 @@
 
 import logging
 import time
+from typing import TYPE_CHECKING, Any
 
 import requests
 
-from gooddata_export.common import get_api_client
+if TYPE_CHECKING:
+    from gooddata_export.config import ExportConfig
+
+from gooddata_export.common import (
+    get_api_client,
+    raise_for_api_error,
+    raise_for_connection_error,
+    raise_for_request_error,
+)
 from gooddata_export.process.common import sort_tags
 
 logger = logging.getLogger(__name__)
@@ -13,11 +22,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_data(endpoint, client=None, config=None, max_retries=3):
     """Fetch data from GoodData API with pagination and retry mechanism"""
-    if client is None:
-        if config is None:
-            raise ValueError("Either client or config must be provided")
-        client = get_api_client(config)
-        logger.debug("Created new API client")
+    client = get_api_client(config=config, client=client)
 
     base_url = f"{client['base_url']}/api/v1/entities/workspaces/{client['workspace_id']}/{endpoint}"
     logger.info(f"Fetching {endpoint} from workspace: {client['workspace_id']}")
@@ -65,32 +70,21 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
                     page_success = True
                     break  # Success, exit retry loop
 
-                elif response.status_code == 404:
-                    error_msg = (
-                        f"Failed to fetch {endpoint} (404)\n"
-                        f"Workspace: {client['workspace_id']}\n"
-                        f"Please verify workspace ID in .env file\n"
-                        f"Response: {response.text}"
-                    )
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg)
-
-                elif response.status_code == 401:
-                    error_msg = (
-                        f"Authentication failed for {endpoint}\n"
-                        f"Please check API token in .env file\n"
-                        f"Response: {response.text}"
-                    )
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg)
+                elif response.status_code >= 500:
+                    # Server errors (5xx) are retryable
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Server error for {endpoint} page {page} "
+                            f"(HTTP {response.status_code}, attempt {attempt + 1})"
+                        )
+                        continue
+                    # Terminal - raises, never returns
+                    raise_for_api_error(response, endpoint, client["workspace_id"])
 
                 else:
-                    error_msg = (
-                        f"Failed to fetch {endpoint} (HTTP {response.status_code})\n"
-                        f"Response: {response.text[:200]}"
-                    )
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg)
+                    # Client errors (4xx) - not retryable
+                    # Terminal - raises, never returns
+                    raise_for_api_error(response, endpoint, client["workspace_id"])
 
             except (
                 requests.exceptions.Timeout,
@@ -102,19 +96,15 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
                     )
                     continue
                 else:
-                    base_url_str = client.get("base_url") if client else "unknown"
-                    error_msg = (
-                        f"Connection error fetching {endpoint} after {max_retries + 1} attempts\n"
-                        f"Please verify HOST in .env file: {base_url_str}\n"
-                        f"Last error: {str(e)}"
+                    raise_for_connection_error(
+                        endpoint,
+                        e,
+                        base_url=client.get("base_url"),
+                        retry_info=f"after {max_retries + 1} attempts",
                     )
-                    logger.error(error_msg)
-                    raise RuntimeError(error_msg)
 
             except requests.exceptions.RequestException as e:
-                error_msg = f"Request failed for {endpoint}: {str(e)}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
+                raise_for_request_error(endpoint, e, base_url=client.get("base_url"))
 
             except Exception as e:
                 error_msg = f"Unexpected error fetching {endpoint}: {str(e)}"
@@ -162,15 +152,36 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
         return filtered_data
 
 
+def validate_workspace_exists(
+    client: dict[str, Any] | None = None,
+    config: "ExportConfig | None" = None,
+) -> None:
+    """Check if workspace exists and is accessible.
+
+    Raises:
+        RuntimeError: If workspace is not accessible (auth, permissions, or not found)
+                      or if there's a connection error.
+    """
+    client = get_api_client(config=config, client=client)
+    workspace_id = client["workspace_id"]
+    url = f"{client['base_url']}/api/v1/entities/workspaces/{workspace_id}"
+
+    logger.info(f"Validating workspace: {workspace_id}")
+    try:
+        response = requests.get(url, headers=client["headers"], timeout=30)
+        if response.status_code == 200:
+            return
+        raise_for_api_error(response, f"workspace {workspace_id}", workspace_id)
+    except requests.exceptions.RequestException as e:
+        raise_for_request_error(
+            f"workspace {workspace_id}", e, base_url=client.get("base_url")
+        )
+
+
 def fetch_child_workspaces(client=None, config=None, size=2000):
     """Fetch child workspaces from GoodData API with pagination support"""
     try:
-        if client is None:
-            if config is None:
-                raise ValueError("Either client or config must be provided")
-            client = get_api_client(config)
-            logger.debug("Created new API client")
-
+        client = get_api_client(config=config, client=client)
         parent_workspace_id = client["workspace_id"]
         all_workspaces = []
         page = 0
@@ -211,32 +222,8 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
 
                 logger.debug(f"Page {page - 1}: Found {len(data)} child workspaces")
 
-            elif response.status_code == 404:
-                error_msg = (
-                    "Failed to fetch child workspaces (404)\n"
-                    f"Parent workspace: {parent_workspace_id}\n"
-                    "Please verify workspace ID in .env file\n"
-                    f"Response: {response.text}"
-                )
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-
-            elif response.status_code == 401:
-                error_msg = (
-                    "Authentication failed for child workspaces\n"
-                    "Please check API token in .env file\n"
-                    f"Response: {response.text}"
-                )
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-
             else:
-                error_msg = (
-                    f"Failed to fetch child workspaces (HTTP {response.status_code})\n"
-                    f"Response: {response.text[:200]}"
-                )
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
+                raise_for_api_error(response, "child workspaces", parent_workspace_id)
 
         if all_workspaces:
             # Log with page count only if more than 1 page
@@ -255,20 +242,10 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
             logger.debug("No child workspaces found - empty data array")
             return []
 
-    except requests.exceptions.ConnectionError as e:
-        base_url = client.get("base_url") if client else "unknown"
-        error_msg = (
-            "Connection error fetching child workspaces\n"
-            f"Please verify HOST in .env file: {base_url}\n"
-            f"Error: {str(e)}"
-        )
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
-
     except requests.exceptions.RequestException as e:
-        error_msg = f"Request failed for child workspaces: {str(e)}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
+        raise_for_request_error(
+            "child workspaces", e, base_url=client.get("base_url") if client else None
+        )
 
     except Exception as e:
         error_msg = f"Unexpected error fetching child workspaces: {str(e)}"

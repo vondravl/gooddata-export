@@ -1,10 +1,18 @@
 """Layout API functions for fetching and processing GoodData layout data."""
 
 import logging
+from typing import TYPE_CHECKING, Any
 
 import requests
 
-from gooddata_export.common import get_api_client
+if TYPE_CHECKING:
+    from gooddata_export.config import ExportConfig
+
+from gooddata_export.common import (
+    get_api_client,
+    raise_for_api_error,
+    raise_for_request_error,
+)
 from gooddata_export.process.common import sort_tags
 
 logger = logging.getLogger(__name__)
@@ -13,8 +21,8 @@ logger = logging.getLogger(__name__)
 def _fetch_from_layout_api(
     endpoint: str,
     name: str,
-    client=None,
-    config=None,
+    client: dict[str, Any] | None = None,
+    config: "ExportConfig | None" = None,
     timeout: int = 30,
     workspace_scoped: bool = False,
 ):
@@ -33,11 +41,7 @@ def _fetch_from_layout_api(
         Parsed JSON response or None if empty
     """
     try:
-        if client is None:
-            if config is None:
-                raise ValueError("Either client or config must be provided")
-            client = get_api_client(config)
-            logger.debug("Created new API client")
+        client = get_api_client(config=config, client=client)
 
         if workspace_scoped:
             url = f"{client['base_url']}/api/v1/layout/workspaces/{client['workspace_id']}/{endpoint}"
@@ -60,51 +64,14 @@ def _fetch_from_layout_api(
             logger.info(f"{name.capitalize()}: Successfully fetched")
             return json_input
 
-        elif response.status_code == 404:
-            if workspace_scoped:
-                hint = (
-                    f"Workspace: {client['workspace_id']}\n"
-                    "Please verify workspace ID in .env file"
-                )
-            else:
-                hint = "Please verify API access permissions"
-            error_msg = (
-                f"Failed to fetch {name} (404)\n{hint}\nResponse: {response.text}"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
-        elif response.status_code == 401:
-            error_msg = (
-                f"Authentication failed for {name}\n"
-                "Please check API token in .env file\n"
-                f"Response: {response.text}"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
         else:
-            error_msg = (
-                f"Failed to fetch {name} (HTTP {response.status_code})\n"
-                f"Response: {response.text[:200]}"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
-    except requests.exceptions.ConnectionError as e:
-        base_url = client.get("base_url") if client else "unknown"
-        error_msg = (
-            f"Connection error fetching {name}\n"
-            f"Please verify HOST in .env file: {base_url}\n"
-            f"Error: {str(e)}"
-        )
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
+            workspace_id = client["workspace_id"] if workspace_scoped else None
+            raise_for_api_error(response, name, workspace_id)
 
     except requests.exceptions.RequestException as e:
-        error_msg = f"Request failed for {name}: {str(e)}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
+        raise_for_request_error(
+            name, e, base_url=client.get("base_url") if client else None
+        )
 
     except RuntimeError:
         # Re-raise RuntimeErrors without wrapping
@@ -116,7 +83,10 @@ def _fetch_from_layout_api(
         raise RuntimeError(error_msg)
 
 
-def fetch_users_and_user_groups(client=None, config=None):
+def fetch_users_and_user_groups(
+    client: dict[str, Any] | None = None,
+    config: "ExportConfig | None" = None,
+):
     """Fetch users and user groups from GoodData API."""
     return _fetch_from_layout_api(
         endpoint="usersAndUserGroups",
@@ -128,7 +98,10 @@ def fetch_users_and_user_groups(client=None, config=None):
     )
 
 
-def fetch_ldm(client=None, config=None):
+def fetch_ldm(
+    client: dict[str, Any] | None = None,
+    config: "ExportConfig | None" = None,
+):
     """Fetch logical model from GoodData API."""
     return _fetch_from_layout_api(
         endpoint="logicalModel",
@@ -140,7 +113,10 @@ def fetch_ldm(client=None, config=None):
     )
 
 
-def fetch_analytics_model(client=None, config=None):
+def fetch_analytics_model(
+    client: dict[str, Any] | None = None,
+    config: "ExportConfig | None" = None,
+):
     """Fetch analytics model from GoodData layout API.
 
     This endpoint returns all analytics objects (dashboards, visualizations, metrics)

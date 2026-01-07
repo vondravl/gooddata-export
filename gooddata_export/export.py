@@ -37,6 +37,7 @@ from gooddata_export.process import (
     process_visualizations_attributes,
     process_visualizations_metrics,
     process_workspaces,
+    validate_workspace_exists,
 )
 
 DB_EXPORT_DIR = Path("db")
@@ -119,7 +120,7 @@ def log_export(name, count, csv_path):
 
 def fetch_all_data_parallel(config):
     """Fetch all required data from API in parallel"""
-    client = get_api_client(config)
+    client = get_api_client(config=config)
 
     # Define fetch tasks with their data types and params
     # NOTE: We fetch both entities API (analyticalDashboards) and layout API (analytics_model)
@@ -199,7 +200,7 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
     start_time = time.time()
 
     # Create a client for this specific workspace
-    original_client = get_api_client(config)
+    original_client = get_api_client(config=config)
     workspace_client = {
         "base_url": original_client["base_url"],
         "workspace_id": workspace_id,
@@ -320,7 +321,7 @@ def fetch_all_workspace_data(config):
     start_time = time.time()
     print("Fetching parent workspace data...")
     parent_data = fetch_all_data_parallel(config)
-    client = get_api_client(config)
+    client = get_api_client(config=config)
     parent_workspace_id = client["workspace_id"]
 
     parent_duration = time.time() - start_time
@@ -602,7 +603,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name):
 def export_visualizations(all_workspace_data, export_dir, config, db_name):
     """Export visualizations, visualization-metrics, and visualization-attributes relationships"""
 
-    client = get_api_client(config)
+    client = get_api_client(config=config)
     all_processed_visualizations = []
     all_processed_metric_relationships = []
     all_processed_attribute_relationships = []
@@ -810,7 +811,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name):
 def export_dashboards(all_workspace_data, export_dir, config, db_name):
     """Export dashboards, dashboard-visualization relationships, and dashboard-plugin relationships"""
 
-    client = get_api_client(config)
+    client = get_api_client(config=config)
     all_processed_dashboards = []
     all_processed_relationships = []
     all_processed_plugin_relationships = []
@@ -1347,7 +1348,7 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name):
     # Note: Child workspace DATA (metrics, dashboards, etc.) is still conditional on INCLUDE_CHILD_WORKSPACES
 
     # Get the parent workspace info
-    client = get_api_client(config)
+    client = get_api_client(config=config)
     parent_workspace_id = client["workspace_id"]
     parent_workspace_name = f"Parent Workspace ({parent_workspace_id})"
 
@@ -1993,6 +1994,10 @@ def export_all_metadata(
     if export_dir:
         Path(export_dir).mkdir(parents=True, exist_ok=True)
 
+    # Validate workspace exists before starting (fail-fast approach)
+    print("Validating workspace access...")
+    validate_workspace_exists(config=config)
+
     # Fetch all data from all workspaces
     print("Fetching data from GoodData API...")
     all_workspace_data = fetch_all_workspace_data(config)
@@ -2052,7 +2057,7 @@ def export_all_metadata(
         print("Skipping post-export processing (multi-workspace mode)")
 
     # Get workspace ID from API client
-    client = get_api_client(config)
+    client = get_api_client(config=config)
     workspace_id = client.get("workspace_id", "default")
     store_workspace_metadata(db_path, config)
 
