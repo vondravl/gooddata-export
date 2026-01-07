@@ -723,3 +723,62 @@ def process_workspaces(
         )
 
     return processed_data
+
+
+def process_plugins(data: list[dict], workspace_id: str | None = None) -> list[dict]:
+    """Process dashboard plugin data into uniform format"""
+    processed_data = []
+    for obj in data:
+        # Determine origin type
+        origin_type = "NATIVE"
+        if "meta" in obj and "origin" in obj["meta"]:
+            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
+
+        content = obj.get("attributes", {}).get("content", {})
+
+        processed_data.append(
+            {
+                "plugin_id": obj["id"],
+                "title": obj["attributes"]["title"],
+                "description": obj["attributes"].get("description", ""),
+                "url": content.get("url", ""),
+                "version": content.get("version", ""),
+                "created_at": obj["attributes"].get("createdAt", ""),
+                "workspace_id": workspace_id,
+                "origin_type": origin_type,
+                "content": obj,
+            }
+        )
+    return processed_data
+
+
+def process_dashboards_plugins(
+    dashboard_data: list[dict], workspace_id: str | None = None
+) -> list[dict]:
+    """Extract plugin IDs used in each dashboard"""
+    relationships = []
+    added_relationships = set()
+
+    for dash in dashboard_data:
+        content = dash["attributes"]["content"]
+        plugins = content.get("plugins", [])
+
+        for plugin_entry in plugins:
+            plugin_id = plugin_entry.get("plugin", {}).get("identifier", {}).get("id")
+
+            if plugin_id:
+                key = (dash["id"], plugin_id, workspace_id)
+                if key not in added_relationships:
+                    relationships.append(
+                        {
+                            "dashboard_id": dash["id"],
+                            "plugin_id": plugin_id,
+                            "workspace_id": workspace_id,
+                        }
+                    )
+                    added_relationships.add(key)
+
+    return sorted(
+        relationships,
+        key=lambda x: (x["dashboard_id"], x["plugin_id"]),
+    )

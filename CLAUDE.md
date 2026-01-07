@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/claude-code) when working 
 
 GoodData Export is a Python library for exporting GoodData workspace metadata to SQLite databases and CSV files. It fetches metrics, dashboards, visualizations, and LDM (Logical Data Model) information from the GoodData API and stores them locally for analysis.
 
-**This is primarily used as a package.** When making changes:
+**This is a public package.** When making changes:
 
 1. Bump the version in `pyproject.toml`:
    ```toml
@@ -14,6 +14,15 @@ GoodData Export is a Python library for exporting GoodData workspace metadata to
    ```
 
 2. Update `CHANGELOG.md` with the changes (follow [Keep a Changelog](https://keepachangelog.com/) format)
+
+## Security Considerations
+
+This is a **public package**. Before committing:
+
+- Never commit `.env*` files (already in .gitignore)
+- Never include real API tokens, workspace IDs, or customer data in code/tests
+- Use mock data or placeholders in examples and tests
+- Review diffs for accidentally exposed credentials or PII
 
 ## Key Commands
 

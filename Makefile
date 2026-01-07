@@ -1,5 +1,13 @@
 .DEFAULT_GOAL := help
 
+# Reusable function to check for venv
+define check_venv
+	@if [ ! -d "venv" ]; then \
+		echo "Virtual environment not found. Run 'make venv' first."; \
+		exit 1; \
+	fi
+endef
+
 help:
 	@echo "GoodData Export - Available commands:"
 	@echo ""
@@ -13,6 +21,10 @@ help:
 	@echo "  make export       - Export data only (skip post-processing)"
 	@echo "  make enrich       - Run enrichment/procedures on existing database"
 	@echo "  make export-enrich - Full export + enrichment"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test         - Run tests with pytest"
+	@echo "  make test-cov     - Run tests with coverage report"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make ruff-lint    - Check and auto-fix linting issues with ruff"
@@ -39,18 +51,12 @@ install:
 	pip install -e .
 
 export:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
+	$(call check_venv)
 	@echo "📤 Running export only (skipping post-processing)..."
 	venv/bin/python main.py export --skip-post-export
 
 enrich:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
+	$(call check_venv)
 	@if [ -z "$(DB)" ]; then \
 		echo "📊 Running enrichment on default database..."; \
 		venv/bin/python main.py enrich --db-path output/db/gooddata_export.db; \
@@ -62,33 +68,33 @@ enrich:
 run: export-enrich
 
 export-enrich:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
+	$(call check_venv)
 	@echo "📤📊 Running full export + enrichment workflow..."
 	venv/bin/python main.py export
 
 ruff-lint:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
+	$(call check_venv)
 	@echo "🔍 Checking Python with Ruff..."
 	@venv/bin/ruff check . && venv/bin/ruff format --check --diff .
 
 ruff-format:
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
+	$(call check_venv)
 	@echo "🔧 Formatting Python with Ruff..."
 	@venv/bin/ruff check --fix . && venv/bin/ruff format .
+
+test:
+	$(call check_venv)
+	@echo "🧪 Running tests..."
+	@venv/bin/pytest tests/ -v
+
+test-cov:
+	$(call check_venv)
+	@echo "🧪 Running tests with coverage..."
+	@venv/bin/pytest tests/ --cov=gooddata_export --cov-report=term-missing
 
 clean:
 	rm -rf venv build/ dist/ *.egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-.PHONY: help venv dev install export enrich run export-enrich ruff-lint ruff-format clean
-
+.PHONY: help venv dev install export enrich run export-enrich ruff-lint ruff-format test test-cov clean

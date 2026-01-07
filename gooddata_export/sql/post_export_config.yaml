@@ -62,6 +62,12 @@ views:
     category: usage
     dependencies: []
 
+  v_dashboards_plugins:
+    sql_file: views/v_dashboards_plugins.sql
+    description: Dashboard-plugin relationships showing which plugins are used by each dashboard
+    category: usage
+    dependencies: []
+
   v_dashboards_tags:
     sql_file: views/v_dashboards_tags.sql
     description: Unnests dashboard tags into individual rows
