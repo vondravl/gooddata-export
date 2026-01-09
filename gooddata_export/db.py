@@ -3,10 +3,26 @@
 import datetime
 import logging
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def database_connection(db_name):
+    """Context manager for database connections.
+
+    Usage:
+        with database_connection(db_name) as conn:
+            setup_table(conn, "table_name", columns)
+            conn.commit()
+    """
+    conn = connect_database(db_name)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def connect_database(db_name):
@@ -30,6 +46,26 @@ def setup_table(conn, table_name, columns):
     )
     cursor.execute(f"CREATE TABLE {table_name} ({columns_sql})")
     return cursor
+
+
+def setup_tables(conn, tables: list[tuple[str, dict]]):
+    """Set up multiple tables and commit.
+
+    Convenience function for export functions that create multiple related tables.
+
+    Args:
+        conn: Database connection
+        tables: List of (table_name, column_schema) tuples
+
+    Example:
+        setup_tables(conn, [
+            ("dashboards", dashboard_columns),
+            ("dashboards_visualizations", relationship_columns),
+        ])
+    """
+    for table_name, columns in tables:
+        setup_table(conn, table_name, columns)
+    conn.commit()
 
 
 def ensure_dictionary_metadata_table(conn):
@@ -65,13 +101,19 @@ def upsert_dictionary_metadata(conn, data):
         conn.commit()
 
 
-def store_workspace_metadata(db_path, config, update_timestamp: bool = True):
+def store_workspace_metadata(
+    db_path,
+    config,
+    update_timestamp: bool = True,
+    export_mode: str = "api",
+):
     """Store the current workspace_id and optionally update timestamp in the database metadata.
 
     Args:
         db_path: Path to the database file
         config: ExportConfig instance with workspace and API information
         update_timestamp: Whether to update the last_updated timestamp
+        export_mode: Source of data - "api" (from GoodData API) or "local" (from layout.json)
 
     When switching databases for viewing, pass update_timestamp=False to preserve the original
     refresh time stored in the workspace-specific database file.
@@ -83,6 +125,7 @@ def store_workspace_metadata(db_path, config, update_timestamp: bool = True):
         payload = {
             "workspace_id": config.WORKSPACE_ID,
             "base_url": config.BASE_URL or "",
+            "export_mode": export_mode,
         }
         if update_timestamp:
             payload["last_updated"] = datetime.datetime.now().strftime(

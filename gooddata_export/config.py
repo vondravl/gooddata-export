@@ -4,6 +4,7 @@ This module handles configuration for the export functionality.
 Unlike the dictionary app, this has no Flask dependencies.
 """
 
+from copy import copy
 from os import getenv
 
 from dotenv import load_dotenv
@@ -160,3 +161,13 @@ class ExportConfig:
     def ENABLE_RICH_TEXT_EXTRACTION(self, value):
         self._enable_rich_text_extraction = bool(value)
         self._rich_text_explicit = True
+
+    def with_rich_text_disabled(self) -> "ExportConfig":
+        """Return a copy of this config with rich text extraction disabled.
+
+        Used when processing child workspaces where rich text extraction
+        should be skipped to avoid duplicate API calls.
+        """
+        new_config = copy(self)
+        new_config.ENABLE_RICH_TEXT_EXTRACTION = False
+        return new_config

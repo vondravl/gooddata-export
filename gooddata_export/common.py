@@ -8,6 +8,16 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+class ExportError(Exception):
+    """Exception raised for errors during the export process.
+
+    This exception is used when export operations fail due to
+    data processing errors, API errors, or configuration issues.
+    """
+
+    pass
+
+
 def raise_for_connection_error(
     context: str,
     error: Exception,

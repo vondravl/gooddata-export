@@ -11,11 +11,13 @@ It is organized into submodules:
 # Re-export public API from submodules
 from gooddata_export.process.common import (
     DEBUG_RICH_TEXT,
+    UniqueRelationshipTracker,
     get_debug_output_dir,
     import_time_iso,
     sort_tags,
 )
 from gooddata_export.process.entities import (
+    entity_to_layout,
     fetch_child_workspaces,
     fetch_data,
     process_dashboards,
@@ -29,6 +31,7 @@ from gooddata_export.process.entities import (
     process_visualizations_attributes,
     process_visualizations_metrics,
     process_workspaces,
+    transform_entities_to_layout,
     validate_workspace_exists,
 )
 from gooddata_export.process.layout import (
@@ -54,13 +57,18 @@ from gooddata_export.process.rich_text import (
 __all__ = [
     # Common
     "DEBUG_RICH_TEXT",
+    "UniqueRelationshipTracker",
     "get_debug_output_dir",
     "import_time_iso",
     "sort_tags",
-    # Entities
+    # Entities - transformation
+    "entity_to_layout",
+    "transform_entities_to_layout",
+    # Entities - fetching
     "fetch_data",
     "fetch_child_workspaces",
     "validate_workspace_exists",
+    # Entities - processing
     "process_metrics",
     "process_plugins",
     "process_visualizations",

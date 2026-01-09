@@ -147,3 +147,67 @@ class TestExportConfigChildDataTypes:
         with patch.dict(os.environ, {}, clear=True):
             config = ExportConfig(load_from_env=False)
             assert config.CHILD_WORKSPACE_DATA_TYPES == []
+
+
+class TestExportConfigWithRichTextDisabled:
+    """Tests for with_rich_text_disabled() method."""
+
+    def test_returns_new_instance(self):
+        """with_rich_text_disabled() returns a new config instance."""
+        config = ExportConfig(load_from_env=False)
+        new_config = config.with_rich_text_disabled()
+
+        assert new_config is not config
+
+    def test_new_instance_has_rich_text_disabled(self):
+        """Returned config has ENABLE_RICH_TEXT_EXTRACTION set to False."""
+        config = ExportConfig(enable_rich_text_extraction=True, load_from_env=False)
+        assert config.ENABLE_RICH_TEXT_EXTRACTION is True
+
+        new_config = config.with_rich_text_disabled()
+
+        assert new_config.ENABLE_RICH_TEXT_EXTRACTION is False
+
+    def test_original_config_unchanged(self):
+        """Original config is not mutated by with_rich_text_disabled()."""
+        config = ExportConfig(enable_rich_text_extraction=True, load_from_env=False)
+
+        config.with_rich_text_disabled()
+
+        assert config.ENABLE_RICH_TEXT_EXTRACTION is True
+
+    def test_works_when_already_disabled(self):
+        """Method works correctly when rich text is already disabled."""
+        config = ExportConfig(enable_rich_text_extraction=False, load_from_env=False)
+        assert config.ENABLE_RICH_TEXT_EXTRACTION is False
+
+        new_config = config.with_rich_text_disabled()
+
+        assert new_config.ENABLE_RICH_TEXT_EXTRACTION is False
+        assert new_config is not config
+
+    def test_preserves_other_config_properties(self):
+        """Other config properties are preserved in the copy."""
+        config = ExportConfig(
+            base_url="https://test.example.com",
+            workspace_id="test-workspace",
+            bearer_token="test-token",
+            include_child_workspaces=True,
+            enable_post_export=False,
+            enable_rich_text_extraction=True,
+            max_parallel_workspaces=10,
+            load_from_env=False,
+        )
+
+        new_config = config.with_rich_text_disabled()
+
+        # Rich text should be disabled
+        assert new_config.ENABLE_RICH_TEXT_EXTRACTION is False
+
+        # All other properties should be preserved
+        assert new_config.BASE_URL == "https://test.example.com"
+        assert new_config.WORKSPACE_ID == "test-workspace"
+        assert new_config.BEARER_TOKEN == "test-token"
+        assert new_config.INCLUDE_CHILD_WORKSPACES is True
+        assert new_config.ENABLE_POST_EXPORT is False
+        assert new_config.MAX_PARALLEL_WORKSPACES == 10
