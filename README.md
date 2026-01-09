@@ -6,6 +6,7 @@ A Python library for exporting GoodData workspace metadata to SQLite databases a
 
 - **Multiple Export Formats**: Export to SQLite, CSV, or both
 - **Multi-Workspace Support**: Process parent and child workspaces in parallel
+- **Local Layout JSON Support**: Process local JSON-based layout files without API calls
 - **Flexible Configuration**: Configure via Python API or environment variables
 - **Post-Processing**: Automatic duplicate detection and relationship analysis
 - **Rich Text Extraction**: Optional extraction of metrics/insights from dashboard rich text widgets
@@ -188,6 +189,49 @@ result = export_metadata(
 )
 ```
 
+### Local Layout JSON Export (No API Calls)
+
+Process local layout files without connecting to GoodData API. This is useful for:
+- Tagging workflows on feature branches before changes are deployed
+- Offline analysis of exported layout files
+- CI/CD pipelines without API access
+
+```python
+import json
+from gooddata_export import export_metadata
+
+# Load layout from file (exported via gooddata-cli or API)
+with open("layout.json") as f:
+    layout = json.load(f)
+
+result = export_metadata(
+    base_url="https://your-instance.gooddata.com",  # Used for URL generation only
+    workspace_id="my_workspace",
+    layout_json=layout,  # No API calls made
+    export_formats=["sqlite"],
+    run_post_export=True
+)
+```
+
+Expected layout format:
+```json
+{
+  "analytics": {
+    "metrics": [...],
+    "visualizationObjects": [...],
+    "analyticalDashboards": [...],
+    "filterContexts": [...],
+    "dashboardPlugins": [...]
+  },
+  "ldm": {
+    "datasets": [...],
+    ...
+  }
+}
+```
+
+Note: When using `layout_json`, tables that would be stale (users, user_groups, user_group_members) are automatically truncated.
+
 ### Complete Export with All Features
 
 ```python
@@ -195,7 +239,6 @@ result = export_metadata(
     base_url="https://your-instance.gooddata.com",
     workspace_id="your_workspace_id",
     bearer_token="your_token",
-    output_dir="output",
     export_formats=["sqlite", "csv"],
     enable_rich_text_extraction=True,
     run_post_export=True,
@@ -209,11 +252,11 @@ result = export_metadata(
 
 - `base_url`: GoodData API base URL
 - `workspace_id`: Workspace ID to export
-- `bearer_token`: API authentication token
+- `bearer_token`: API authentication token (required unless `layout_json` is provided)
 
 ### Optional Parameters
 
-- `output_dir`: Output directory (default: "output")
+- `layout_json`: Local layout data dict - when provided, skips API fetch and uses this data directly
 - `export_formats`: List of ["sqlite"], ["csv"], or both (default: both)
 - `include_child_workspaces`: Fetch data from child workspaces (default: False)
   - Note: The workspaces table is always created with child workspace list; this flag controls whether to fetch child workspace DATA (metrics, dashboards, etc.)

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-09
+
+### Added
+- **Local layout JSON support**: New `layout_json` parameter in `export_metadata()` allows processing local JSON-based layout data instead of fetching from GoodData API
+  - Enables tagging workflows on feature branches before changes are deployed
+  - When `layout_json` is provided, `bearer_token` becomes optional (no API calls made)
+  - Expected format: `{"analytics": {"metrics": [...], ...}, "ldm": {"datasets": [...], ...}}`
+- **Dashboard tabs support**: Tabbed dashboards (`content.tabs[]`) are now properly processed
+  - New `tab_id` column in `dashboards_visualizations` table (NULL for legacy non-tabbed dashboards)
+  - Visualizations from all tabs are extracted with their tab identifier (`localIdentifier`)
+  - View `v_dashboards_visualizations` updated to include `tab_id` and `from_rich_text` columns
+  - Backward compatible: legacy dashboards (`content.layout.sections`) continue to work
+- New `entity_to_layout()` and `transform_entities_to_layout()` functions for converting entity API format to layout format
+- New `constants.py` module with `LOCAL_MODE_STALE_TABLES` for centralized configuration
+- Automatic truncation of stale tables (`users`, `user_groups`, `user_group_members`, `plugins`) when using `layout_json` mode to prevent confusion from previous API exports
+- New `export_mode` field in `dictionary_metadata` table: `"api"` or `"local"` to indicate data source
+
+### Changed
+- Parent workspace now fetches analytics data from `analyticsModel` endpoint (single API call) instead of multiple entity API calls
+  - More efficient: one call vs five separate calls
+  - Returns data in layout format (same as local layout.json files)
+- Child workspace data is transformed from entity format to layout format for uniform processing
+- All `process_*` functions now accept layout format (flat structure with `obj["title"]` instead of `obj["attributes"]["title"]`)
+- Process functions now handle missing fields gracefully with defaults for `createdAt`, `modifiedAt`, `areRelationsValid`, `isHidden`, `originType`
+- **Refactored `export.py`** (2173 lines) into modular `export/` package for better maintainability:
+  - `export/__init__.py`: Main orchestration (`export_all_metadata`)
+  - `export/fetch.py`: API data fetching functions
+  - `export/writers.py`: Database/CSV writing functions
+  - `export/utils.py`: Export utilities (write_to_csv, execute_with_retry)
+
 ## [1.2.1] - 2026-01-07
 
 ### Added

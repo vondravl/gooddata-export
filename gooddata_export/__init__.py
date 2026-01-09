@@ -10,13 +10,14 @@ Basic usage:
         base_url="https://your-instance.gooddata.com",
         workspace_id="your_workspace_id",
         bearer_token="your_api_token",
-        output_dir="output",
         export_formats=["sqlite", "csv"]
     )
-
-    print(f"Database created at: {result['db_path']}")
+    # result contains: db_path, workspace_db_path, csv_dir, workspace_count, workspace_id
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+from gooddata_export.common import ExportError
 from gooddata_export.config import ExportConfig
 from gooddata_export.export import export_all_metadata
 
@@ -24,7 +25,7 @@ from gooddata_export.export import export_all_metadata
 def export_metadata(
     base_url: str,
     workspace_id: str,
-    bearer_token: str,
+    bearer_token: str | None = None,
     csv_dir: str = "output/metadata_csv",
     export_formats=None,
     include_child_workspaces: bool = False,
@@ -34,13 +35,18 @@ def export_metadata(
     run_post_export: bool = True,
     debug: bool = False,
     db_path: str = "output/db/gooddata_export.db",
+    layout_json: dict | None = None,
 ):
     """Export GoodData metadata to SQLite and/or CSV.
+
+    Supports two modes:
+    1. API mode (default): Fetches data from GoodData API using bearer_token
+    2. Local mode: Uses provided layout_json data directly (no API calls)
 
     Args:
         base_url: GoodData API base URL (e.g., "https://your-instance.gooddata.com")
         workspace_id: GoodData workspace ID to export
-        bearer_token: API authentication token
+        bearer_token: API authentication token (required for API mode, optional for local mode)
         csv_dir: Directory for CSV files (default: "output/metadata_csv")
         export_formats: List of formats to export - ["sqlite"], ["csv"], or ["sqlite", "csv"] (default: both)
         include_child_workspaces: Whether to process child workspaces (default: False)
@@ -52,6 +58,9 @@ def export_metadata(
         run_post_export: Whether to run post-export SQL processing for duplicate detection (default: True)
         debug: Enable debug logging (default: False)
         db_path: Custom path for the SQLite database (default: "output/db/gooddata_export.db")
+        layout_json: Optional local layout JSON data. When provided, skips API fetch
+            and uses this data directly. Expected format:
+            {"analytics": {"metrics": [...], ...}, "ldm": {"datasets": [...], ...}}
 
     Returns:
         dict: Export results containing:
@@ -62,23 +71,25 @@ def export_metadata(
             - workspace_id: ID of the exported workspace
 
     Example:
-        # Export everything to both SQLite and CSV
+        # Export from GoodData API
         result = export_metadata(
             base_url="https://my-instance.gooddata.com",
             workspace_id="production_workspace",
             bearer_token="your_token_here"
         )
 
-        # Export only to SQLite for maximum speed
+        # Export from local layout.json file (no API calls)
+        import json
+        with open("layout.json") as f:
+            layout = json.load(f)
         result = export_metadata(
-            base_url="https://my-instance.gooddata.com",
-            workspace_id="production_workspace",
-            bearer_token="your_token_here",
-            export_formats=["sqlite"],
-            run_post_export=False  # Skip duplicate detection for speed
+            base_url="https://my-instance.gooddata.com",  # Used for URL generation
+            workspace_id="my_workspace",
+            layout_json=layout,
+            export_formats=["sqlite"]
         )
 
-        # Export with child workspaces
+        # Export with child workspaces (API mode only)
         result = export_metadata(
             base_url="https://my-instance.gooddata.com",
             workspace_id="parent_workspace",
@@ -88,6 +99,10 @@ def export_metadata(
             max_parallel_workspaces=5
         )
     """
+    # Validate: bearer_token required unless layout_json provided
+    if layout_json is None and bearer_token is None:
+        raise ValueError("bearer_token is required when not using layout_json")
+
     if export_formats is None:
         export_formats = ["sqlite", "csv"]
 
@@ -95,7 +110,7 @@ def export_metadata(
     config = ExportConfig(
         base_url=base_url,
         workspace_id=workspace_id,
-        bearer_token=bearer_token,
+        bearer_token=bearer_token or "",  # Empty string when not needed
         include_child_workspaces=include_child_workspaces,
         child_workspace_data_types=child_workspace_data_types,
         max_parallel_workspaces=max_parallel_workspaces,
@@ -111,8 +126,13 @@ def export_metadata(
         db_path=db_path,
         export_formats=export_formats,
         run_post_export=run_post_export,
+        layout_json=layout_json,
     )
 
 
-__all__ = ["export_metadata", "ExportConfig", "export_all_metadata"]
-__version__ = "1.0.0"
+__all__ = ["export_metadata", "ExportConfig", "ExportError", "export_all_metadata"]
+
+try:
+    __version__ = version("gooddata-export")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"  # Fallback for development without install

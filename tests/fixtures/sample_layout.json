@@ -1,0 +1,401 @@
+{
+  "analytics": {
+    "metrics": [
+      {
+        "id": "metric_total_revenue",
+        "title": "Total Revenue",
+        "description": "Sum of all revenue",
+        "tags": ["finance", "kpi"],
+        "content": {
+          "maql": "SELECT SUM({fact/revenue})",
+          "format": "#,##0.00"
+        },
+        "createdAt": "2024-01-15T10:00:00Z",
+        "modifiedAt": "2024-06-01T14:30:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      },
+      {
+        "id": "metric_avg_order_value",
+        "title": "Average Order Value",
+        "description": "Revenue divided by order count",
+        "tags": ["finance"],
+        "content": {
+          "maql": "SELECT {metric/metric_total_revenue} / COUNT({attr/order_id})",
+          "format": "#,##0.00"
+        },
+        "createdAt": "2024-02-01T09:00:00Z",
+        "modifiedAt": "2024-02-01T09:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      },
+      {
+        "id": "metric_order_count",
+        "title": "Order Count",
+        "description": "Total number of orders",
+        "tags": ["operations"],
+        "content": {
+          "maql": "SELECT COUNT({attr/order_id})",
+          "format": "#,##0"
+        },
+        "createdAt": "2024-01-10T08:00:00Z",
+        "modifiedAt": "2024-03-15T11:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      }
+    ],
+    "visualizationObjects": [
+      {
+        "id": "viz_revenue_trend",
+        "title": "Revenue Trend",
+        "description": "Monthly revenue over time",
+        "tags": ["finance", "trend"],
+        "content": {
+          "visualizationUrl": "local:line",
+          "buckets": [
+            {
+              "localIdentifier": "measures",
+              "items": [
+                {
+                  "measure": {
+                    "localIdentifier": "m1",
+                    "definition": {
+                      "measureDefinition": {
+                        "item": {"identifier": {"id": "metric_total_revenue", "type": "metric"}}
+                      }
+                    },
+                    "title": "Total Revenue"
+                  }
+                }
+              ]
+            },
+            {
+              "localIdentifier": "view",
+              "items": [
+                {
+                  "attribute": {
+                    "localIdentifier": "a1",
+                    "displayForm": {"identifier": {"id": "date.month", "type": "label"}}
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "createdAt": "2024-02-10T10:00:00Z",
+        "modifiedAt": "2024-05-20T16:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      },
+      {
+        "id": "viz_orders_by_region",
+        "title": "Orders by Region",
+        "description": "Order distribution across regions",
+        "tags": ["operations"],
+        "content": {
+          "visualizationUrl": "local:bar",
+          "buckets": [
+            {
+              "localIdentifier": "measures",
+              "items": [
+                {
+                  "measure": {
+                    "localIdentifier": "m1",
+                    "definition": {
+                      "measureDefinition": {
+                        "item": {"identifier": {"id": "metric_order_count", "type": "metric"}}
+                      }
+                    },
+                    "title": "Order Count"
+                  }
+                }
+              ]
+            },
+            {
+              "localIdentifier": "view",
+              "items": [
+                {
+                  "attribute": {
+                    "localIdentifier": "a1",
+                    "displayForm": {"identifier": {"id": "region.name", "type": "label"}}
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "createdAt": "2024-03-01T09:00:00Z",
+        "modifiedAt": "2024-03-01T09:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      },
+      {
+        "id": "viz_avg_order_value",
+        "title": "Average Order Value",
+        "description": "Average value per order",
+        "tags": ["finance"],
+        "content": {
+          "visualizationUrl": "local:headline",
+          "buckets": [
+            {
+              "localIdentifier": "measures",
+              "items": [
+                {
+                  "measure": {
+                    "localIdentifier": "m1",
+                    "definition": {
+                      "measureDefinition": {
+                        "item": {"identifier": {"id": "metric_avg_order_value", "type": "metric"}}
+                      }
+                    },
+                    "title": "Avg Order Value"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "createdAt": "2024-03-15T10:00:00Z",
+        "modifiedAt": "2024-03-15T10:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      }
+    ],
+    "analyticalDashboards": [
+      {
+        "id": "dashboard_executive_overview",
+        "title": "Executive Overview",
+        "description": "High-level KPIs and trends",
+        "tags": ["executive", "kpi"],
+        "content": {
+          "filterContextRef": {
+            "identifier": {"id": "filter_context_default", "type": "filterContext"}
+          },
+          "layout": {
+            "sections": [
+              {
+                "items": [
+                  {
+                    "widget": {
+                      "type": "insight",
+                      "insight": {"identifier": {"id": "viz_revenue_trend", "type": "visualizationObject"}}
+                    },
+                    "size": {"xl": {"gridWidth": 6}}
+                  },
+                  {
+                    "widget": {
+                      "type": "insight",
+                      "insight": {"identifier": {"id": "viz_orders_by_region", "type": "visualizationObject"}}
+                    },
+                    "size": {"xl": {"gridWidth": 6}}
+                  }
+                ]
+              },
+              {
+                "items": [
+                  {
+                    "widget": {
+                      "type": "richText",
+                      "content": "## Summary\nKey metrics: {measure:metric_total_revenue}"
+                    },
+                    "size": {"xl": {"gridWidth": 12}}
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "createdAt": "2024-01-20T10:00:00Z",
+        "modifiedAt": "2024-06-15T09:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      },
+      {
+        "id": "dashboard_tabbed_analytics",
+        "title": "Tabbed Analytics Dashboard",
+        "description": "Dashboard with multiple tabs for different views",
+        "tags": ["analytics", "tabbed"],
+        "content": {
+          "filterContextRef": {
+            "identifier": {"id": "filter_context_default", "type": "filterContext"}
+          },
+          "tabs": [
+            {
+              "localIdentifier": "tab_overview",
+              "title": "Overview",
+              "layout": {
+                "sections": [
+                  {
+                    "items": [
+                      {
+                        "widget": {
+                          "type": "insight",
+                          "insight": {"identifier": {"id": "viz_revenue_trend", "type": "visualizationObject"}}
+                        },
+                        "size": {"xl": {"gridWidth": 12}}
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "localIdentifier": "tab_details",
+              "title": "Details",
+              "layout": {
+                "sections": [
+                  {
+                    "items": [
+                      {
+                        "widget": {
+                          "type": "insight",
+                          "insight": {"identifier": {"id": "viz_orders_by_region", "type": "visualizationObject"}}
+                        },
+                        "size": {"xl": {"gridWidth": 6}}
+                      },
+                      {
+                        "widget": {
+                          "type": "insight",
+                          "insight": {"identifier": {"id": "viz_avg_order_value", "type": "visualizationObject"}}
+                        },
+                        "size": {"xl": {"gridWidth": 6}}
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "createdAt": "2024-04-01T10:00:00Z",
+        "modifiedAt": "2024-06-20T11:00:00Z",
+        "areRelationsValid": true,
+        "isHidden": false
+      }
+    ],
+    "filterContexts": [
+      {
+        "id": "filter_context_default",
+        "title": "Default Filters",
+        "description": "Default date range filter",
+        "content": {
+          "filters": [
+            {
+              "relativeDateFilter": {
+                "dataSet": {"identifier": {"id": "date", "type": "dataset"}},
+                "granularity": "GDC.time.month",
+                "from": -11,
+                "to": 0
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "dashboardPlugins": []
+  },
+  "ldm": {
+    "datasets": [
+      {
+        "id": "orders",
+        "title": "Orders",
+        "description": "Order transactions",
+        "tags": ["core"],
+        "grain": [{"id": "order_id", "type": "attribute"}],
+        "attributes": [
+          {
+            "id": "order_id",
+            "title": "Order ID",
+            "description": "Unique order identifier",
+            "tags": [],
+            "sourceColumn": "ORDER_ID",
+            "sourceColumnDataType": "STRING",
+            "labels": [
+              {
+                "id": "order_id.label",
+                "title": "Order ID",
+                "sourceColumn": "ORDER_ID"
+              }
+            ]
+          },
+          {
+            "id": "region",
+            "title": "Region",
+            "description": "Sales region",
+            "tags": ["geography"],
+            "sourceColumn": "REGION",
+            "sourceColumnDataType": "STRING",
+            "labels": [
+              {
+                "id": "region.name",
+                "title": "Region Name",
+                "sourceColumn": "REGION_NAME"
+              }
+            ]
+          }
+        ],
+        "facts": [
+          {
+            "id": "revenue",
+            "title": "Revenue",
+            "description": "Order revenue amount",
+            "tags": ["finance"],
+            "sourceColumn": "REVENUE",
+            "sourceColumnDataType": "NUMERIC"
+          },
+          {
+            "id": "quantity",
+            "title": "Quantity",
+            "description": "Items ordered",
+            "tags": [],
+            "sourceColumn": "QUANTITY",
+            "sourceColumnDataType": "INT"
+          }
+        ],
+        "references": [
+          {
+            "identifier": {"id": "date", "type": "dataset"},
+            "multivalue": false,
+            "sources": [
+              {
+                "column": "ORDER_DATE",
+                "target": {"id": "date", "type": "date"},
+                "dataType": "DATE"
+              }
+            ]
+          }
+        ],
+        "dataSourceTableId": {
+          "dataSourceId": "datasource_warehouse",
+          "path": ["schema", "ORDERS"]
+        }
+      },
+      {
+        "id": "date",
+        "title": "Date",
+        "description": "Date dimension",
+        "tags": ["time"],
+        "grain": [],
+        "attributes": [
+          {
+            "id": "date.month",
+            "title": "Month",
+            "description": "Calendar month",
+            "tags": [],
+            "sourceColumn": "MONTH",
+            "sourceColumnDataType": "STRING",
+            "labels": [
+              {
+                "id": "date.month",
+                "title": "Month",
+                "sourceColumn": "MONTH_NAME"
+              }
+            ]
+          }
+        ],
+        "facts": [],
+        "references": []
+      }
+    ]
+  }
+}

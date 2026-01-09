@@ -20,12 +20,56 @@ from gooddata_export.process.common import sort_tags
 logger = logging.getLogger(__name__)
 
 
+# -----------------------------------------------------------------------------
+# Entity to Layout Transformation Functions
+# -----------------------------------------------------------------------------
+
+
+def entity_to_layout(obj: dict) -> dict:
+    """Transform entity API format to layout format.
+
+    Entity format (from /api/v1/entities/...):
+        {"id": "x", "attributes": {"title": "...", ...}, "meta": {"origin": {...}}}
+
+    Layout format (from /api/v1/layout/.../analyticsModel or local layout.json):
+        {"id": "x", "title": "...", "content": {...}}
+
+    The layout format is simpler and matches local layout.json files,
+    making it the canonical internal format for processing.
+    """
+    attrs = obj.get("attributes", {})
+    meta = obj.get("meta", {})
+    origin = meta.get("origin", {})
+
+    return {
+        "id": obj["id"],
+        "title": attrs.get("title", ""),
+        "description": attrs.get("description", ""),
+        "tags": attrs.get("tags") or [],
+        "content": attrs.get("content", {}),
+        "createdAt": attrs.get("createdAt", ""),
+        "modifiedAt": attrs.get("modifiedAt", attrs.get("createdAt", "")),
+        "areRelationsValid": attrs.get("areRelationsValid", True),
+        "isHidden": attrs.get("isHidden", False),
+        "originType": origin.get("originType", "NATIVE"),
+    }
+
+
+def transform_entities_to_layout(entities: list[dict]) -> list[dict]:
+    """Transform list of entity API objects to layout format.
+
+    Used when fetching from child workspaces via entity API, converting
+    to the canonical layout format for uniform processing.
+    """
+    return [entity_to_layout(e) for e in entities]
+
+
 def fetch_data(endpoint, client=None, config=None, max_retries=3):
     """Fetch data from GoodData API with pagination and retry mechanism"""
     client = get_api_client(config=config, client=client)
 
     base_url = f"{client['base_url']}/api/v1/entities/workspaces/{client['workspace_id']}/{endpoint}"
-    logger.info(f"Fetching {endpoint} from workspace: {client['workspace_id']}")
+    logger.info("Fetching %s from workspace: %s", endpoint, client["workspace_id"])
 
     all_data = []
     page = 0
@@ -36,7 +80,7 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
         params["page"] = str(page)
 
         url = base_url
-        logger.debug(f"Fetching {endpoint} page {page}")
+        logger.debug("Fetching %s page %d", endpoint, page)
 
         page_success = False
 
@@ -48,7 +92,12 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
                     # Add exponential backoff delay
                     delay = 2**attempt
                     logger.info(
-                        f"Retrying {endpoint} page {page} (attempt {attempt + 1}/{max_retries + 1}) after {delay}s delay"
+                        "Retrying %s page %d (attempt %d/%d) after %ds delay",
+                        endpoint,
+                        page,
+                        attempt + 1,
+                        max_retries + 1,
+                        delay,
                     )
                     time.sleep(delay)
 
@@ -66,7 +115,7 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
                         break
 
                     all_data.extend(page_data)
-                    logger.debug(f"Page {page}: Found {len(page_data)} items")
+                    logger.debug("Page %d: Found %d items", page, len(page_data))
                     page_success = True
                     break  # Success, exit retry loop
 
@@ -74,8 +123,11 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
                     # Server errors (5xx) are retryable
                     if attempt < max_retries:
                         logger.warning(
-                            f"Server error for {endpoint} page {page} "
-                            f"(HTTP {response.status_code}, attempt {attempt + 1})"
+                            "Server error for %s page %d (HTTP %d, attempt %d)",
+                            endpoint,
+                            page,
+                            response.status_code,
+                            attempt + 1,
                         )
                         continue
                     # Terminal - raises, never returns
@@ -92,7 +144,11 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
             ) as e:
                 if attempt < max_retries:
                     logger.warning(
-                        f"Timeout/connection error for {endpoint} page {page} (attempt {attempt + 1}): {str(e)}"
+                        "Timeout/connection error for %s page %d (attempt %d): %s",
+                        endpoint,
+                        page,
+                        attempt + 1,
+                        e,
                     )
                     continue
                 else:
@@ -107,9 +163,8 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
                 raise_for_request_error(endpoint, e, base_url=client.get("base_url"))
 
             except Exception as e:
-                error_msg = f"Unexpected error fetching {endpoint}: {str(e)}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
+                logger.error("Unexpected error fetching %s: %s", endpoint, e)
+                raise RuntimeError(f"Unexpected error fetching {endpoint}: {e}")
 
         # If page fetch was not successful, break pagination loop
         if not page_success:
@@ -124,7 +179,7 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
 
     # Process all accumulated data
     if not all_data:
-        logger.warning(f"{endpoint}: No data received (empty array)")
+        logger.warning("%s: No data received (empty array)", endpoint)
         return None
 
     # Filter to NATIVE origin for all entity endpoints fetched via this function
@@ -142,13 +197,16 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
         # Log with page count only if more than 1 page
         if page > 1:
             logger.info(
-                f"{endpoint}: Successfully fetched {len(sorted_data)} items across {page} pages"
+                "%s: Successfully fetched %d items across %d pages",
+                endpoint,
+                len(sorted_data),
+                page,
             )
         else:
-            logger.info(f"{endpoint}: Successfully fetched {len(sorted_data)} items")
+            logger.info("%s: Successfully fetched %d items", endpoint, len(sorted_data))
         return sorted_data
     except KeyError as sort_error:
-        logger.warning(f"{endpoint}: Could not sort data - {sort_error}")
+        logger.warning("%s: Could not sort data - %s", endpoint, sort_error)
         return filtered_data
 
 
@@ -166,7 +224,7 @@ def validate_workspace_exists(
     workspace_id = client["workspace_id"]
     url = f"{client['base_url']}/api/v1/entities/workspaces/{workspace_id}"
 
-    logger.info(f"Validating workspace: {workspace_id}")
+    logger.info("Validating workspace: %s", workspace_id)
     try:
         response = requests.get(url, headers=client["headers"], timeout=30)
         if response.status_code == 200:
@@ -196,17 +254,19 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
             }
 
             logger.debug(
-                f"Fetching child workspaces for parent: {parent_workspace_id} (page {page})"
+                "Fetching child workspaces for parent: %s (page %d)",
+                parent_workspace_id,
+                page,
             )
-            logger.debug(f"Request URL: {url}")
-            logger.debug(f"Request params: {params}")
+            logger.debug("Request URL: %s", url)
+            logger.debug("Request params: %s", params)
 
             response = requests.get(
                 url, params=params, headers=client["headers"], timeout=30
             )
 
             logger.debug(
-                f"Child workspaces API response status: {response.status_code}"
+                "Child workspaces API response status: %d", response.status_code
             )
 
             if response.status_code == 200:
@@ -220,7 +280,7 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
                 all_workspaces.extend(data)
                 page += 1
 
-                logger.debug(f"Page {page - 1}: Found {len(data)} child workspaces")
+                logger.debug("Page %d: Found %d child workspaces", page - 1, len(data))
 
             else:
                 raise_for_api_error(response, "child workspaces", parent_workspace_id)
@@ -229,13 +289,17 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
             # Log with page count only if more than 1 page
             if page > 1:
                 logger.info(
-                    f"Found {len(all_workspaces)} total child workspaces across {page} pages"
+                    "Found %d total child workspaces across %d pages",
+                    len(all_workspaces),
+                    page,
                 )
             else:
-                logger.info(f"Found {len(all_workspaces)} total child workspaces")
+                logger.info("Found %d total child workspaces", len(all_workspaces))
             for child in all_workspaces:
                 logger.debug(
-                    f"Child workspace: {child['attributes']['name']} ({child['id']})"
+                    "Child workspace: %s (%s)",
+                    child["attributes"]["name"],
+                    child["id"],
                 )
             return all_workspaces
         else:
@@ -248,36 +312,33 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
         )
 
     except Exception as e:
-        error_msg = f"Unexpected error fetching child workspaces: {str(e)}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
+        logger.error("Unexpected error fetching child workspaces: %s", e)
+        raise RuntimeError(f"Unexpected error fetching child workspaces: {e}")
 
 
 def process_metrics(data, workspace_id=None):
-    """Process metrics data into uniform format"""
+    """Process metrics data (layout format) into uniform format.
+
+    Accepts layout format where fields are at top level:
+        {"id": "x", "title": "...", "content": {"maql": "...", "format": "..."}}
+    """
     processed_data = []
     for obj in data:
-        # Determine origin type - check if meta.origin exists and get originType
-        origin_type = "NATIVE"  # default
-        if "meta" in obj and "origin" in obj["meta"]:
-            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
-
+        content = obj.get("content", {})
         processed_data.append(
             {
                 "metric_id": obj["id"],
-                "title": obj["attributes"]["title"],
-                "description": obj["attributes"]["description"],
-                "tags": str(sort_tags(obj["attributes"].get("tags", ""))),
-                "maql": obj["attributes"]["content"]["maql"],
-                "format": obj["attributes"]["content"]["format"],
-                "created_at": obj["attributes"]["createdAt"],
-                "modified_at": obj["attributes"].get(
-                    "modifiedAt", obj["attributes"]["createdAt"]
-                ),
-                "is_valid": obj["attributes"]["areRelationsValid"],
-                "is_hidden": obj["attributes"].get("isHidden", False),
+                "title": obj.get("title", ""),
+                "description": obj.get("description", ""),
+                "tags": str(sort_tags(obj.get("tags") or [])),
+                "maql": content.get("maql", ""),
+                "format": content.get("format", ""),
+                "created_at": obj.get("createdAt", ""),
+                "modified_at": obj.get("modifiedAt", obj.get("createdAt", "")),
+                "is_valid": obj.get("areRelationsValid", True),
+                "is_hidden": obj.get("isHidden", False),
                 "workspace_id": workspace_id,
-                "origin_type": origin_type,
+                "origin_type": obj.get("originType", "NATIVE"),
                 "content": obj,  # Store the original JSON object
             }
         )
@@ -285,46 +346,48 @@ def process_metrics(data, workspace_id=None):
 
 
 def process_visualizations(data, base_url, workspace_id):
-    """Process visualization data into uniform format"""
+    """Process visualization data (layout format) into uniform format.
+
+    Accepts layout format where fields are at top level:
+        {"id": "x", "title": "...", "content": {"visualizationUrl": "..."}}
+    """
     processed_data = []
     for obj in data:
         url_link = f"{base_url}/analyze/#/{workspace_id}/{obj['id']}/edit"
-
-        # Determine origin type - check if meta.origin exists and get originType
-        origin_type = "NATIVE"  # default
-        if "meta" in obj and "origin" in obj["meta"]:
-            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
+        content = obj.get("content", {})
 
         processed_data.append(
             {
                 "visualization_id": obj["id"],
-                "title": obj["attributes"]["title"],
-                "description": obj["attributes"]["description"],
-                "tags": str(sort_tags(obj["attributes"].get("tags", ""))),
-                "visualization_url": obj["attributes"]["content"]["visualizationUrl"],
-                "created_at": obj["attributes"]["createdAt"],
-                "modified_at": obj["attributes"].get(
-                    "modifiedAt", obj["attributes"]["createdAt"]
-                ),
+                "title": obj.get("title", ""),
+                "description": obj.get("description", ""),
+                "tags": str(sort_tags(obj.get("tags") or [])),
+                "visualization_url": content.get("visualizationUrl", ""),
+                "created_at": obj.get("createdAt", ""),
+                "modified_at": obj.get("modifiedAt", obj.get("createdAt", "")),
                 "url_link": url_link,
                 "workspace_id": workspace_id,
-                "origin_type": origin_type,
+                "origin_type": obj.get("originType", "NATIVE"),
                 "content": obj,
-                "is_valid": obj["attributes"]["areRelationsValid"],
-                "is_hidden": obj["attributes"].get("isHidden", False),
+                "is_valid": obj.get("areRelationsValid", True),
+                "is_hidden": obj.get("isHidden", False),
             }
         )
     return processed_data
 
 
 def process_visualizations_metrics(visualization_data, workspace_id=None):
-    """Extract unique metric IDs used in each visualization with their labels"""
+    """Extract unique metric IDs used in each visualization with their labels.
+
+    Accepts layout format where content is at top level:
+        {"id": "x", "content": {"buckets": [...]}}
+    """
     # Using dict to store unique combinations with labels
     # Key: (viz_id, metric_id, workspace_id), Value: label
     unique_relationships = {}
 
     for viz in visualization_data:
-        content = viz["attributes"]["content"]
+        content = viz.get("content", {})
 
         if "buckets" not in content:
             continue
@@ -361,13 +424,17 @@ def process_visualizations_metrics(visualization_data, workspace_id=None):
 
 
 def process_visualizations_attributes(visualization_data, workspace_id=None):
-    """Extract unique attribute IDs (display forms) used in each visualization with their labels"""
+    """Extract unique attribute IDs (display forms) used in each visualization with their labels.
+
+    Accepts layout format where content is at top level:
+        {"id": "x", "content": {"buckets": [...]}}
+    """
     # Using dict to store unique combinations with labels
     # Key: (viz_id, attribute_id, workspace_id), Value: label
     unique_relationships = {}
 
     for viz in visualization_data:
-        content = viz["attributes"]["content"]
+        content = viz.get("content", {})
 
         if "buckets" not in content:
             continue
@@ -405,37 +472,33 @@ def process_visualizations_attributes(visualization_data, workspace_id=None):
 
 
 def process_dashboards(data, base_url, workspace_id):
-    """Process dashboard data into uniform format"""
+    """Process dashboard data (layout format) into uniform format.
+
+    Accepts layout format where fields are at top level:
+        {"id": "x", "title": "...", "content": {"layout": {...}}}
+    """
     processed_data = []
     for obj in data:
         dashboard_url = (
             f"{base_url}/dashboards/#/workspace/{workspace_id}/dashboard/{obj['id']}"
         )
-
-        # Determine origin type - check if meta.origin exists and get originType
-        origin_type = "NATIVE"  # default
-        if "meta" in obj and "origin" in obj["meta"]:
-            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
+        content = obj.get("content", {})
 
         processed_data.append(
             {
                 "dashboard_id": obj["id"],
-                "title": obj["attributes"]["title"],
-                "description": obj["attributes"]["description"],
-                "tags": str(sort_tags(obj["attributes"].get("tags", ""))),
-                "created_at": obj["attributes"]["createdAt"],
-                "modified_at": obj["attributes"].get(
-                    "modifiedAt", obj["attributes"]["createdAt"]
-                ),
+                "title": obj.get("title", ""),
+                "description": obj.get("description", ""),
+                "tags": str(sort_tags(obj.get("tags") or [])),
+                "created_at": obj.get("createdAt", ""),
+                "modified_at": obj.get("modifiedAt", obj.get("createdAt", "")),
                 "dashboard_url": dashboard_url,
                 "workspace_id": workspace_id,
-                "origin_type": origin_type,
-                "content": obj["attributes"]["content"],
-                "is_valid": obj["attributes"]["areRelationsValid"],
-                "is_hidden": obj["attributes"].get("isHidden", False),
-                "filter_context_id": obj["attributes"]
-                .get("content", {})
-                .get("filterContextRef", {})
+                "origin_type": obj.get("originType", "NATIVE"),
+                "content": content,
+                "is_valid": obj.get("areRelationsValid", True),
+                "is_hidden": obj.get("isHidden", False),
+                "filter_context_id": content.get("filterContextRef", {})
                 .get("identifier", {})
                 .get("id"),
             }
@@ -446,15 +509,21 @@ def process_dashboards(data, base_url, workspace_id):
 def process_dashboards_visualizations(
     dashboard_data, workspace_id=None, known_insights=None, config=None
 ):
-    """Extract unique visualization IDs used in each dashboard, including rich text references"""
+    """Extract unique visualization IDs used in each dashboard, including rich text references.
+
+    Supports both tabbed dashboards (content.tabs[]) and legacy non-tabbed dashboards
+    (content.layout.sections). For tabbed dashboards, each relationship includes the
+    tab_id (localIdentifier). For legacy dashboards, tab_id is None.
+    """
     # Import here to avoid circular imports
+    from gooddata_export.process.common import UniqueRelationshipTracker
+    from gooddata_export.process.dashboard_traversal import iterate_dashboard_widgets
     from gooddata_export.process.rich_text import process_rich_text_insights
 
-    # Using list to store all relationships with their source info
-    relationships = []
-
-    # Track what's been added - avoid duplicates with same from_rich_text flag
-    added_relationships = set()
+    # Track unique relationships: (dashboard_id, viz_id, tab_id, from_rich_text)
+    tracker = UniqueRelationshipTracker(
+        key_fields=["dashboard_id", "visualization_id", "tab_id", "from_rich_text"]
+    )
 
     # First get a list of all known insights for better matching (only if rich text enabled)
     # Require known_insights to be provided by the caller; do not refetch here to avoid duplication
@@ -464,147 +533,105 @@ def process_dashboards_visualizations(
             known_insights = set()
         elif not isinstance(known_insights, set):
             known_insights = set(known_insights)
-        logger.info(f"Found {len(known_insights)} known insights for validation")
+        logger.info("Found %d known insights for validation", len(known_insights))
 
-    def process_items(items, dashboard_id):
-        """Recursively process dashboard items to extract visualizations"""
-        for item in items:
-            widget = item.get("widget", {})
+    def add_relationship(dashboard_id, viz_id, tab_id, from_rich_text):
+        """Add a relationship if not already present."""
+        tracker.add(
+            {
+                "dashboard_id": dashboard_id,
+                "visualization_id": viz_id,
+                "tab_id": tab_id,
+                "from_rich_text": from_rich_text,
+                "workspace_id": workspace_id,
+            }
+        )
 
-            # Single visualization widgets
-            viz_id = widget.get("insight", {}).get("identifier", {}).get("id")
+    # Use shared traversal utility
+    for dashboard_id, tab_id, widget in iterate_dashboard_widgets(dashboard_data):
+        # Single visualization widgets
+        viz_id = widget.get("insight", {}).get("identifier", {}).get("id")
+        if viz_id:
+            add_relationship(dashboard_id, viz_id, tab_id, 0)
+
+        # Multiple visualization widgets (visualizationSwitcher)
+        for viz in widget.get("visualizations", []):
+            viz_id = viz.get("insight", {}).get("identifier", {}).get("id")
             if viz_id:
-                key = (dashboard_id, viz_id, 0)  # 0 = regular reference
-                if key not in added_relationships:
-                    relationships.append(
-                        {
-                            "dashboard_id": dashboard_id,
-                            "visualization_id": viz_id,
-                            "from_rich_text": 0,
-                            "workspace_id": workspace_id,
-                        }
-                    )
-                    added_relationships.add(key)
+                add_relationship(dashboard_id, viz_id, tab_id, 0)
 
-            # Multiple visualization widgets (visualizationSwitcher)
-            visualizations = widget.get("visualizations", [])
-            for viz in visualizations:
-                viz_id = viz.get("insight", {}).get("identifier", {}).get("id")
-                if viz_id:
-                    key = (dashboard_id, viz_id, 0)  # 0 = regular reference
-                    if key not in added_relationships:
-                        relationships.append(
-                            {
-                                "dashboard_id": dashboard_id,
-                                "visualization_id": viz_id,
-                                "from_rich_text": 0,
-                                "workspace_id": workspace_id,
-                            }
-                        )
-                        added_relationships.add(key)
-
-            # Nested IDashboardLayout widgets - recurse into their sections
-            if widget.get("type") == "IDashboardLayout":
-                nested_sections = widget.get("sections", [])
-                for nested_section in nested_sections:
-                    nested_items = nested_section.get("items", [])
-                    if nested_items:
-                        process_items(nested_items, dashboard_id)
-
-            # Rich text extraction (single feature-flag gate)
-            if enable_rich_text:
-                # Rich text widgets
-                if widget.get("type") == "richText":
-                    rich_text_content = widget.get("content", "")
-                    rich_text_insights = process_rich_text_insights(
-                        rich_text_content, dashboard_id, known_insights
-                    )
-                    for insight in rich_text_insights:
-                        key = (dashboard_id, insight["visualization_id"], 1)
-                        if key not in added_relationships:
-                            relationships.append(
-                                {
-                                    "dashboard_id": dashboard_id,
-                                    "visualization_id": insight["visualization_id"],
-                                    "from_rich_text": 1,
-                                    "workspace_id": workspace_id,
-                                }
-                            )
-                            added_relationships.add(key)
-
-                # Other widget content that might contain insight references
-                widget_content = widget.get("content")
-                if isinstance(widget_content, str) and any(
-                    pattern in widget_content
-                    for pattern in [
-                        "insightFirstAttribute",
-                        "insightFirstMeasure",
-                        "insightFirstMeasureChange",
-                        "comparisonFromInsightMeasure",
-                        "insightFirstTotal",
-                    ]
+        # Rich text extraction (single feature-flag gate)
+        if enable_rich_text:
+            # Rich text widgets
+            if widget.get("type") == "richText":
+                rich_text_content = widget.get("content", "")
+                for insight in process_rich_text_insights(
+                    rich_text_content, dashboard_id, known_insights
                 ):
-                    additional_insights = process_rich_text_insights(
-                        widget_content, dashboard_id, known_insights
+                    add_relationship(
+                        dashboard_id, insight["visualization_id"], tab_id, 1
                     )
-                    for insight in additional_insights:
-                        key = (dashboard_id, insight["visualization_id"], 1)
-                        if key not in added_relationships:
-                            relationships.append(
-                                {
-                                    "dashboard_id": dashboard_id,
-                                    "visualization_id": insight["visualization_id"],
-                                    "from_rich_text": 1,
-                                    "workspace_id": workspace_id,
-                                }
-                            )
-                            added_relationships.add(key)
 
-    for dash in dashboard_data:
-        content = dash["attributes"]["content"]
-        if "layout" not in content or "sections" not in content["layout"]:
-            continue
+            # Other widget content that might contain insight references
+            widget_content = widget.get("content")
+            if isinstance(widget_content, str) and any(
+                pattern in widget_content
+                for pattern in [
+                    "insightFirstAttribute",
+                    "insightFirstMeasure",
+                    "insightFirstMeasureChange",
+                    "comparisonFromInsightMeasure",
+                    "insightFirstTotal",
+                ]
+            ):
+                for insight in process_rich_text_insights(
+                    widget_content, dashboard_id, known_insights
+                ):
+                    add_relationship(
+                        dashboard_id, insight["visualization_id"], tab_id, 1
+                    )
 
-        for section in content["layout"]["sections"]:
-            items = section.get("items", [])
-            if items:
-                process_items(items, dash["id"])
-
-    return sorted(
-        relationships,
-        key=lambda x: (x["dashboard_id"], x["visualization_id"], x["from_rich_text"]),
+    return tracker.get_sorted(
+        sort_key=lambda x: (
+            x["dashboard_id"],
+            x["visualization_id"],
+            x["from_rich_text"],
+        )
     )
 
 
 def process_filter_contexts(data, workspace_id=None):
-    """Process filter context data into uniform format"""
+    """Process filter context data (layout format) into uniform format.
+
+    Accepts layout format where fields are at top level:
+        {"id": "x", "title": "...", "content": {"filters": [...]}}
+    """
     processed_data = []
     for obj in data:
-        # Determine origin type
-        origin_type = "NATIVE"  # default
-        if "meta" in obj and "origin" in obj["meta"]:
-            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
-
         processed_data.append(
             {
                 "filter_context_id": obj["id"],
                 "workspace_id": workspace_id,
-                "title": obj.get("attributes", {}).get("title", ""),
-                "description": obj.get("attributes", {}).get("description", ""),
-                "origin_type": origin_type,
-                "content": obj.get("attributes", {}).get("content", {}),
+                "title": obj.get("title", ""),
+                "description": obj.get("description", ""),
+                "origin_type": obj.get("originType", "NATIVE"),
+                "content": obj.get("content", {}),
             }
         )
     return processed_data
 
 
 def process_filter_context_fields(data, workspace_id=None):
-    """Process filter context data to extract individual filter fields"""
+    """Process filter context data (layout format) to extract individual filter fields.
+
+    Accepts layout format where content is at top level:
+        {"id": "x", "content": {"filters": [...]}}
+    """
     processed_fields = []
 
     for obj in data:
         filter_context_id = obj["id"]
-        content = obj.get("attributes", {}).get("content", {})
+        content = obj.get("content", {})
         filters = content.get("filters", [])
 
         for filter_index, filter_obj in enumerate(filters):
@@ -703,26 +730,25 @@ def process_workspaces(
 
 
 def process_plugins(data: list[dict], workspace_id: str | None = None) -> list[dict]:
-    """Process dashboard plugin data into uniform format"""
+    """Process dashboard plugin data (layout format) into uniform format.
+
+    Accepts layout format where fields are at top level:
+        {"id": "x", "title": "...", "content": {"url": "...", "version": "..."}}
+    """
     processed_data = []
     for obj in data:
-        # Determine origin type
-        origin_type = "NATIVE"
-        if "meta" in obj and "origin" in obj["meta"]:
-            origin_type = obj["meta"]["origin"].get("originType", "NATIVE")
-
-        content = obj.get("attributes", {}).get("content", {})
+        content = obj.get("content", {})
 
         processed_data.append(
             {
                 "plugin_id": obj["id"],
-                "title": obj["attributes"]["title"],
-                "description": obj["attributes"].get("description", ""),
+                "title": obj.get("title", ""),
+                "description": obj.get("description", ""),
                 "url": content.get("url", ""),
                 "version": content.get("version", ""),
-                "created_at": obj["attributes"].get("createdAt", ""),
+                "created_at": obj.get("createdAt", ""),
                 "workspace_id": workspace_id,
-                "origin_type": origin_type,
+                "origin_type": obj.get("originType", "NATIVE"),
                 "content": obj,
             }
         )
@@ -732,30 +758,31 @@ def process_plugins(data: list[dict], workspace_id: str | None = None) -> list[d
 def process_dashboards_plugins(
     dashboard_data: list[dict], workspace_id: str | None = None
 ) -> list[dict]:
-    """Extract plugin IDs used in each dashboard"""
-    relationships = []
-    added_relationships = set()
+    """Extract plugin IDs used in each dashboard (layout format).
+
+    Accepts layout format where content is at top level:
+        {"id": "x", "content": {"plugins": [...]}}
+    """
+    from gooddata_export.process.common import UniqueRelationshipTracker
+
+    tracker = UniqueRelationshipTracker(
+        key_fields=["dashboard_id", "plugin_id", "workspace_id"]
+    )
 
     for dash in dashboard_data:
-        content = dash["attributes"]["content"]
+        content = dash.get("content", {})
         plugins = content.get("plugins", [])
 
         for plugin_entry in plugins:
             plugin_id = plugin_entry.get("plugin", {}).get("identifier", {}).get("id")
 
             if plugin_id:
-                key = (dash["id"], plugin_id, workspace_id)
-                if key not in added_relationships:
-                    relationships.append(
-                        {
-                            "dashboard_id": dash["id"],
-                            "plugin_id": plugin_id,
-                            "workspace_id": workspace_id,
-                        }
-                    )
-                    added_relationships.add(key)
+                tracker.add(
+                    {
+                        "dashboard_id": dash["id"],
+                        "plugin_id": plugin_id,
+                        "workspace_id": workspace_id,
+                    }
+                )
 
-    return sorted(
-        relationships,
-        key=lambda x: (x["dashboard_id"], x["plugin_id"]),
-    )
+    return tracker.get_sorted(sort_key=lambda x: (x["dashboard_id"], x["plugin_id"]))

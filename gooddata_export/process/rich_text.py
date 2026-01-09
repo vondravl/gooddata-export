@@ -4,7 +4,6 @@ import json
 import logging
 import re
 
-from gooddata_export.common import get_api_client
 from gooddata_export.process.common import (
     DEBUG_RICH_TEXT,
     get_debug_output_dir,
@@ -498,8 +497,9 @@ def process_rich_text_metrics(content_str, dashboard_id, known_metrics=None):
             unique_ids = filtered_ids
 
     except Exception as e:
-        logger.warning(f"Error in process_rich_text_metrics: {str(e)}")
+        logger.warning("Error in process_rich_text_metrics: %s", e)
         unique_ids = set()
+        filtered_ids = set()
         metric_pattern_matches = []
 
     # Create the result
@@ -527,105 +527,95 @@ def process_rich_text_metrics(content_str, dashboard_id, known_metrics=None):
     return result
 
 
-def process_dashboards_metrics_from_rich_text(dashboard_data, config=None):
-    """Extract metrics directly referenced in dashboard rich text"""
+def process_dashboards_metrics_from_rich_text(
+    dashboard_data,
+    workspace_id=None,
+    known_metrics=None,
+    config=None,
+):
+    """Extract metrics directly referenced in dashboard rich text (layout format).
+
+    Supports both tabbed dashboards (content.tabs[]) and legacy non-tabbed
+    dashboards (content.layout.sections).
+
+    Args:
+        dashboard_data: List of dashboard objects with "id" and "content" fields
+        workspace_id: Workspace ID to include in results
+        known_metrics: Set of known metric IDs for validation/filtering
+        config: ExportConfig instance (used to check ENABLE_RICH_TEXT_EXTRACTION)
+
+    Returns:
+        List of dicts with dashboard_id, metric_id, workspace_id keys
+    """
     # Import here to avoid circular imports
-    from gooddata_export.process.entities import fetch_data
+    from gooddata_export.process.common import UniqueRelationshipTracker
+    from gooddata_export.process.dashboard_traversal import iterate_dashboard_widgets
 
     # If rich text extraction is disabled, return empty result
     enable_rich_text = config.ENABLE_RICH_TEXT_EXTRACTION if config else False
     if not enable_rich_text:
         return []
-    # Using list to store all relationships
-    relationships = []
 
-    # Track what's been added to avoid duplicates
-    added_relationships = set()
+    # Normalize known_metrics to a set
+    if known_metrics is None:
+        known_metrics = set()
+    elif not isinstance(known_metrics, set):
+        known_metrics = set(known_metrics)
 
-    # Get a list of all known metrics for better matching
-    known_metrics = set()
+    # Track unique relationships: (dashboard_id, metric_id, workspace_id)
+    tracker = UniqueRelationshipTracker(
+        key_fields=["dashboard_id", "metric_id", "workspace_id"]
+    )
 
-    # Let's retrieve all metric IDs from the API first
-    try:
-        if not config:
-            raise ValueError(
-                "Config must be provided for process_dashboards_metrics_from_rich_text"
-            )
-        client = get_api_client(config=config)
-        metrics_data = fetch_data("metrics", client, config)
-        if metrics_data:
-            for metric in metrics_data:
-                known_metrics.add(metric["id"])
-        if DEBUG_RICH_TEXT:
-            logger.info(f"Found {len(known_metrics)} known metrics for validation")
-    except Exception:
-        if DEBUG_RICH_TEXT:
-            logger.warning("Could not fetch metrics for validation")
+    # Patterns that indicate metric references in widget content
+    metric_patterns = [
+        "measureChange",
+        "measuresComparison",
+        "measureValue",
+        "measuresShareComparison",
+        "measureTotal",
+        "measure:",
+    ]
 
     if DEBUG_RICH_TEXT:
         logger.info("Scanning dashboards for metrics in rich text...")
-    for dash in dashboard_data:
-        content = dash["attributes"]["content"]
-        if "layout" not in content or "sections" not in content["layout"]:
-            continue
 
-        for section in content["layout"]["sections"]:
-            if "items" not in section:
-                continue
+    # Use shared traversal utility
+    for dashboard_id, _tab_id, widget in iterate_dashboard_widgets(dashboard_data):
+        # Rich text widgets - extract metrics from these
+        if widget.get("type") == "richText":
+            rich_text_content = widget.get("content", "")
+            rich_text_metrics = process_rich_text_metrics(
+                rich_text_content, dashboard_id, known_metrics
+            )
+            for metric_ref in rich_text_metrics:
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "metric_id": metric_ref["metric_id"],
+                        "workspace_id": workspace_id,
+                    }
+                )
 
-            for item in section["items"]:
-                # Rich text widgets - extract metrics from these
-                if item.get("widget", {}).get("type") == "richText":
-                    rich_text_content = item.get("widget", {}).get("content", "")
-                    # Process rich text content to extract metric IDs
-                    rich_text_metrics = process_rich_text_metrics(
-                        rich_text_content, dash["id"], known_metrics
-                    )
-                    for metric_ref in rich_text_metrics:
-                        # Add metric reference if not already added
-                        key = (dash["id"], metric_ref["metric_id"])
-                        if key not in added_relationships:
-                            relationships.append(
-                                {
-                                    "dashboard_id": dash["id"],
-                                    "metric_id": metric_ref["metric_id"],
-                                    "from_rich_text": 1,
-                                }
-                            )
-                            added_relationships.add(key)
-
-                # Check widget content fields for metrics
-                widget_content = item.get("widget", {}).get("content")
-                if isinstance(widget_content, str) and any(
-                    pattern in widget_content
-                    for pattern in [
-                        "measure",
-                        "measureChange",
-                        "measureValue",
-                        "measureTotal",
-                    ]
-                ):
-                    # Process any widget content that might contain metric references
-                    content_metrics = process_rich_text_metrics(
-                        widget_content, dash["id"], known_metrics
-                    )
-                    for metric_ref in content_metrics:
-                        # Add metric reference if not already added
-                        key = (dash["id"], metric_ref["metric_id"])
-                        if key not in added_relationships:
-                            relationships.append(
-                                {
-                                    "dashboard_id": dash["id"],
-                                    "metric_id": metric_ref["metric_id"],
-                                    "from_rich_text": 1,
-                                }
-                            )
-                            added_relationships.add(key)
+        # Check widget content fields for metrics
+        widget_content = widget.get("content")
+        if isinstance(widget_content, str) and any(
+            pattern in widget_content for pattern in metric_patterns
+        ):
+            content_metrics = process_rich_text_metrics(
+                widget_content, dashboard_id, known_metrics
+            )
+            for metric_ref in content_metrics:
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "metric_id": metric_ref["metric_id"],
+                        "workspace_id": workspace_id,
+                    }
+                )
 
     if DEBUG_RICH_TEXT:
-        logger.info(
-            f"Found {len(relationships)} metric references in dashboard rich text"
-        )
+        logger.info("Found %d metric references in dashboard rich text", len(tracker))
 
     # Sort the results for consistency
-    return sorted(relationships, key=lambda x: (x["dashboard_id"], x["metric_id"]))
+    return tracker.get_sorted(sort_key=lambda x: (x["dashboard_id"], x["metric_id"]))

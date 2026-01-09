@@ -6,12 +6,17 @@ This file provides guidance to Claude Code (claude.ai/claude-code) when working 
 
 GoodData Export is a Python library for exporting GoodData workspace metadata to SQLite databases and CSV files. It fetches metrics, dashboards, visualizations, and LDM (Logical Data Model) information from the GoodData API and stores them locally for analysis.
 
+The library supports two modes:
+1. **API mode** (default): Fetches data from GoodData API
+2. **Local mode**: Processes local `layout.json` files without API calls (useful for tagging workflows on feature branches)
+
 **This is a public package.** When making changes:
 
-1. Bump the version in `pyproject.toml`:
+1. Bump the version in `pyproject.toml` (single source of truth):
    ```toml
    version = "1.0.0"  # Increment appropriately
    ```
+   Note: `__version__` in `__init__.py` is derived automatically via `importlib.metadata`
 
 2. Update `CHANGELOG.md` with the changes (follow [Keep a Changelog](https://keepachangelog.com/) format)
 
@@ -56,11 +61,21 @@ python formatting_ruff.py
 gooddata_export/
 ├── __init__.py          # Public API exports
 ├── config.py            # ExportConfig class, environment loading
-├── export.py            # Main orchestration (export_all_metadata)
-├── process.py           # Data fetching and processing from GoodData API
+├── constants.py         # Shared constants (LOCAL_MODE_STALE_TABLES)
 ├── common.py            # API client utilities (GoodDataClient)
 ├── db.py                # SQLite database utilities
 ├── post_export.py       # Post-processing orchestration, topological sort
+├── export/              # Export module (orchestration, fetching, writing)
+│   ├── __init__.py      # Main orchestration (export_all_metadata)
+│   ├── fetch.py         # Data fetching functions (API calls)
+│   ├── writers.py       # Database/CSV writer functions (export_*)
+│   └── utils.py         # Export utilities (write_to_csv, execute_with_retry)
+├── process/             # Data processing modules
+│   ├── __init__.py      # Exports all process functions
+│   ├── entities.py      # Entity processing (metrics, dashboards, visualizations)
+│   ├── ldm.py           # LDM processing (datasets, columns)
+│   ├── users.py         # User/group processing
+│   └── fetching.py      # API fetching utilities
 └── sql/                 # SQL scripts for post-export processing
     ├── post_export_config.yaml  # YAML configuration for all SQL operations
     ├── tables/          # Table creation scripts (metrics_relationships, etc.)
@@ -71,8 +86,11 @@ gooddata_export/
 
 ### Data Flow
 
-1. **Export Phase** (`export.py` → `process.py`)
-   - Fetches data from GoodData API
+1. **Export Phase** (`export/` → `process/`)
+   - **API mode**: Fetches from `analyticsModel` endpoint (parent) or entity APIs (children)
+   - **Local mode**: Uses provided `layout_json` directly (no API calls)
+   - All data is processed in **layout format** (flat structure with `obj["title"]`)
+   - Child workspace entity data is transformed via `entity_to_layout()`
    - Stores in SQLite tables: metrics, visualizations, dashboards, ldm_*, etc.
 
 2. **Post-Export Phase** (`post_export.py`)
@@ -153,6 +171,32 @@ views:
 - Circular dependencies will raise `ValueError`
 - Items without dependencies execute in alphabetical order
 
+### Adding Tables with Separate API Calls
+
+When adding a new table that requires data from a separate API endpoint (not included in `analyticsModel` or `layout.json`):
+
+1. Add the table name to `LOCAL_MODE_STALE_TABLES` in `constants.py`
+2. This ensures the table is truncated in local mode to prevent stale data
+
+Tables currently in this list: `users`, `user_groups`, `user_group_members`, `plugins`
+
+### Export Function Interface
+
+All `export_*` functions in `export/writers.py` share the same signature for uniform orchestration:
+
+```python
+def export_something(all_workspace_data, export_dir, config, db_name):
+```
+
+This allows `export/__init__.py` to call them in a loop:
+
+```python
+for export_func in export_functions:
+    export_func(all_workspace_data, export_dir, config, db_path)
+```
+
+**Important**: Some functions don't use all parameters (e.g., `export_dashboards_permissions` doesn't use `config`). Use underscore prefix (`_config`) for unused parameters and document in the docstring why it's kept. Don't remove unused parameters - it would break the uniform interface.
+
 ## Testing Changes
 
 ```bash
@@ -192,6 +236,27 @@ def fetch(id: str | int) -> tuple[str, bool]: ...
 ### Avoiding Over-Engineering
 
 Don't consolidate every repeated pattern. Small, simple duplications (2-3 lines appearing a few times) are often clearer than adding another abstraction layer. Consolidate when the pattern is complex (5+ lines), appears in many places (5+), or requires consistent behavior that might need updating.
+
+### Logging (Use `logger` Instead of `print`)
+
+Use Python's `logging` module instead of `print()` for all output:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Use logger methods instead of print()
+logger.info("Processing workspace %s", workspace_id)    # Not: print(f"Processing workspace {workspace_id}")
+logger.warning("Could not fetch data: %s", error)       # Not: print(f"Warning: Could not fetch data: {error}")
+logger.debug("Debug info: %s", details)                 # For debug-only output
+```
+
+Benefits:
+- Consistent output format across the codebase
+- Log levels allow filtering (INFO, WARNING, DEBUG, ERROR)
+- Easier to redirect output to files or external logging systems
+- Use `%s` formatting (not f-strings) for lazy evaluation
 
 ### SQL Style
 
