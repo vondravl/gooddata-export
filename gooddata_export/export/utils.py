@@ -1,6 +1,7 @@
 """Utility functions for export operations."""
 
 import csv
+import json
 import logging
 import sqlite3
 import time
@@ -9,6 +10,19 @@ from pathlib import Path
 from gooddata_export.constants import DEFAULT_DB_NAME, LOCAL_MODE_STALE_TABLES
 
 logger = logging.getLogger(__name__)
+
+
+def serialize_content(content: dict, config) -> str | None:
+    """Serialize content to JSON if INCLUDE_CONTENT is enabled.
+
+    Args:
+        content: The content dictionary to serialize
+        config: ExportConfig instance with INCLUDE_CONTENT setting
+
+    Returns:
+        JSON string if INCLUDE_CONTENT is True, None otherwise
+    """
+    return json.dumps(content) if config.INCLUDE_CONTENT else None
 
 
 def execute_with_retry(cursor, sql, params=None, max_retries=5):

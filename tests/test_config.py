@@ -22,6 +22,7 @@ class TestExportConfigDefaults:
             assert config.INCLUDE_CHILD_WORKSPACES is False
             assert config.ENABLE_POST_EXPORT is True  # default is True
             assert config.ENABLE_RICH_TEXT_EXTRACTION is True  # default is True
+            assert config.INCLUDE_CONTENT is True  # default is True
             assert config.MAX_PARALLEL_WORKSPACES == 5  # default
 
     def test_explicit_values_override_defaults(self):
@@ -33,6 +34,7 @@ class TestExportConfigDefaults:
             include_child_workspaces=True,
             enable_post_export=False,
             enable_rich_text_extraction=False,
+            include_content=False,
             max_parallel_workspaces=10,
             load_from_env=False,
         )
@@ -43,6 +45,7 @@ class TestExportConfigDefaults:
         assert config.INCLUDE_CHILD_WORKSPACES is True
         assert config.ENABLE_POST_EXPORT is False
         assert config.ENABLE_RICH_TEXT_EXTRACTION is False
+        assert config.INCLUDE_CONTENT is False
         assert config.MAX_PARALLEL_WORKSPACES == 10
 
 
@@ -147,6 +150,46 @@ class TestExportConfigChildDataTypes:
         with patch.dict(os.environ, {}, clear=True):
             config = ExportConfig(load_from_env=False)
             assert config.CHILD_WORKSPACE_DATA_TYPES == []
+
+
+class TestExportConfigIncludeContent:
+    """Tests for INCLUDE_CONTENT property."""
+
+    def test_default_is_true(self):
+        """Content inclusion is enabled by default."""
+        config = ExportConfig(load_from_env=False)
+        assert config.INCLUDE_CONTENT is True
+
+    def test_explicit_false(self):
+        """Can explicitly disable content inclusion."""
+        config = ExportConfig(include_content=False, load_from_env=False)
+        assert config.INCLUDE_CONTENT is False
+
+    @pytest.mark.parametrize(
+        "env_value,expected",
+        [
+            ("true", True),
+            ("True", True),
+            ("1", True),
+            ("yes", True),
+            ("on", True),
+            ("false", False),
+            ("False", False),
+            ("0", False),
+            ("no", False),
+        ],
+    )
+    def test_boolean_parsing_from_env(self, env_value, expected):
+        """INCLUDE_CONTENT parses boolean strings correctly."""
+        with patch.dict(os.environ, {"INCLUDE_CONTENT": env_value}):
+            config = ExportConfig(load_from_env=True)
+            assert config.INCLUDE_CONTENT is expected
+
+    def test_explicit_overrides_env(self):
+        """Explicit False overrides environment variable."""
+        with patch.dict(os.environ, {"INCLUDE_CONTENT": "true"}):
+            config = ExportConfig(include_content=False, load_from_env=True)
+            assert config.INCLUDE_CONTENT is False
 
 
 class TestExportConfigWithRichTextDisabled:

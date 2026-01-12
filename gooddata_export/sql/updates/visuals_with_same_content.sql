@@ -1,24 +1,26 @@
 DROP TABLE IF EXISTS duplicities;
 
 -- Create temporary table with duplicities
--- Uses v_visualizations_tags view to simplify tag handling
+-- Uses junction tables (visualizations_metrics, visualizations_attributes) instead of parsing JSON
+-- This works regardless of whether content field is populated
 CREATE TEMPORARY TABLE duplicities AS
-WITH same_columns AS (
+WITH visualization_columns AS (
+    -- Combine metrics and attributes into a single list per visualization
+    SELECT visualization_id, workspace_id, metric_id AS col_id FROM visualizations_metrics
+    UNION ALL
+    SELECT visualization_id, workspace_id, attribute_id AS col_id FROM visualizations_attributes
+),
+same_columns AS (
     SELECT visualization_id, workspace_id, title, visualization_url, columns, tags
     , count(*) OVER (PARTITION BY columns ORDER BY columns) AS same_columns_count
     FROM (
-        SELECT 
-        visualization_id, workspace_id, title, visualization_url, tags
-        , GROUP_CONCAT(IFNULL(metric_id,attribute_id), ',' ORDER BY IFNULL(metric_id,attribute_id)) AS columns
-        FROM (
-            SELECT visualization_id, workspace_id, title, visualization_url, tags
-            , JSON_EXTRACT(items.value, '$.measure.definition.measureDefinition.item.identifier.id') AS metric_id
-            , JSON_EXTRACT(items.value, '$.attribute.displayForm.identifier.id') AS attribute_id
-            FROM visualizations
-            , JSON_EACH(JSON_EXTRACT(content, '$.attributes.content.buckets')) AS buckets
-            , JSON_EACH(JSON_EXTRACT(buckets.value,'$.items')) AS items
-        )
-        GROUP BY visualization_id, workspace_id, title, visualization_url, tags
+        SELECT
+        v.visualization_id, v.workspace_id, v.title, v.visualization_url, v.tags
+        , GROUP_CONCAT(vc.col_id, ',' ORDER BY vc.col_id) AS columns
+        FROM visualizations v
+        LEFT JOIN visualization_columns vc
+            ON v.visualization_id = vc.visualization_id AND v.workspace_id = vc.workspace_id
+        GROUP BY v.visualization_id, v.workspace_id, v.title, v.visualization_url, v.tags
     )
 ),
 with_tags AS (
