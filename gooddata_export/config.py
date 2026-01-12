@@ -24,6 +24,7 @@ class ExportConfig:
         enable_rich_text_extraction: bool | None = None,
         enable_post_export: bool | None = None,
         debug_workspace_processing: bool | None = None,
+        include_content: bool | None = None,
         load_from_env: bool = True,
     ):
         """Initialize export configuration.
@@ -38,6 +39,7 @@ class ExportConfig:
             enable_rich_text_extraction: Whether to extract from rich text widgets
             enable_post_export: Whether to run post-export enrichment/procedures
             debug_workspace_processing: Enable debug logging
+            include_content: Whether to include full JSON content fields in database
             load_from_env: Whether to load config from .env files
         """
         if load_from_env:
@@ -121,6 +123,13 @@ class ExportConfig:
         else:
             post_export_value = getenv("ENABLE_POST_EXPORT", "true").lower()
             self.ENABLE_POST_EXPORT = post_export_value in ("true", "1", "yes", "on")
+
+        # Include full JSON content fields in database (default: True)
+        if include_content is not None:
+            self.INCLUDE_CONTENT = include_content
+        else:
+            include_content_value = getenv("INCLUDE_CONTENT", "true").lower()
+            self.INCLUDE_CONTENT = include_content_value in ("true", "1", "yes", "on")
 
         # Dynamic workspace ID
         self._workspace_id = self._WORKSPACE_ID

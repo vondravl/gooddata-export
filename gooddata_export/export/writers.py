@@ -1,6 +1,5 @@
 """Database and CSV writer functions for exporting GoodData metadata."""
 
-import json
 import logging
 from pathlib import Path
 
@@ -9,6 +8,7 @@ from gooddata_export.db import database_connection, setup_table, setup_tables
 from gooddata_export.export.utils import (
     execute_with_retry,
     log_export,
+    serialize_content,
     write_to_csv,
 )
 from gooddata_export.process import (
@@ -109,7 +109,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name) -> None:
                     d["is_valid"],
                     d["is_hidden"],
                     d["origin_type"],
-                    json.dumps(d["content"]),
+                    serialize_content(d["content"], config),
                 )
                 for d in all_processed_data
             ],
@@ -230,7 +230,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                     d["modified_at"],
                     d["url_link"],
                     d["origin_type"],
-                    json.dumps(d["content"]),
+                    serialize_content(d["content"], config),
                     d["is_valid"],
                     d["is_hidden"],
                 )
@@ -468,7 +468,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                     d["modified_at"],
                     d["dashboard_url"],
                     d["origin_type"],
-                    json.dumps(d["content"]),
+                    serialize_content(d["content"], config),
                     d["is_valid"],
                     d["is_hidden"],
                     d.get("filter_context_id"),
@@ -720,13 +720,13 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
             logger.info("Exported %d columns to %s", column_count, db_name)
 
 
-def export_filter_contexts(all_workspace_data, export_dir, _config, db_name) -> None:
+def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> None:
     """Export filter contexts and filter context fields to both CSV and SQLite.
 
     Args:
         all_workspace_data: List of workspace data dictionaries
         export_dir: Directory for CSV output (None to skip CSV)
-        _config: ExportConfig instance (unused, kept for interface consistency)
+        config: ExportConfig instance
         db_name: Path to SQLite database
     """
     all_processed_data = []
@@ -815,7 +815,7 @@ def export_filter_contexts(all_workspace_data, export_dir, _config, db_name) -> 
                     d["title"],
                     d["description"],
                     d["origin_type"],
-                    json.dumps(d["content"]),
+                    serialize_content(d["content"], config),
                 )
                 for d in all_processed_data
             ],
@@ -1090,7 +1090,7 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name) -
 
 
 def export_users_and_user_groups(
-    all_workspace_data, export_dir, _config, db_name
+    all_workspace_data, export_dir, config, db_name
 ) -> None:
     """Export users, user_groups, and user_group_members tables.
 
@@ -1100,7 +1100,7 @@ def export_users_and_user_groups(
     Args:
         all_workspace_data: List of workspace data dictionaries
         export_dir: Directory for CSV output (None to skip CSV)
-        _config: ExportConfig instance (unused, kept for interface consistency)
+        config: ExportConfig instance
         db_name: Path to SQLite database
     """
     # Users and user groups are fetched from the parent workspace only
@@ -1184,7 +1184,7 @@ def export_users_and_user_groups(
                         d["authentication_id"],
                         d["user_group_ids"],
                         d["user_group_count"],
-                        json.dumps(d["content"]),
+                        serialize_content(d["content"], config),
                     )
                     for d in processed_users
                 ],
@@ -1216,7 +1216,7 @@ def export_users_and_user_groups(
                         d["name"],
                         d["parent_ids"],
                         d["parent_count"],
-                        json.dumps(d["content"]),
+                        serialize_content(d["content"], config),
                     )
                     for d in processed_user_groups
                 ],
@@ -1423,7 +1423,7 @@ def export_plugins(all_workspace_data, export_dir, config, db_name) -> None:
                     d["version"],
                     d["created_at"],
                     d["origin_type"],
-                    json.dumps(d["content"]),
+                    serialize_content(d["content"], config),
                 )
                 for d in all_processed_data
             ],

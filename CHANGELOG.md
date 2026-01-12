@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-12
+
+### Added
+- **`--no-content` CLI flag**: Exclude full JSON content fields from database to reduce size by ~50%
+  - Affects 7 tables: `dashboards`, `visualizations`, `metrics`, `filter_contexts`, `plugins`, `users`, `user_groups`
+  - Content columns remain in schema (with NULL values) for compatibility
+  - Environment variable: `INCLUDE_CONTENT=false`
+  - API parameter: `include_content=False` in `export_metadata()`
+  - Default behavior unchanged (content included)
+
+### Changed
+- **`visuals_with_same_content.sql`**: Rewritten to use junction tables (`visualizations_metrics`, `visualizations_attributes`) instead of parsing JSON from content field
+  - Visualization deduplication now works regardless of whether `--no-content` is used
+  - More efficient (no JSON parsing at query time)
+
 ## [1.3.0] - 2026-01-09
 
 ### Added

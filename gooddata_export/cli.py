@@ -168,6 +168,11 @@ def _add_export_arguments(parser):
         help="Skip post-export SQL processing (views, updates, procedures). Note: env uses ENABLE_POST_EXPORT=true/false",
     )
     parser.add_argument(
+        "--no-content",
+        action="store_true",
+        help="Exclude content JSON fields from database (reduces size by ~50%%). Note: env uses INCLUDE_CONTENT=true/false",
+    )
+    parser.add_argument(
         "--debug", action="store_true", help="Enable debug logging (env: DEBUG)"
     )
 
@@ -316,6 +321,8 @@ def run_export_command(args):
             if args.skip_post_export
             else loaded_config.ENABLE_POST_EXPORT
         )
+        # Handle content: CLI --no-content overrides .env INCLUDE_CONTENT
+        include_content = False if args.no_content else loaded_config.INCLUDE_CONTENT
         debug = args.debug if args.debug else loaded_config.DEBUG_WORKSPACE_PROCESSING
     else:
         # Use CLI args with defaults
@@ -324,6 +331,7 @@ def run_export_command(args):
         max_workers = args.max_workers if args.max_workers is not None else 5
         enable_rich_text_extraction = args.enable_rich_text_extraction
         enable_post_export = not args.skip_post_export  # Invert the skip flag
+        include_content = not args.no_content  # Invert the no-content flag
         debug = args.debug
 
     # Display configuration
@@ -346,6 +354,7 @@ def run_export_command(args):
     print(
         f"   Post-Export Processing: {'Disabled' if args.skip_post_export else 'Enabled'}"
     )
+    print(f"   Include Content Fields: {'Yes' if include_content else 'No'}")
     print(f"   Debug Mode: {'Enabled' if debug else 'Disabled'}")
     print()
 
@@ -375,6 +384,7 @@ def run_export_command(args):
             max_parallel_workspaces=max_workers,
             enable_rich_text_extraction=enable_rich_text_extraction,
             run_post_export=enable_post_export,
+            include_content=include_content,
             debug=debug,
             db_path=db_path,
         )
