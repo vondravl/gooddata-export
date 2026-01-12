@@ -8,7 +8,9 @@ Main entry point:
 """
 
 import logging
+import os
 import shutil
+import sqlite3
 from pathlib import Path
 
 from gooddata_export.common import ExportError
@@ -192,6 +194,16 @@ def export_all_metadata(
     workspace_id = config.WORKSPACE_ID
     export_mode = "local" if layout_json is not None else "api"
     store_workspace_metadata(db_path, config, export_mode=export_mode)
+
+    # Vacuum database to reclaim space (especially after content exclusion or truncation)
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("VACUUM")
+        conn.close()
+        final_size = os.path.getsize(db_path) / 1024 / 1024
+        logger.info("Database vacuumed (final size: %.1f MB)", final_size)
+    except Exception as e:
+        logger.warning("Could not vacuum database: %s", e)
 
     # Create workspace-specific database copy
     workspace_db = None
