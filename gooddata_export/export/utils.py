@@ -141,6 +141,7 @@ def truncate_tables_for_local_mode(db_path):
 
         if truncated:
             conn.commit()
+            conn.execute("VACUUM")  # Reclaim disk space from deleted rows
             logger.info(
                 "Truncated stale tables (not in layout.json): %s", ", ".join(truncated)
             )
