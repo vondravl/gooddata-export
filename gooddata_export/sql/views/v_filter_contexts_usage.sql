@@ -18,10 +18,9 @@ SELECT
     d.dashboard_url,
     d.is_valid as dashboard_is_valid,
     d.is_hidden as dashboard_is_hidden,
+    fc.is_used,
     -- Count statistics
-    COUNT(*) OVER (PARTITION BY fc.filter_context_id, fc.workspace_id) as dashboard_count,
-    -- Flag for unused filter contexts
-    CASE WHEN d.dashboard_id IS NULL THEN 1 ELSE 0 END as is_unused
+    COUNT(*) OVER (PARTITION BY fc.filter_context_id, fc.workspace_id) as dashboard_count
 FROM filter_contexts fc
 LEFT JOIN dashboards d 
     ON fc.filter_context_id = d.filter_context_id
