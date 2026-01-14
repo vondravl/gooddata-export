@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-01-14
+
+### Changed
+- **`v_visualizations_usage` view**: Changed from INNER JOINs to LEFT JOINs to include all visualizations
+  - Unused visualizations now appear with NULL dashboard columns
+  - Added `is_used` column from base table for convenient filtering
+- **`v_metrics_usage` view**: Changed from INNER JOINs to LEFT JOINs in visualization usage part
+  - Unused metrics now appear with NULL visualization/dashboard columns
+  - Added `is_used_insight` and `is_used_maql` columns from base table
+- **`v_filter_contexts_usage` view**: Replaced computed `is_unused` with `is_used` from base table for consistency
+
 ## [1.4.2] - 2026-01-12
 
 ### Fixed

@@ -1,22 +1,22 @@
--- Create view showing where visualizations are used across dashboards
--- This allows easy lookup of visualization usage by visualization_id
+-- Create view showing all visualizations and where they are used across dashboards
+-- Uses LEFT JOINs to include unused visualizations (dashboard columns will be NULL)
 --
--- The from_rich_text column (from dashboards_visualizations table) indicates whether 
--- the visualization appears in a rich text widget (1) or standard dashboard widget (0).
+-- To find unused visualizations: WHERE is_used = 0
 
 DROP VIEW IF EXISTS v_visualizations_usage;
 
 CREATE VIEW v_visualizations_usage AS
-SELECT 
-    DISTINCT 
+SELECT
+    DISTINCT
     v.visualization_id,
     v.title AS visualization_title,
     v.url_link,
+    v.is_used,
     d.dashboard_id,
     d.title AS dashboard_title,
     dv.from_rich_text
 FROM visualizations v
-JOIN dashboards_visualizations dv ON v.visualization_id = dv.visualization_id AND v.workspace_id = dv.workspace_id
-JOIN dashboards d ON dv.dashboard_id = d.dashboard_id AND dv.workspace_id = d.workspace_id
+LEFT JOIN dashboards_visualizations dv ON v.visualization_id = dv.visualization_id AND v.workspace_id = dv.workspace_id
+LEFT JOIN dashboards d ON dv.dashboard_id = d.dashboard_id AND dv.workspace_id = d.workspace_id
 ORDER BY v.visualization_id, d.dashboard_id;
 
