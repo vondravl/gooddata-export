@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-01-22
+
+### Added
+- **`dashboards_widget_filters` table**: Extract widget-level filter configuration from dashboards
+  - `ignoreDashboardFilters`: Which dashboard filters each widget ignores (attribute/date filters)
+  - `dateDataSet`: Date dataset override for each widget
+  - Supports both regular insight widgets and visualizationSwitcher inner widgets
+- **`v_dashboards_widget_filters` view**: Readable filter details with dashboard/visualization titles
+- **`dashboards_visualizations` table**: New columns for widget overrides
+  - `widget_title`: Overridden title when insight is placed on dashboard
+  - `widget_description`: Overridden description when insight is placed on dashboard
+- **`v_dashboards_visualizations` view**: New flags for quick identification
+  - `has_title_override`: 1 if widget title differs from original visualization title
+  - `has_description_override`: 1 if widget description differs from original
+  - `has_ignored_filters`: 1 if widget ignores any dashboard filters
+
 ## [1.4.3] - 2026-01-14
 
 ### Changed

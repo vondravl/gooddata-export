@@ -68,6 +68,12 @@ views:
     category: usage
     dependencies: []
 
+  v_dashboards_widget_filters:
+    sql_file: views/v_dashboards_widget_filters.sql
+    description: Widget-level filter configurations showing ignored filters and date dataset overrides
+    category: usage
+    dependencies: []
+
   v_dashboards_tags:
     sql_file: views/v_dashboards_tags.sql
     description: Unnests dashboard tags into individual rows

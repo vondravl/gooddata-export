@@ -535,7 +535,14 @@ def process_dashboards_visualizations(
             known_insights = set(known_insights)
         logger.info("Found %d known insights for validation", len(known_insights))
 
-    def add_relationship(dashboard_id, viz_id, tab_id, from_rich_text):
+    def add_relationship(
+        dashboard_id,
+        viz_id,
+        tab_id,
+        from_rich_text,
+        widget_title=None,
+        widget_description=None,
+    ):
         """Add a relationship if not already present."""
         tracker.add(
             {
@@ -543,6 +550,8 @@ def process_dashboards_visualizations(
                 "visualization_id": viz_id,
                 "tab_id": tab_id,
                 "from_rich_text": from_rich_text,
+                "widget_title": widget_title,
+                "widget_description": widget_description,
                 "workspace_id": workspace_id,
             }
         )
@@ -552,13 +561,23 @@ def process_dashboards_visualizations(
         # Single visualization widgets
         viz_id = widget.get("insight", {}).get("identifier", {}).get("id")
         if viz_id:
-            add_relationship(dashboard_id, viz_id, tab_id, 0)
+            widget_title = widget.get("title")
+            widget_description = (
+                widget.get("description") or None
+            )  # Convert empty string to None
+            add_relationship(
+                dashboard_id, viz_id, tab_id, 0, widget_title, widget_description
+            )
 
         # Multiple visualization widgets (visualizationSwitcher)
         for viz in widget.get("visualizations", []):
             viz_id = viz.get("insight", {}).get("identifier", {}).get("id")
             if viz_id:
-                add_relationship(dashboard_id, viz_id, tab_id, 0)
+                widget_title = viz.get("title")
+                widget_description = viz.get("description") or None
+                add_relationship(
+                    dashboard_id, viz_id, tab_id, 0, widget_title, widget_description
+                )
 
         # Rich text extraction (single feature-flag gate)
         if enable_rich_text:
@@ -786,3 +805,162 @@ def process_dashboards_plugins(
                 )
 
     return tracker.get_sorted(sort_key=lambda x: (x["dashboard_id"], x["plugin_id"]))
+
+
+def process_dashboards_widget_filters(
+    dashboard_data: list[dict], workspace_id: str | None = None
+) -> list[dict]:
+    """Extract widget-level filter configuration from dashboards.
+
+    Extracts:
+    - ignoreDashboardFilters: Which dashboard filters each widget ignores
+      - attributeFilterReference: displayForm reference (type: label)
+      - dateFilterReference: dataSet reference (type: dataset)
+    - dateDataSet: Date dataset override for each widget (type: dataset)
+
+    Handles both single insight widgets and visualizations within visualizationSwitcher widgets.
+
+    Accepts layout format where content is at top level:
+        {"id": "x", "content": {"tabs": [...] or "layout": {...}}}
+    """
+    from gooddata_export.process.common import UniqueRelationshipTracker
+    from gooddata_export.process.dashboard_traversal import iterate_dashboard_widgets
+
+    tracker = UniqueRelationshipTracker(
+        key_fields=[
+            "dashboard_id",
+            "widget_local_identifier",
+            "filter_type",
+            "reference_id",
+            "workspace_id",
+        ]
+    )
+
+    def add_filter_record(
+        dashboard_id: str,
+        tab_id: str | None,
+        widget_local_identifier: str,
+        visualization_id: str | None,
+        filter_type: str,
+        reference_type: str,
+        reference_id: str,
+        reference_object_type: str,
+    ) -> None:
+        """Add a filter record to the tracker."""
+        tracker.add(
+            {
+                "dashboard_id": dashboard_id,
+                "visualization_id": visualization_id,
+                "tab_id": tab_id,
+                "widget_local_identifier": widget_local_identifier,
+                "filter_type": filter_type,
+                "reference_type": reference_type,
+                "reference_id": reference_id,
+                "reference_object_type": reference_object_type,
+                "workspace_id": workspace_id,
+            }
+        )
+
+    def extract_widget_filters(
+        dashboard_id: str,
+        tab_id: str | None,
+        widget_local_identifier: str,
+        visualization_id: str | None,
+        widget: dict,
+    ) -> None:
+        """Extract filter configuration from a single widget."""
+        # Extract ignoreDashboardFilters
+        # Format: {"type": "attributeFilterReference", "displayForm": {"identifier": {"id": "..."}}}
+        #      or {"type": "dateFilterReference", "dataSet": {"identifier": {"id": "..."}}}
+        ignore_filters = widget.get("ignoreDashboardFilters", [])
+        for filter_ref in ignore_filters:
+            ref_type = filter_ref.get("type")
+
+            if ref_type == "attributeFilterReference":
+                # attributeFilterReference: displayForm.identifier.id
+                display_form_id = (
+                    filter_ref.get("displayForm", {}).get("identifier", {}).get("id")
+                )
+                if display_form_id:
+                    add_filter_record(
+                        dashboard_id=dashboard_id,
+                        tab_id=tab_id,
+                        widget_local_identifier=widget_local_identifier,
+                        visualization_id=visualization_id,
+                        filter_type="ignoreDashboardFilters",
+                        reference_type="attributeFilterReference",
+                        reference_id=display_form_id,
+                        reference_object_type="label",
+                    )
+
+            elif ref_type == "dateFilterReference":
+                # dateFilterReference: dataSet.identifier.id
+                data_set_id = (
+                    filter_ref.get("dataSet", {}).get("identifier", {}).get("id")
+                )
+                if data_set_id:
+                    add_filter_record(
+                        dashboard_id=dashboard_id,
+                        tab_id=tab_id,
+                        widget_local_identifier=widget_local_identifier,
+                        visualization_id=visualization_id,
+                        filter_type="ignoreDashboardFilters",
+                        reference_type="dateFilterReference",
+                        reference_id=data_set_id,
+                        reference_object_type="dataset",
+                    )
+
+        # Extract dateDataSet override
+        date_data_set = widget.get("dateDataSet", {})
+        date_data_set_id = date_data_set.get("identifier", {}).get("id")
+        if date_data_set_id:
+            add_filter_record(
+                dashboard_id=dashboard_id,
+                tab_id=tab_id,
+                widget_local_identifier=widget_local_identifier,
+                visualization_id=visualization_id,
+                filter_type="dateDataSet",
+                reference_type="dataset",
+                reference_id=date_data_set_id,
+                reference_object_type="dataset",
+            )
+
+    # Use shared traversal utility
+    for dashboard_id, tab_id, widget in iterate_dashboard_widgets(dashboard_data):
+        widget_local_id = widget.get("localIdentifier")
+        if not widget_local_id:
+            continue
+
+        # Single insight widgets
+        viz_id = widget.get("insight", {}).get("identifier", {}).get("id")
+        if viz_id or widget.get("ignoreDashboardFilters") or widget.get("dateDataSet"):
+            extract_widget_filters(
+                dashboard_id=dashboard_id,
+                tab_id=tab_id,
+                widget_local_identifier=widget_local_id,
+                visualization_id=viz_id,
+                widget=widget,
+            )
+
+        # visualizationSwitcher widgets - process each inner visualization
+        for viz in widget.get("visualizations", []):
+            inner_viz_id = viz.get("insight", {}).get("identifier", {}).get("id")
+            inner_local_id = viz.get("localIdentifier")
+            if inner_local_id:
+                composite_local_id = f"{widget_local_id}:{inner_local_id}"
+                extract_widget_filters(
+                    dashboard_id=dashboard_id,
+                    tab_id=tab_id,
+                    widget_local_identifier=composite_local_id,
+                    visualization_id=inner_viz_id,
+                    widget=viz,
+                )
+
+    return tracker.get_sorted(
+        sort_key=lambda x: (
+            x["dashboard_id"],
+            x["widget_local_identifier"],
+            x["filter_type"],
+            x["reference_id"],
+        )
+    )
