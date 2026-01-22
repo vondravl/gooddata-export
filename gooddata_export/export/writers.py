@@ -17,6 +17,7 @@ from gooddata_export.process import (
     process_dashboards_permissions_from_analytics_model,
     process_dashboards_plugins,
     process_dashboards_visualizations,
+    process_dashboards_widget_filters,
     process_filter_context_fields,
     process_filter_contexts,
     process_ldm,
@@ -340,6 +341,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
     all_processed_dashboards = []
     all_processed_relationships = []
     all_processed_plugin_relationships = []
+    all_processed_widget_filters = []
 
     # Build known insights once from all workspaces before the loop
     # Parent insights come first, then child-specific insights are added (duplicates ignored by set)
@@ -388,9 +390,15 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
             raw_data, workspace_id
         )
 
+        # Process widget-level filter configuration
+        processed_widget_filters = process_dashboards_widget_filters(
+            raw_data, workspace_id
+        )
+
         all_processed_dashboards.extend(processed_dashboards)
         all_processed_relationships.extend(processed_relationships)
         all_processed_plugin_relationships.extend(processed_plugin_relationships)
+        all_processed_widget_filters.extend(processed_widget_filters)
 
     # Define column schemas
     dashboard_columns = {
@@ -414,6 +422,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "visualization_id": "TEXT",
         "tab_id": "TEXT",  # Tab localIdentifier, NULL for legacy non-tabbed dashboards
         "from_rich_text": "INTEGER DEFAULT 0",
+        "widget_title": "TEXT",  # Overridden title on dashboard, NULL if not set
+        "widget_description": "TEXT",  # Overridden description on dashboard, NULL if not set
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, visualization_id, tab_id, from_rich_text, workspace_id)",
     }
@@ -422,6 +432,18 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "plugin_id": "TEXT",
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, plugin_id, workspace_id)",
+    }
+    widget_filters_columns = {
+        "dashboard_id": "TEXT",
+        "visualization_id": "TEXT",  # NULL for non-insight widgets
+        "tab_id": "TEXT",  # NULL for legacy non-tabbed dashboards
+        "widget_local_identifier": "TEXT",
+        "filter_type": "TEXT",  # 'ignoreDashboardFilters' or 'dateDataSet'
+        "reference_type": "TEXT",  # 'attributeFilterReference', 'dateFilterReference', or 'dataset'
+        "reference_id": "TEXT",  # The display form ID or dataset ID
+        "reference_object_type": "TEXT",  # 'label', 'dataset', etc.
+        "workspace_id": "TEXT",
+        "PRIMARY KEY": "(dashboard_id, widget_local_identifier, filter_type, reference_id, workspace_id)",
     }
 
     # Always create all tables (even if empty) for consistency
@@ -432,6 +454,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 ("dashboards", dashboard_columns),
                 ("dashboards_visualizations", relationship_columns),
                 ("dashboards_plugins", plugin_relationship_columns),
+                ("dashboards_widget_filters", widget_filters_columns),
             ],
         )
 
@@ -489,6 +512,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                     "visualization_id",
                     "tab_id",
                     "from_rich_text",
+                    "widget_title",
+                    "widget_description",
                     "workspace_id",
                 ],
             )
@@ -498,8 +523,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 conn.cursor(),
                 """
                 INSERT INTO dashboards_visualizations
-                (dashboard_id, visualization_id, tab_id, from_rich_text, workspace_id)
-                VALUES (?, ?, ?, ?, ?)
+                (dashboard_id, visualization_id, tab_id, from_rich_text, widget_title, widget_description, workspace_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -507,6 +532,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                         d["visualization_id"],
                         d.get("tab_id"),  # NULL for legacy non-tabbed dashboards
                         d.get("from_rich_text", 0),
+                        d.get("widget_title"),  # NULL if not set
+                        d.get("widget_description"),  # NULL if not set
                         d["workspace_id"],
                     )
                     for d in all_processed_relationships
@@ -537,6 +564,51 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 ],
             )
 
+        # Export widget filter configuration
+        widget_filters_count = len(all_processed_widget_filters)
+        if export_dir is not None and all_processed_widget_filters:
+            widget_filters_count = write_to_csv(
+                all_processed_widget_filters,
+                export_dir,
+                "gooddata_dashboards_widget_filters.csv",
+                fieldnames=[
+                    "dashboard_id",
+                    "visualization_id",
+                    "tab_id",
+                    "widget_local_identifier",
+                    "filter_type",
+                    "reference_type",
+                    "reference_id",
+                    "reference_object_type",
+                    "workspace_id",
+                ],
+            )
+
+        if all_processed_widget_filters:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO dashboards_widget_filters
+                (dashboard_id, visualization_id, tab_id, widget_local_identifier,
+                 filter_type, reference_type, reference_id, reference_object_type, workspace_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["dashboard_id"],
+                        d.get("visualization_id"),
+                        d.get("tab_id"),
+                        d["widget_local_identifier"],
+                        d["filter_type"],
+                        d["reference_type"],
+                        d["reference_id"],
+                        d["reference_object_type"],
+                        d["workspace_id"],
+                    )
+                    for d in all_processed_widget_filters
+                ],
+            )
+
         conn.commit()
 
     if export_dir is not None:
@@ -556,6 +628,12 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 plugin_rel_count,
                 Path(export_dir) / "gooddata_dashboards_plugins.csv",
             )
+        if widget_filters_count > 0:
+            log_export(
+                "widget filter configurations",
+                widget_filters_count,
+                Path(export_dir) / "gooddata_dashboards_widget_filters.csv",
+            )
     else:
         logger.info("Exported %d dashboards to %s", dash_count, db_name)
         logger.info(
@@ -567,6 +645,12 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
             logger.info(
                 "Exported %d dashboard-plugin relationships to %s",
                 plugin_rel_count,
+                db_name,
+            )
+        if widget_filters_count > 0:
+            logger.info(
+                "Exported %d widget filter configurations to %s",
+                widget_filters_count,
                 db_name,
             )
 
