@@ -133,7 +133,19 @@ views:
     description: Unnests LDM column tags into individual rows
     category: tagging
     dependencies: []
-  
+
+  v_ldm_labels:
+    sql_file: views/v_ldm_labels.sql
+    description: LDM labels with dataset_id derived from parent attribute
+    category: tagging
+    dependencies: []
+
+  v_ldm_labels_tags:
+    sql_file: views/v_ldm_labels_tags.sql
+    description: Unnests LDM label tags into individual rows
+    category: tagging
+    dependencies: []
+
   v_ldm_dataset_column_tag_check:
     sql_file: views/v_ldm_dataset_column_tag_check.sql
     description: Validates that dataset columns have matching tags with their parent dataset

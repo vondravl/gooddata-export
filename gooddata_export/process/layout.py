@@ -135,9 +135,17 @@ def fetch_analytics_model(
 
 
 def process_ldm(data, workspace_id=None):
-    """Parse logical model data into datasets and columns"""
+    """Parse logical model data into datasets, columns, and labels.
+
+    Returns:
+        tuple: (datasets, columns, labels) where:
+            - datasets: List of dataset records
+            - columns: List of column records (attributes, facts, references, etc.)
+            - labels: List of attribute label records
+    """
     datasets = []
     columns = []
+    labels = []
 
     # First pass: Process all datasets basic info
     dataset_map = {}
@@ -201,6 +209,26 @@ def process_ldm(data, workspace_id=None):
                     "workspace_id": workspace_id,
                 }
             )
+
+            # Extract labels from attribute
+            default_view_id = attr.get("defaultView", {}).get("id", "")
+            for label in attr.get("labels", []):
+                labels.append(
+                    {
+                        "attribute_id": attr["id"],
+                        "id": label["id"],
+                        "title": label.get("title", ""),
+                        "description": label.get("description", ""),
+                        "source_column": label.get("sourceColumn", ""),
+                        "source_column_data_type": label.get(
+                            "sourceColumnDataType", ""
+                        ),
+                        "value_type": label.get("valueType", ""),
+                        "tags": str(sort_tags(label.get("tags", []))),
+                        "is_default": "Yes" if label["id"] == default_view_id else "No",
+                        "workspace_id": workspace_id,
+                    }
+                )
 
         # Add facts
         for fact in dataset.get("facts", []):
@@ -269,7 +297,7 @@ def process_ldm(data, workspace_id=None):
                 }
             )
 
-    return datasets, columns
+    return datasets, columns, labels
 
 
 def process_users(data):

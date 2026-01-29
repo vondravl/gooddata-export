@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-01-29
+
+### Added
+- **`ldm_labels` table**: Captures attribute labels (display forms) from the Logical Data Model
+  - Labels contain display representations of attributes with their own metadata
+  - Columns: `attribute_id`, `id`, `title`, `description`, `source_column`, `source_column_data_type`, `value_type`, `tags`, `is_default`, `workspace_id`
+  - `is_default` indicates which label is the default view for the attribute
+  - Note: `dataset_id` is derived via `attribute_id` JOIN to `ldm_columns` (normalized design)
+- **`v_ldm_labels` view**: Labels with dataset context (dataset_id, dataset_name, attribute_title)
+- **`v_ldm_labels_tags` view**: Unnests LDM label tags into individual rows for tag analysis
+- **Foreign key constraints**: Added FK definitions to all junction/child tables for better tooling support (DBeaver ER diagrams). FKs are schema metadata only (not enforced by default in SQLite).
+  - `ldm_columns` → `ldm_datasets`
+  - `ldm_labels` → `ldm_columns`
+  - `visualizations_metrics` → `visualizations`, `metrics`
+  - `visualizations_attributes` → `visualizations`
+  - `dashboards` → `filter_contexts`
+  - `dashboards_visualizations` → `dashboards`, `visualizations`
+  - `dashboards_plugins` → `dashboards`, `plugins`
+  - `dashboards_widget_filters` → `dashboards`
+  - `dashboards_metrics` → `dashboards`, `metrics`
+  - `dashboards_permissions` → `dashboards`
+  - `filter_context_fields` → `filter_contexts`
+  - `user_group_members` → `users`, `user_groups`
+
+### Changed
+- **`ldm_datasets`**: Changed PRIMARY KEY from `id` to `(id, workspace_id)` for consistency
+- **`ldm_columns`**: Added missing PRIMARY KEY `(id, workspace_id)`
+- **`v_ldm_columns_tags.sql`**: Added `DROP VIEW IF EXISTS` for consistency with other views
+
 ## [1.5.1] - 2026-01-22
 
 ### Changed

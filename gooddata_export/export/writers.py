@@ -177,6 +177,8 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
         "workspace_id": "TEXT",
         "label": "TEXT",
         "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
+        "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
+        "FOREIGN KEY (metric_id, workspace_id)": "REFERENCES metrics(metric_id, workspace_id)",
     }
     attribute_relationship_columns = {
         "visualization_id": "TEXT",
@@ -184,6 +186,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
         "workspace_id": "TEXT",
         "label": "TEXT",
         "PRIMARY KEY": "(visualization_id, attribute_id, workspace_id)",
+        "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
 
     # Always create all tables (even if empty) for consistency
@@ -416,6 +419,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "is_hidden": "BOOLEAN",
         "filter_context_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, workspace_id)",
+        "FOREIGN KEY (filter_context_id, workspace_id)": "REFERENCES filter_contexts(filter_context_id, workspace_id)",
     }
     relationship_columns = {
         "dashboard_id": "TEXT",
@@ -426,12 +430,16 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "widget_description": "TEXT",  # Overridden description on dashboard, NULL if not set
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, visualization_id, tab_id, from_rich_text, workspace_id)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
+        "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
     plugin_relationship_columns = {
         "dashboard_id": "TEXT",
         "plugin_id": "TEXT",
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, plugin_id, workspace_id)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
+        "FOREIGN KEY (plugin_id, workspace_id)": "REFERENCES plugins(plugin_id, workspace_id)",
     }
     widget_filters_columns = {
         "dashboard_id": "TEXT",
@@ -444,6 +452,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "reference_object_type": "TEXT",  # 'label', 'dataset', etc.
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, widget_local_identifier, filter_type, reference_id, workspace_id)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
     }
 
     # Always create all tables (even if empty) for consistency
@@ -677,13 +686,13 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
         raise RuntimeError("No LDM data found in parent workspace")
 
     # Process LDM data with parent workspace ID (since it's shared across all workspaces)
-    datasets, column_records = process_ldm(raw_data, parent_workspace_id)
+    datasets, column_records, label_records = process_ldm(raw_data, parent_workspace_id)
 
     # Export datasets
     dataset_columns = {
         "title": "TEXT",
         "description": "TEXT",
-        "id": "TEXT PRIMARY KEY",
+        "id": "TEXT",
         "tags": "TEXT",
         "attributes_count": "INTEGER",
         "facts_count": "INTEGER",
@@ -694,6 +703,7 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
         "source_table": "TEXT",
         "source_table_path": "TEXT",
         "workspace_id": "TEXT",
+        "PRIMARY KEY": "(id, workspace_id)",
     }
 
     dataset_count = len(datasets)
@@ -750,6 +760,8 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
             "reference_to_id": "TEXT",
             "reference_to_title": "TEXT",
             "workspace_id": "TEXT",
+            "PRIMARY KEY": "(id, workspace_id)",
+            "FOREIGN KEY (dataset_id, workspace_id)": "REFERENCES ldm_datasets(id, workspace_id)",
         }
 
         column_count = len(column_records)
@@ -787,6 +799,57 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
             ],
         )
 
+        # Export labels (attribute labels/display forms)
+        # Note: dataset_id is not stored here - derive via JOIN to ldm_columns
+        label_columns = {
+            "attribute_id": "TEXT",
+            "id": "TEXT",
+            "title": "TEXT",
+            "description": "TEXT",
+            "source_column": "TEXT",
+            "source_column_data_type": "TEXT",
+            "value_type": "TEXT",
+            "tags": "TEXT",
+            "is_default": "TEXT",
+            "workspace_id": "TEXT",
+            "PRIMARY KEY": "(id, workspace_id)",
+            "FOREIGN KEY (attribute_id, workspace_id)": "REFERENCES ldm_columns(id, workspace_id)",
+        }
+
+        label_count = len(label_records)
+        if export_dir is not None:
+            label_csv = "gooddata_ldm_labels.csv"
+            label_count = write_to_csv(
+                label_records, export_dir, label_csv, fieldnames=label_columns.keys()
+            )
+
+        cursor = setup_table(conn, "ldm_labels", label_columns)
+        if label_records:
+            execute_with_retry(
+                cursor,
+                """
+                INSERT INTO ldm_labels
+                (attribute_id, id, title, description, source_column,
+                 source_column_data_type, value_type, tags, is_default, workspace_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["attribute_id"],
+                        d["id"],
+                        d["title"],
+                        d["description"],
+                        d["source_column"],
+                        d["source_column_data_type"],
+                        d["value_type"],
+                        d["tags"],
+                        d["is_default"],
+                        d["workspace_id"],
+                    )
+                    for d in label_records
+                ],
+            )
+
         conn.commit()
         if export_dir is not None:
             log_export(
@@ -799,9 +862,15 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
                 column_count,
                 Path(export_dir) / "gooddata_ldm_columns.csv",
             )
+            log_export(
+                "labels",
+                label_count,
+                Path(export_dir) / "gooddata_ldm_labels.csv",
+            )
         else:
             logger.info("Exported %d datasets to %s", dataset_count, db_name)
             logger.info("Exported %d columns to %s", column_count, db_name)
+            logger.info("Exported %d labels to %s", label_count, db_name)
 
 
 def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> None:
@@ -858,6 +927,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
         "date_type": "TEXT",
         "attribute_elements_count": "INTEGER",
         "PRIMARY KEY": "(filter_context_id, workspace_id, filter_index)",
+        "FOREIGN KEY (filter_context_id, workspace_id)": "REFERENCES filter_contexts(filter_context_id, workspace_id)",
     }
 
     # Always create all tables (even if empty) for consistency
@@ -1051,6 +1121,8 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name) -
         "metric_id": "TEXT",
         "workspace_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, metric_id, workspace_id)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
+        "FOREIGN KEY (metric_id, workspace_id)": "REFERENCES metrics(metric_id, workspace_id)",
     }
 
     # Connect to database and ensure table exists
@@ -1216,6 +1288,8 @@ def export_users_and_user_groups(
         "user_id": "TEXT",
         "user_group_id": "TEXT",
         "PRIMARY KEY": "(user_id, user_group_id)",
+        "FOREIGN KEY (user_id)": "REFERENCES users(user_id)",
+        "FOREIGN KEY (user_group_id)": "REFERENCES user_groups(user_group_id)",
     }
 
     # Always create tables (even if empty) for consistency with other export functions
@@ -1392,6 +1466,7 @@ def export_dashboards_permissions(
         "assignee_type": "TEXT",
         "permission_name": "TEXT",
         "PRIMARY KEY": "(dashboard_id, workspace_id, assignee_id, assignee_type, permission_name)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
     }
 
     with database_connection(db_name) as conn:

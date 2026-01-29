@@ -1,11 +1,13 @@
 -- Create view showing LDM columns with tags unnested (one row per tag)
 -- This makes it easier to query and filter by individual tags
--- 
+--
 -- The tags column in the ldm_columns table is stored as a string like "['tag1', 'tag2']"
 -- This view converts it to proper JSON and unnests each tag into its own row
--- 
+--
 -- Note: References are included in this view (even though they typically don't have tags)
 --       for completeness. You can filter them out with WHERE type != 'reference' if needed.
+
+DROP VIEW IF EXISTS v_ldm_columns_tags;
 
 CREATE VIEW IF NOT EXISTS v_ldm_columns_tags AS
 SELECT 
