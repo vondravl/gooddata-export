@@ -5,9 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gooddata_export.constants import LOCAL_MODE_STALE_TABLES
-from gooddata_export.export.utils import truncate_tables_for_local_mode
-
 
 @pytest.fixture
 def mock_config():
@@ -20,120 +17,9 @@ def mock_config():
     return config
 
 
-class TestTruncateTablesForLocalMode:
-    """Tests for the truncate_tables_for_local_mode function."""
-
-    def test_truncates_existing_tables(self, tmp_path):
-        """Truncates tables that exist in the database."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(db_path)
-
-        # Create tables with data
-        conn.execute("CREATE TABLE users (id TEXT, name TEXT)")
-        conn.execute("INSERT INTO users VALUES ('u1', 'User 1')")
-        conn.execute("CREATE TABLE plugins (id TEXT, title TEXT)")
-        conn.execute("INSERT INTO plugins VALUES ('p1', 'Plugin 1')")
-        conn.execute("INSERT INTO plugins VALUES ('p2', 'Plugin 2')")
-        conn.commit()
-
-        # Verify data exists
-        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM plugins").fetchone()[0] == 2
-        conn.close()
-
-        # Truncate
-        truncate_tables_for_local_mode(db_path)
-
-        # Verify tables are empty
-        conn = sqlite3.connect(db_path)
-        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM plugins").fetchone()[0] == 0
-        conn.close()
-
-    def test_skips_nonexistent_tables(self, tmp_path):
-        """Skips tables that don't exist without error."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(db_path)
-
-        # Create only one of the stale tables
-        conn.execute("CREATE TABLE users (id TEXT)")
-        conn.execute("INSERT INTO users VALUES ('u1')")
-        conn.commit()
-        conn.close()
-
-        # Should not raise even though other tables don't exist
-        truncate_tables_for_local_mode(db_path)
-
-        # Verify users was truncated
-        conn = sqlite3.connect(db_path)
-        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
-        conn.close()
-
-    def test_no_op_when_database_does_not_exist(self, tmp_path):
-        """Does nothing when database doesn't exist yet."""
-        db_path = tmp_path / "nonexistent.db"
-        assert not db_path.exists()
-
-        # Should not raise or create the database
-        truncate_tables_for_local_mode(db_path)
-
-        assert not db_path.exists()
-
-    def test_preserves_other_tables(self, tmp_path):
-        """Does not truncate tables not in LOCAL_MODE_STALE_TABLES."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(db_path)
-
-        # Create a table that should NOT be truncated
-        conn.execute("CREATE TABLE metrics (id TEXT, title TEXT)")
-        conn.execute("INSERT INTO metrics VALUES ('m1', 'Metric 1')")
-        # And a stale table
-        conn.execute("CREATE TABLE users (id TEXT)")
-        conn.execute("INSERT INTO users VALUES ('u1')")
-        conn.commit()
-        conn.close()
-
-        truncate_tables_for_local_mode(db_path)
-
-        conn = sqlite3.connect(db_path)
-        # metrics should be preserved
-        assert conn.execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 1
-        # users should be truncated
-        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
-        conn.close()
-
-    def test_handles_truncation_error_gracefully(self, tmp_path, caplog):
-        """Handles errors gracefully and logs warning."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(db_path)
-        conn.execute("CREATE TABLE users (id TEXT)")
-        conn.execute("INSERT INTO users VALUES ('u1')")
-        conn.commit()
-        conn.close()
-
-        # Make the file read-only to cause an error
-        db_path.chmod(0o444)
-
-        try:
-            # Should not raise, just log warning
-            truncate_tables_for_local_mode(db_path)
-            assert any(
-                "Could not truncate" in record.message for record in caplog.records
-            )
-        finally:
-            # Restore permissions for cleanup
-            db_path.chmod(0o644)
-
-    def test_all_stale_tables_defined(self):
-        """Verify LOCAL_MODE_STALE_TABLES contains expected tables."""
-        expected_tables = {"users", "user_groups", "user_group_members", "plugins"}
-        assert set(LOCAL_MODE_STALE_TABLES) == expected_tables
-
-
 class TestLayoutJsonParameterFlow:
     """Tests for the layout_json parameter flow in export_all_metadata."""
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.run_post_export_sql")
     @patch("gooddata_export.export.export_workspaces")
@@ -160,7 +46,6 @@ class TestLayoutJsonParameterFlow:
         mock_workspaces,
         mock_post_export,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -193,15 +78,11 @@ class TestLayoutJsonParameterFlow:
                 mock_validate.assert_not_called()
                 mock_fetch.assert_not_called()
 
-        # Should call truncate
-        mock_truncate.assert_called_once()
-
         # Should set export_mode to "local"
         mock_store_metadata.assert_called_once()
         call_kwargs = mock_store_metadata.call_args[1]
         assert call_kwargs.get("export_mode") == "local"
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -226,7 +107,6 @@ class TestLayoutJsonParameterFlow:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -275,7 +155,6 @@ class TestLayoutJsonParameterFlow:
         assert data["child_workspaces"] is None
         assert data["users_and_user_groups"] is None
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.validate_workspace_exists")
     @patch("gooddata_export.export.fetch_all_workspace_data")
@@ -304,7 +183,6 @@ class TestLayoutJsonParameterFlow:
         mock_fetch,
         mock_validate,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -344,9 +222,6 @@ class TestLayoutJsonParameterFlow:
         mock_validate.assert_called_once()
         mock_fetch.assert_called_once()
 
-        # Should NOT call truncate
-        mock_truncate.assert_not_called()
-
         # Should set export_mode to "api"
         mock_store_metadata.assert_called_once()
         call_kwargs = mock_store_metadata.call_args[1]
@@ -356,7 +231,6 @@ class TestLayoutJsonParameterFlow:
 class TestLayoutJsonEdgeCases:
     """Tests for edge cases with layout_json parameter."""
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -381,7 +255,6 @@ class TestLayoutJsonEdgeCases:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -412,7 +285,6 @@ class TestLayoutJsonEdgeCases:
         assert ws_data["data"]["visualizations"] == []
         assert ws_data["data"]["filter_contexts"] == []
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -437,7 +309,6 @@ class TestLayoutJsonEdgeCases:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -466,7 +337,6 @@ class TestLayoutJsonEdgeCases:
         # Empty ldm dict results in None (falsy check in code)
         assert ws_data["data"]["ldm"] is None
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -491,7 +361,6 @@ class TestLayoutJsonEdgeCases:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -520,7 +389,6 @@ class TestLayoutJsonEdgeCases:
         assert ws_data["data"]["metrics"] == []
         assert ws_data["data"]["dashboards"] == []
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -545,7 +413,6 @@ class TestLayoutJsonEdgeCases:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -573,7 +440,6 @@ class TestLayoutJsonEdgeCases:
 
         assert ws_data["data"]["ldm"] is None
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -598,7 +464,6 @@ class TestLayoutJsonEdgeCases:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -626,7 +491,6 @@ class TestLayoutJsonEdgeCases:
         assert ws_data["data"]["visualizations"] == []
         assert ws_data["data"]["ldm"] is None
 
-    @patch("gooddata_export.export.truncate_tables_for_local_mode")
     @patch("gooddata_export.export.store_workspace_metadata")
     @patch("gooddata_export.export.export_workspaces")
     @patch("gooddata_export.export.export_metrics")
@@ -651,7 +515,6 @@ class TestLayoutJsonEdgeCases:
         mock_metrics,
         mock_workspaces,
         mock_store_metadata,
-        mock_truncate,
         tmp_path,
         mock_config,
     ):
@@ -978,6 +841,157 @@ class TestLocalModeIntegration:
         for r in legacy_relationships:
             assert r[2] is None  # tab_id should be NULL
 
+    def test_widget_local_identifier_extracted(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """Widget localIdentifier is extracted to widget_local_identifier column."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            """SELECT visualization_id, widget_local_identifier, widget_type
+               FROM dashboards_visualizations
+               WHERE dashboard_id = 'dashboard_executive_overview'
+               ORDER BY visualization_id"""
+        )
+        relationships = cursor.fetchall()
+        conn.close()
+
+        # Legacy dashboard has 2 insight widgets with localIdentifiers
+        assert len(relationships) == 2
+
+        # viz_orders_by_region -> widget_orders_region
+        orders_viz = next(r for r in relationships if r[0] == "viz_orders_by_region")
+        assert orders_viz[1] == "widget_orders_region"
+        assert orders_viz[2] == "insight"
+
+        # viz_revenue_trend -> widget_revenue_trend
+        revenue_viz = next(r for r in relationships if r[0] == "viz_revenue_trend")
+        assert revenue_viz[1] == "widget_revenue_trend"
+        assert revenue_viz[2] == "insight"
+
+    def test_visualization_switcher_has_both_identifiers(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """VisualizationSwitcher inner visualizations have own ID and parent's switcher ID."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        # Query switcher visualizations by type
+        cursor = conn.execute(
+            """SELECT visualization_id, widget_local_identifier, widget_type, switcher_local_identifier
+               FROM dashboards_visualizations
+               WHERE widget_type = 'visualizationSwitcher'
+               ORDER BY visualization_id"""
+        )
+        switcher_viz = cursor.fetchall()
+        conn.close()
+
+        # Two visualizations in the switcher
+        assert len(switcher_viz) == 2
+
+        # Each has its own widget_local_identifier
+        widget_ids = {r[1] for r in switcher_viz}
+        assert widget_ids == {"inner_viz_orders", "inner_viz_value"}
+
+        # Both share the same switcher_local_identifier (parent's ID for grouping)
+        switcher_ids = {r[3] for r in switcher_viz}
+        assert switcher_ids == {"widget_switcher_metrics"}
+
+        # Both should be marked as visualizationSwitcher type
+        for r in switcher_viz:
+            assert r[2] == "visualizationSwitcher"
+
+        # Verify grouping works: GROUP BY switcher_local_identifier would give count=2
+        viz_ids = {r[0] for r in switcher_viz}
+        assert viz_ids == {"viz_orders_by_region", "viz_avg_order_value"}
+
+    def test_widget_type_values(self, sample_layout, mock_config, tmp_path):
+        """widget_type column has correct values for different widget types."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        # Get distinct widget types
+        cursor = conn.execute(
+            """SELECT DISTINCT widget_type FROM dashboards_visualizations
+               WHERE widget_type IS NOT NULL"""
+        )
+        widget_types = {r[0] for r in cursor.fetchall()}
+        conn.close()
+
+        # Should have both insight and visualizationSwitcher types
+        assert "insight" in widget_types
+        assert "visualizationSwitcher" in widget_types
+
+    def test_non_switcher_has_null_switcher_identifier(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """Non-switcher widgets have NULL switcher_local_identifier."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        # Query insight widgets (not in switcher)
+        cursor = conn.execute(
+            """SELECT widget_local_identifier, switcher_local_identifier
+               FROM dashboards_visualizations
+               WHERE widget_type = 'insight'"""
+        )
+        insight_widgets = cursor.fetchall()
+        conn.close()
+
+        # All insight widgets should have their own localIdentifier but NULL switcher
+        for widget_id, switcher_id in insight_widgets:
+            assert widget_id is not None  # Has own localIdentifier
+            assert switcher_id is None  # Not in a switcher
+
     def test_ldm_datasets_exported(self, sample_layout, mock_config, tmp_path):
         """LDM datasets from fixture are exported to database."""
         from gooddata_export.export import export_all_metadata
@@ -1034,6 +1048,86 @@ class TestLocalModeIntegration:
         column_types = {c[1]: c[2] for c in columns}
         assert column_types.get("order_id") == "attribute"
         assert column_types.get("revenue") == "fact"
+
+    def test_ldm_labels_exported(self, sample_layout, mock_config, tmp_path):
+        """LDM labels (attribute display forms) are exported to database."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            """SELECT dataset_id, attribute_id, id, title, is_default
+               FROM ldm_labels ORDER BY id"""
+        )
+        labels = cursor.fetchall()
+        conn.close()
+
+        # Fixture has 4 labels total:
+        # - order_id.label (default for order_id attribute)
+        # - region.name (default for region attribute)
+        # - region.code (non-default for region attribute)
+        # - date.month (default for date.month attribute)
+        assert len(labels) == 4
+
+        # Verify label structure
+        label_map = {label[2]: label for label in labels}
+
+        # order_id.label is default
+        order_label = label_map["order_id.label"]
+        assert order_label[0] == "orders"  # dataset_id
+        assert order_label[1] == "order_id"  # attribute_id
+        assert order_label[3] == "Order ID"  # title
+        assert order_label[4] == "Yes"  # is_default
+
+        # region.name is default, region.code is not
+        region_name = label_map["region.name"]
+        assert region_name[4] == "Yes"  # is_default
+
+        region_code = label_map["region.code"]
+        assert region_code[0] == "orders"  # dataset_id
+        assert region_code[1] == "region"  # attribute_id
+        assert region_code[4] == "No"  # is_default (not the default view)
+
+    def test_ldm_labels_metadata_preserved(self, sample_layout, mock_config, tmp_path):
+        """LDM label metadata (description, tags, valueType) is preserved."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            """SELECT id, description, source_column, value_type, tags
+               FROM ldm_labels WHERE id = 'order_id.label'"""
+        )
+        label = cursor.fetchone()
+        conn.close()
+
+        assert label[0] == "order_id.label"
+        assert label[1] == "Primary order identifier label"  # description
+        assert label[2] == "ORDER_ID"  # source_column
+        assert label[3] == "TEXT"  # value_type
+        assert "identifier" in label[4]  # tags contain 'identifier'
 
     def test_filter_contexts_exported(self, sample_layout, mock_config, tmp_path):
         """Filter contexts from fixture are exported."""

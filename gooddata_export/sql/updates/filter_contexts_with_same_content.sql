@@ -60,45 +60,46 @@ UPDATE filter_contexts
 SET filter_fields = (
     SELECT sf.filter_fields
     FROM (
-        SELECT 
+        SELECT
             fc.filter_context_id,
             fc.workspace_id,
             GROUP_CONCAT(
-                CASE 
-                    WHEN fcf.filter_type = 'dateFilter' THEN 
-                        'DATE:' || COALESCE(fcf.date_granularity, '') || ':' || 
-                        COALESCE(CAST(fcf.date_from AS TEXT), '') || ':' || 
-                        COALESCE(CAST(fcf.date_to AS TEXT), '') || ':' || 
+                CASE
+                    WHEN fcf.filter_type = 'dateFilter' THEN
+                        'DATE:' || COALESCE(fcf.date_granularity, '') || ':' ||
+                        COALESCE(CAST(fcf.date_from AS TEXT), '') || ':' ||
+                        COALESCE(CAST(fcf.date_to AS TEXT), '') || ':' ||
                         COALESCE(fcf.date_type, '')
-                    WHEN fcf.filter_type = 'attributeFilter' THEN 
-                        'ATTR:' || COALESCE(fcf.display_form_id, '') || ':' || 
-                        COALESCE(fcf.selection_mode, '') || ':' || 
+                    WHEN fcf.filter_type = 'attributeFilter' THEN
+                        'ATTR:' || COALESCE(fcf.display_form_id, '') || ':' ||
+                        COALESCE(fcf.selection_mode, '') || ':' ||
                         COALESCE(CAST(fcf.negative_selection AS TEXT), '')
                     ELSE 'UNKNOWN'
-                END, 
-                '||' ORDER BY 
-                    CASE 
-                        WHEN fcf.filter_type = 'dateFilter' THEN 
-                            'DATE:' || COALESCE(fcf.date_granularity, '') || ':' || 
-                            COALESCE(CAST(fcf.date_from AS TEXT), '') || ':' || 
-                            COALESCE(CAST(fcf.date_to AS TEXT), '') || ':' || 
+                END,
+                '||' ORDER BY
+                    CASE
+                        WHEN fcf.filter_type = 'dateFilter' THEN
+                            'DATE:' || COALESCE(fcf.date_granularity, '') || ':' ||
+                            COALESCE(CAST(fcf.date_from AS TEXT), '') || ':' ||
+                            COALESCE(CAST(fcf.date_to AS TEXT), '') || ':' ||
                             COALESCE(fcf.date_type, '')
-                        WHEN fcf.filter_type = 'attributeFilter' THEN 
-                            'ATTR:' || COALESCE(fcf.display_form_id, '') || ':' || 
-                            COALESCE(fcf.selection_mode, '') || ':' || 
+                        WHEN fcf.filter_type = 'attributeFilter' THEN
+                            'ATTR:' || COALESCE(fcf.display_form_id, '') || ':' ||
+                            COALESCE(fcf.selection_mode, '') || ':' ||
                             COALESCE(CAST(fcf.negative_selection AS TEXT), '')
                         ELSE 'UNKNOWN'
                     END
             ) AS filter_fields
         FROM filter_contexts fc
-        LEFT JOIN filter_context_fields fcf 
-            ON fc.filter_context_id = fcf.filter_context_id 
+        LEFT JOIN filter_context_fields fcf
+            ON fc.filter_context_id = fcf.filter_context_id
             AND fc.workspace_id = fcf.workspace_id
         GROUP BY fc.filter_context_id, fc.workspace_id
     ) sf
     WHERE sf.filter_context_id = filter_contexts.filter_context_id
       AND sf.workspace_id = filter_contexts.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Update same_fields_id for filter contexts with duplicates
 UPDATE filter_contexts
@@ -107,7 +108,8 @@ SET same_fields_id = (
     FROM filter_context_duplicities
     WHERE filter_context_duplicities.filter_context_id = filter_contexts.filter_context_id
       AND filter_context_duplicities.workspace_id = filter_contexts.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Update same_filter_contexts_count for filter contexts with duplicates
 UPDATE filter_contexts
@@ -116,8 +118,8 @@ SET same_filter_contexts_count = (
     FROM filter_context_duplicities
     WHERE filter_context_duplicities.filter_context_id = filter_contexts.filter_context_id
       AND filter_context_duplicities.workspace_id = filter_contexts.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Drop the temporary table
 DROP TABLE filter_context_duplicities;
-

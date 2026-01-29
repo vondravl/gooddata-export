@@ -12,7 +12,20 @@
 
 DROP TABLE IF EXISTS metrics_ancestry;
 
-CREATE TABLE metrics_ancestry AS
+-- Create table structure with FK constraints
+CREATE TABLE metrics_ancestry (
+    metric_id TEXT,
+    workspace_id TEXT,
+    ancestor_metric_id TEXT,
+    min_depth INTEGER,
+    max_depth INTEGER,
+    PRIMARY KEY (metric_id, workspace_id, ancestor_metric_id),
+    FOREIGN KEY (metric_id, workspace_id) REFERENCES metrics(metric_id, workspace_id),
+    FOREIGN KEY (ancestor_metric_id, workspace_id) REFERENCES metrics(metric_id, workspace_id)
+);
+
+-- Populate with recursive CTE
+INSERT INTO metrics_ancestry (metric_id, workspace_id, ancestor_metric_id, min_depth, max_depth)
 WITH RECURSIVE ancestors AS (
     -- Base case: direct references (depth 1)
     SELECT

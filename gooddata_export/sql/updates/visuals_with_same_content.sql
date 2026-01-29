@@ -48,25 +48,27 @@ FROM with_tags
 -- Update columns
 UPDATE visualizations
 SET columns = (
-    SELECT columns 
-    FROM duplicities 
+    SELECT columns
+    FROM duplicities
     WHERE duplicities.visualization_id = visualizations.visualization_id
       AND duplicities.workspace_id = visualizations.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Update same_columns_id
 UPDATE visualizations
 SET same_columns_id = (
-    SELECT same_columns_id 
-    FROM duplicities 
+    SELECT same_columns_id
+    FROM duplicities
     WHERE duplicities.visualization_id = visualizations.visualization_id
       AND duplicities.workspace_id = visualizations.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Update same_visuals_id (simple version - just URL + columns)
 UPDATE visualizations
 SET same_visuals_id = (
-    SELECT same_visuals_id 
+    SELECT same_visuals_id
     FROM (
           SELECT *
           , dense_rank() OVER (ORDER BY visualization_url, columns) same_visuals_id
@@ -75,12 +77,13 @@ SET same_visuals_id = (
          ) d
     WHERE d.visualization_id = visualizations.visualization_id
       AND d.workspace_id = visualizations.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Update same_visuals_id_with_tags (precise version - URL + columns + tags)
 UPDATE visualizations
 SET same_visuals_id_with_tags = (
-    SELECT same_visuals_id_with_tags 
+    SELECT same_visuals_id_with_tags
     FROM (
           SELECT *
           , dense_rank() OVER (ORDER BY visualization_url, tags_sorted, columns) same_visuals_id_with_tags
@@ -89,7 +92,8 @@ SET same_visuals_id_with_tags = (
          ) d
     WHERE d.visualization_id = visualizations.visualization_id
       AND d.workspace_id = visualizations.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Drop the temporary table
 DROP TABLE duplicities;

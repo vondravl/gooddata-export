@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-01-30
+
+### Added
+- **Reusable CLI prompts module** (`gooddata_export.cli.prompts`): Importable prompt functions for interactive CLI workflows
+  - `is_interactive()`: Check if running in interactive terminal (TTY) without CI environment
+  - `prompt_checkbox_selection()`: Multi-select checkbox prompt with toggle support (numbers, 'a'=all, 'n'=none)
+  - `prompt_yes_no()`: Simple yes/no confirmation prompt
+  - All prompts gracefully fall back to defaults in non-interactive/CI environments
+  - CI detection for: `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `CIRCLECI`, `TRAVIS`, `BUILDKITE`, `TEAMCITY_VERSION`, `TF_BUILD`
+- **Interactive child workspace data type selection**: When using `--include-child-workspaces` without `--child-workspace-data-types`, an interactive prompt allows selecting which data types to fetch (default: none selected; selecting nothing skips child workspace fetching)
+- **`CHILD_WORKSPACE_DATA_TYPES` constant**: Tuple of valid child workspace data types (`dashboards`, `visualizations`, `metrics`, `filter_contexts`)
+- **Parent-only enrichment in multi-workspace mode**: Post-export SQL updates now filter to parent workspace only when child workspaces are included
+  - Prevents confusing duplicate detection results across workspace hierarchies
+  - SQL updates use `{parent_workspace_filter}` placeholder for workspace-scoped operations
+- **`dashboards_visualizations` table**: New columns for widget tracking
+  - `widget_local_identifier`: The widget's own `localIdentifier` from the dashboard layout
+  - `widget_type`: The type of widget containing the visualization: `insight`, `visualizationSwitcher`, or `richText`
+  - `switcher_local_identifier`: The parent switcher's `localIdentifier` (NULL for non-switcher widgets). Use this for GROUP BY to find all visualizations in a switcher.
+- **`v_dashboards_visualizations` view**: Added `widget_local_identifier`, `widget_type`, and `switcher_local_identifier` columns
+- **`ldm_labels` table**: Captures attribute labels (display forms) from the Logical Data Model
+  - Labels contain display representations of attributes with their own metadata
+  - Columns: `dataset_id`, `attribute_id`, `id`, `title`, `description`, `source_column`, `source_column_data_type`, `value_type`, `tags`, `is_default`, `workspace_id`
+  - `is_default` indicates which label is the default view for the attribute
+- **`v_ldm_labels` view**: Labels with dataset context (dataset_id, dataset_name, attribute_title)
+- **`v_ldm_labels_tags` view**: Unnests LDM label tags into individual rows for tag analysis
+- **Foreign key constraints**: Added FK definitions to all junction/child tables for better tooling support (DBeaver ER diagrams). FKs are schema metadata only (not enforced by default in SQLite).
+  - `ldm_columns` → `ldm_datasets`
+  - `ldm_labels` → `ldm_columns`
+  - `visualizations_metrics` → `visualizations`, `metrics`
+  - `visualizations_attributes` → `visualizations`
+  - `dashboards` → `filter_contexts`
+  - `dashboards_visualizations` → `dashboards`, `visualizations`
+  - `dashboards_plugins` → `dashboards`, `plugins`
+  - `dashboards_widget_filters` → `dashboards`
+  - `dashboards_metrics` → `dashboards`, `metrics`
+  - `dashboards_permissions` → `dashboards`
+  - `filter_context_fields` → `filter_contexts`
+  - `user_group_members` → `users`, `user_groups`
+  - `metrics_relationships` → `metrics` (both source and referenced)
+  - `metrics_ancestry` → `metrics` (both metric and ancestor)
+
+### Changed
+- **CLI package structure**: Converted `cli.py` to `cli/` package for better organization
+  - `cli/__init__.py`: Re-exports public API (`main`, `is_interactive`, `prompt_checkbox_selection`, `prompt_yes_no`)
+  - `cli/main.py`: CLI entry point and command handlers
+  - `cli/prompts.py`: Reusable prompt functions
+- **`ldm_datasets`**: Changed PRIMARY KEY from `id` to `(id, workspace_id)` for consistency
+- **`ldm_columns`**: Added PRIMARY KEY `(dataset_id, id, workspace_id)` - includes `dataset_id` because column IDs are only unique within their parent dataset
+- **`v_ldm_columns_tags.sql`**: Added `DROP VIEW IF EXISTS` for consistency with other views
+
+### Removed
+- **`truncate_tables_for_local_mode()` function**: Removed automatic truncation of "stale" tables in local mode
+  - Tables (users, user_groups, user_group_members, plugins) now use DROP/CREATE pattern like all other tables
+  - No special handling needed - each export creates a fresh database
+- **`LOCAL_MODE_STALE_TABLES` constant**: Removed from `constants.py` as it's no longer needed
+
 ## [1.5.1] - 2026-01-22
 
 ### Changed

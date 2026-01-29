@@ -61,7 +61,7 @@ python formatting_ruff.py
 gooddata_export/
 ├── __init__.py          # Public API exports
 ├── config.py            # ExportConfig class, environment loading
-├── constants.py         # Shared constants (LOCAL_MODE_STALE_TABLES)
+├── constants.py         # Shared constants (DEFAULT_DB_NAME, worker limits)
 ├── common.py            # API client utilities (GoodDataClient)
 ├── db.py                # SQLite database utilities
 ├── post_export.py       # Post-processing orchestration, topological sort
@@ -170,15 +170,6 @@ views:
 - Dependencies are resolved via topological sort (Kahn's algorithm)
 - Circular dependencies will raise `ValueError`
 - Items without dependencies execute in alphabetical order
-
-### Adding Tables with Separate API Calls
-
-When adding a new table that requires data from a separate API endpoint (not included in `analyticsModel` or `layout.json`):
-
-1. Add the table name to `LOCAL_MODE_STALE_TABLES` in `constants.py`
-2. This ensures the table is truncated in local mode to prevent stale data
-
-Tables currently in this list: `users`, `user_groups`, `user_group_members`, `plugins`
 
 ### Export Function Interface
 

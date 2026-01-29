@@ -40,11 +40,12 @@ where dupl_maql > 1 or dupl_title > 1 or dupl_metric > 1
 -- Update similar_metric_id
 UPDATE metrics
 SET similar_metric_id = (
-    SELECT rn 
+    SELECT rn
     FROM duplicities
     WHERE duplicities.metric_id = metrics.metric_id
       AND duplicities.workspace_id = metrics.workspace_id
-);
+)
+WHERE 1=1 {parent_workspace_filter};
 
 -- Drop the temporary table
 DROP TABLE duplicities;

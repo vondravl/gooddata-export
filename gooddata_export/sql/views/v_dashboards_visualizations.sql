@@ -6,6 +6,9 @@
 -- widget_title/widget_description: overridden values on dashboard (NULL if not set)
 -- has_title_override/has_description_override: 1 if widget has different value than original
 -- has_ignored_filters: 1 if widget ignores any dashboard filters (see v_dashboards_widget_filters for details)
+-- widget_local_identifier: the widget's own localIdentifier
+-- widget_type: 'insight', 'visualizationSwitcher', or 'richText'
+-- switcher_local_identifier: parent switcher's localIdentifier (NULL if not in a switcher, use for grouping)
 
 DROP VIEW IF EXISTS v_dashboards_visualizations;
 
@@ -23,6 +26,9 @@ SELECT
     v.tags,
     dv.tab_id,
     dv.from_rich_text,
+    dv.widget_local_identifier,
+    dv.widget_type,
+    dv.switcher_local_identifier,
     CASE WHEN EXISTS (
         SELECT 1 FROM dashboards_widget_filters wf
         WHERE wf.dashboard_id = dv.dashboard_id
@@ -34,4 +40,4 @@ SELECT
 FROM dashboards d
 JOIN dashboards_visualizations dv ON d.dashboard_id = dv.dashboard_id AND d.workspace_id = dv.workspace_id
 JOIN visualizations v ON dv.visualization_id = v.visualization_id AND dv.workspace_id = v.workspace_id
-ORDER BY d.dashboard_id, COALESCE(dv.tab_id, ''), v.visualization_id;
+ORDER BY d.dashboard_id, COALESCE(dv.tab_id, ''), COALESCE(dv.switcher_local_identifier, ''), COALESCE(dv.widget_local_identifier, ''), v.visualization_id;

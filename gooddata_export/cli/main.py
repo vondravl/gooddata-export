@@ -34,10 +34,13 @@ Configuration:
 """
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 from gooddata_export import export_metadata
+from gooddata_export.cli.prompts import is_interactive, prompt_checkbox_selection
 from gooddata_export.config import ExportConfig
+from gooddata_export.constants import CHILD_WORKSPACE_DATA_TYPES
 from gooddata_export.post_export import run_post_export_sql
 
 
@@ -179,6 +182,8 @@ def _add_export_arguments(parser):
 
 def run_enrich_command(args):
     """Run enrichment (post-export processing) on existing database."""
+    start_time = datetime.now()
+
     print("=" * 70)
     print("GoodData Database Enrichment")
     print("=" * 70)
@@ -199,6 +204,8 @@ def run_enrich_command(args):
     print(f"   Database: {args.db_path}")
     print(f"   Debug Mode: {'Enabled' if args.debug else 'Disabled'}")
     print()
+    print(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print()
 
     try:
         # Set up logging level
@@ -211,6 +218,11 @@ def run_enrich_command(args):
         success = run_post_export_sql(args.db_path)
 
         if success:
+            # Calculate duration
+            end_time = datetime.now()
+            duration = end_time - start_time
+            duration_str = str(duration).split(".")[0]  # Remove microseconds
+
             print("\n" + "=" * 70)
             print("Enrichment Completed Successfully!")
             print("=" * 70)
@@ -218,6 +230,8 @@ def run_enrich_command(args):
             print("   - Views created")
             print("   - Procedures executed")
             print("   - Table updates applied")
+            print(f"\nFinished: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Duration: {duration_str}")
             print("\n" + "=" * 70)
             return 0
         else:
@@ -246,6 +260,8 @@ def run_enrich_command(args):
 
 def run_export_command(args):
     """Run export command."""
+    start_time = datetime.now()
+
     print("=" * 70)
     print("GoodData Metadata Export")
     print("=" * 70)
@@ -334,6 +350,22 @@ def run_export_command(args):
         include_content = not args.no_content  # Invert the no-content flag
         debug = args.debug
 
+    # Interactive prompt for child workspace data types if needed
+    if include_child_workspaces and not child_workspace_data_types:
+        if is_interactive():
+            child_workspace_data_types = prompt_checkbox_selection(
+                options=CHILD_WORKSPACE_DATA_TYPES,
+                message="Select data types to fetch from child workspaces:",
+                default_all=False,
+            )
+            # If user selected nothing, disable child workspace fetching
+            if not child_workspace_data_types:
+                print("\nNo data types selected - skipping child workspaces")
+                include_child_workspaces = False
+        else:
+            # Non-interactive mode: use all types
+            child_workspace_data_types = list(CHILD_WORKSPACE_DATA_TYPES)
+
     # Display configuration
     print("\nConfiguration:")
     print(f"   Base URL: {base_url}")
@@ -356,6 +388,8 @@ def run_export_command(args):
     )
     print(f"   Include Content Fields: {'Yes' if include_content else 'No'}")
     print(f"   Debug Mode: {'Enabled' if debug else 'Disabled'}")
+    print()
+    print(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print()
 
     try:
@@ -389,6 +423,11 @@ def run_export_command(args):
             db_path=db_path,
         )
 
+        # Calculate duration
+        end_time = datetime.now()
+        duration = end_time - start_time
+        duration_str = str(duration).split(".")[0]  # Remove microseconds
+
         # Display results
         print("\n" + "=" * 70)
         print("Export Completed Successfully!")
@@ -403,6 +442,9 @@ def run_export_command(args):
 
         if "csv" in args.format and result.get("csv_dir"):
             print(f"   CSV Files Directory: {result['csv_dir']}")
+
+        print(f"\nFinished: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Duration: {duration_str}")
 
         print("\n" + "=" * 70)
         return 0

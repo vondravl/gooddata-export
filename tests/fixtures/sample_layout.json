@@ -178,6 +178,7 @@
                   {
                     "widget": {
                       "type": "insight",
+                      "localIdentifier": "widget_revenue_trend",
                       "insight": {"identifier": {"id": "viz_revenue_trend", "type": "visualizationObject"}}
                     },
                     "size": {"xl": {"gridWidth": 6}}
@@ -185,6 +186,7 @@
                   {
                     "widget": {
                       "type": "insight",
+                      "localIdentifier": "widget_orders_region",
                       "insight": {"identifier": {"id": "viz_orders_by_region", "type": "visualizationObject"}}
                     },
                     "size": {"xl": {"gridWidth": 6}}
@@ -196,6 +198,7 @@
                   {
                     "widget": {
                       "type": "richText",
+                      "localIdentifier": "widget_summary_text",
                       "content": "## Summary\nKey metrics: {measure:metric_total_revenue}"
                     },
                     "size": {"xl": {"gridWidth": 12}}
@@ -230,6 +233,7 @@
                       {
                         "widget": {
                           "type": "insight",
+                          "localIdentifier": "widget_tab_revenue",
                           "insight": {"identifier": {"id": "viz_revenue_trend", "type": "visualizationObject"}}
                         },
                         "size": {"xl": {"gridWidth": 12}}
@@ -248,17 +252,22 @@
                     "items": [
                       {
                         "widget": {
-                          "type": "insight",
-                          "insight": {"identifier": {"id": "viz_orders_by_region", "type": "visualizationObject"}}
+                          "type": "visualizationSwitcher",
+                          "localIdentifier": "widget_switcher_metrics",
+                          "visualizations": [
+                            {
+                              "localIdentifier": "inner_viz_orders",
+                              "insight": {"identifier": {"id": "viz_orders_by_region", "type": "visualizationObject"}},
+                              "title": "Orders View"
+                            },
+                            {
+                              "localIdentifier": "inner_viz_value",
+                              "insight": {"identifier": {"id": "viz_avg_order_value", "type": "visualizationObject"}},
+                              "title": "Value View"
+                            }
+                          ]
                         },
-                        "size": {"xl": {"gridWidth": 6}}
-                      },
-                      {
-                        "widget": {
-                          "type": "insight",
-                          "insight": {"identifier": {"id": "viz_avg_order_value", "type": "visualizationObject"}}
-                        },
-                        "size": {"xl": {"gridWidth": 6}}
+                        "size": {"xl": {"gridWidth": 12}}
                       }
                     ]
                   }
@@ -310,11 +319,16 @@
             "tags": [],
             "sourceColumn": "ORDER_ID",
             "sourceColumnDataType": "STRING",
+            "defaultView": {"id": "order_id.label"},
             "labels": [
               {
                 "id": "order_id.label",
                 "title": "Order ID",
-                "sourceColumn": "ORDER_ID"
+                "description": "Primary order identifier label",
+                "sourceColumn": "ORDER_ID",
+                "sourceColumnDataType": "STRING",
+                "valueType": "TEXT",
+                "tags": ["identifier"]
               }
             ]
           },
@@ -325,11 +339,24 @@
             "tags": ["geography"],
             "sourceColumn": "REGION",
             "sourceColumnDataType": "STRING",
+            "defaultView": {"id": "region.name"},
             "labels": [
               {
                 "id": "region.name",
                 "title": "Region Name",
-                "sourceColumn": "REGION_NAME"
+                "description": "Display name for region",
+                "sourceColumn": "REGION_NAME",
+                "sourceColumnDataType": "STRING",
+                "valueType": "TEXT"
+              },
+              {
+                "id": "region.code",
+                "title": "Region Code",
+                "description": "Short code for region",
+                "sourceColumn": "REGION_CODE",
+                "sourceColumnDataType": "STRING",
+                "valueType": "TEXT",
+                "tags": ["code"]
               }
             ]
           }
@@ -384,11 +411,15 @@
             "tags": [],
             "sourceColumn": "MONTH",
             "sourceColumnDataType": "STRING",
+            "defaultView": {"id": "date.month"},
             "labels": [
               {
                 "id": "date.month",
                 "title": "Month",
-                "sourceColumn": "MONTH_NAME"
+                "description": "Month name display",
+                "sourceColumn": "MONTH_NAME",
+                "sourceColumnDataType": "STRING",
+                "valueType": "TEXT"
               }
             ]
           }
