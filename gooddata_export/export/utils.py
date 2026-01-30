@@ -7,7 +7,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from gooddata_export.constants import DEFAULT_DB_NAME, LOCAL_MODE_STALE_TABLES
+from gooddata_export.constants import DEFAULT_DB_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -100,53 +100,3 @@ def write_to_csv(data, export_dir, filename, fieldnames, exclude_fields=None):
 def log_export(name, count, csv_path):
     """Standardized logging for exports"""
     logger.info("Exported %d %s to %s and %s", count, name, csv_path, DEFAULT_DB_NAME)
-
-
-def truncate_tables_for_local_mode(db_path):
-    """Truncate tables that won't have data when using local layout.json.
-
-    When using layout_json mode, certain tables won't receive data because
-    that data isn't available in the layout JSON (requires separate API calls).
-    This function truncates those tables to prevent stale data from previous
-    API-mode exports from confusing users.
-
-    Args:
-        db_path: Path to the database file
-
-    See LOCAL_MODE_STALE_TABLES in constants.py for the list of truncated tables.
-    """
-    db_path_obj = Path(db_path)
-    if not db_path_obj.exists():
-        # Database doesn't exist yet, nothing to truncate
-        return
-
-    conn = None
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # Get list of existing tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        existing_tables = {row[0] for row in cursor.fetchall()}
-
-        truncated = []
-        for table in LOCAL_MODE_STALE_TABLES:
-            if table in existing_tables:
-                # Defense-in-depth: verify table name is alphanumeric/underscore only
-                # This prevents SQL injection if LOCAL_MODE_STALE_TABLES is ever modified
-                if not table.replace("_", "").isalnum():
-                    raise ValueError(f"Invalid table name: {table}")
-                cursor.execute(f"DELETE FROM {table}")  # noqa: S608
-                truncated.append(table)
-
-        if truncated:
-            conn.commit()
-            logger.info(
-                "Truncated stale tables (not in layout.json): %s", ", ".join(truncated)
-            )
-    except Exception as e:
-        # Don't fail the export if truncation fails
-        logger.warning("Could not truncate stale tables: %s", e)
-    finally:
-        if conn:
-            conn.close()

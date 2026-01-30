@@ -10,7 +10,9 @@ CREATE TABLE metrics_relationships (
     source_metric_id TEXT,
     source_workspace_id TEXT,
     referenced_metric_id TEXT,
-    PRIMARY KEY (source_metric_id, source_workspace_id, referenced_metric_id)
+    PRIMARY KEY (source_metric_id, source_workspace_id, referenced_metric_id),
+    FOREIGN KEY (source_metric_id, source_workspace_id) REFERENCES metrics(metric_id, workspace_id),
+    FOREIGN KEY (referenced_metric_id, source_workspace_id) REFERENCES metrics(metric_id, workspace_id)
 );
 
 -- Index for fast lookups when checking if a metric is referenced by others

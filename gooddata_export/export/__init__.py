@@ -16,7 +16,6 @@ from pathlib import Path
 from gooddata_export.common import ExportError
 from gooddata_export.db import store_workspace_metadata
 from gooddata_export.export.fetch import fetch_all_workspace_data
-from gooddata_export.export.utils import truncate_tables_for_local_mode
 from gooddata_export.export.writers import (
     export_dashboards,
     export_dashboards_metrics,
@@ -96,10 +95,6 @@ def export_all_metadata(
                 "layout_json missing 'ldm' key - no LDM data will be exported"
             )
 
-        # Truncate tables that won't have data in local mode to avoid stale data
-        # These tables require API data that isn't available in layout.json
-        truncate_tables_for_local_mode(db_path)
-
         analytics = layout_json.get("analytics", {})
         ldm = layout_json.get("ldm", {})
 
@@ -178,17 +173,21 @@ def export_all_metadata(
             f"Errors encountered:\n  - {error_details}"
         )
 
-    # Only run post-export processing for single workspace (parent only) and if requested
-    # Multi-workspace data would produce confusing duplicate detection results
-    if run_post_export and not config.INCLUDE_CHILD_WORKSPACES:
+    # Run post-export processing if requested
+    # When child workspaces are included, filter enrichment to parent workspace only
+    if run_post_export:
         logger.info("")
         logger.info("Running post-export processing...")
         logger.info("=" * 80)
-        run_post_export_sql(db_path)
-    elif not run_post_export:
-        logger.info("Skipping post-export processing (disabled)")
+        if config.INCLUDE_CHILD_WORKSPACES:
+            # Multi-workspace: enrich only parent workspace to avoid confusing duplicates
+            logger.info("Multi-workspace mode: enriching parent workspace only")
+            run_post_export_sql(db_path, parent_workspace_id=config.WORKSPACE_ID)
+        else:
+            # Single workspace: enrich all data (no filter needed)
+            run_post_export_sql(db_path)
     else:
-        logger.info("Skipping post-export processing (multi-workspace mode)")
+        logger.info("Skipping post-export processing (disabled)")
 
     # Store workspace metadata
     workspace_id = config.WORKSPACE_ID

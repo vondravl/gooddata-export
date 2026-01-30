@@ -134,10 +134,18 @@ def fetch_analytics_model(
     )
 
 
-def process_ldm(data, workspace_id=None):
-    """Parse logical model data into datasets and columns"""
+def process_ldm(data):
+    """Parse logical model data into datasets, columns, and labels.
+
+    Returns:
+        tuple: (datasets, columns, labels) where:
+            - datasets: List of dataset records
+            - columns: List of column records (attributes, facts, references, etc.)
+            - labels: List of attribute label records
+    """
     datasets = []
     columns = []
+    labels = []
 
     # First pass: Process all datasets basic info
     dataset_map = {}
@@ -173,7 +181,6 @@ def process_ldm(data, workspace_id=None):
             )
             if dataset.get("dataSourceTableId")
             else "SQL Query",
-            "workspace_id": workspace_id,
         }
         datasets.append(dataset_info)
         dataset_map[dataset["id"]] = dataset_info
@@ -198,9 +205,28 @@ def process_ldm(data, workspace_id=None):
                     else "No",
                     "reference_to_id": "",
                     "reference_to_title": "",
-                    "workspace_id": workspace_id,
                 }
             )
+
+            # Extract labels from attribute
+            default_view_id = attr.get("defaultView", {}).get("id", "")
+            for label in attr.get("labels", []):
+                labels.append(
+                    {
+                        "dataset_id": dataset["id"],
+                        "attribute_id": attr["id"],
+                        "id": label["id"],
+                        "title": label.get("title", ""),
+                        "description": label.get("description", ""),
+                        "source_column": label.get("sourceColumn", ""),
+                        "source_column_data_type": label.get(
+                            "sourceColumnDataType", ""
+                        ),
+                        "value_type": label.get("valueType", ""),
+                        "tags": str(sort_tags(label.get("tags", []))),
+                        "is_default": "Yes" if label["id"] == default_view_id else "No",
+                    }
+                )
 
         # Add facts
         for fact in dataset.get("facts", []):
@@ -218,14 +244,16 @@ def process_ldm(data, workspace_id=None):
                     "grain": "No",
                     "reference_to_id": "",
                     "reference_to_title": "",
-                    "workspace_id": workspace_id,
                 }
             )
 
         # Add references
+        # Note: id includes target dataset because the same source column can reference
+        # multiple target datasets (star schema pattern)
         for ref in dataset.get("references", []):
             target_dataset_id = ref["identifier"]["id"]
             target_dataset_info = dataset_map.get(target_dataset_id)
+            source_column = ref["sources"][0]["column"]
 
             columns.append(
                 {
@@ -233,17 +261,16 @@ def process_ldm(data, workspace_id=None):
                     "dataset_name": dataset["title"],
                     "title": ref["identifier"]["id"],
                     "description": "",
-                    "id": ref["sources"][0]["column"],
+                    "id": f"{source_column}__ref__{target_dataset_id}",
                     "tags": "",
                     "data_type": ref["sources"][0]["dataType"],
-                    "source_column": ref["sources"][0]["column"],
+                    "source_column": source_column,
                     "type": "reference",
                     "grain": "No",
                     "reference_to_id": target_dataset_id,
                     "reference_to_title": target_dataset_info["title"]
                     if target_dataset_info
                     else "",
-                    "workspace_id": workspace_id,
                 }
             )
 
@@ -265,11 +292,10 @@ def process_ldm(data, workspace_id=None):
                     "grain": "No",
                     "reference_to_id": "",
                     "reference_to_title": "",
-                    "workspace_id": workspace_id,
                 }
             )
 
-    return datasets, columns
+    return datasets, columns, labels
 
 
 def process_users(data):

@@ -176,7 +176,13 @@ def substitute_parameters(sql_script, parameters, config):
     return result
 
 
-def execute_sql_file(cursor, sql_path, parameters=None, config=None):
+def execute_sql_file(
+    cursor,
+    sql_path,
+    parameters=None,
+    config=None,
+    parent_workspace_id: str | None = None,
+):
     """Execute a SQL file with optional parameter substitution.
 
     Args:
@@ -184,6 +190,7 @@ def execute_sql_file(cursor, sql_path, parameters=None, config=None):
         sql_path: Path to SQL file
         parameters: Optional dict of parameters to substitute
         config: Optional ExportConfig instance for parameter values
+        parent_workspace_id: Optional workspace ID for {parent_workspace_filter} substitution
 
     Returns:
         bool: True if successful, False otherwise
@@ -201,6 +208,15 @@ def execute_sql_file(cursor, sql_path, parameters=None, config=None):
     # Perform parameter substitution if needed
     if parameters and config:
         sql_script = substitute_parameters(sql_script, parameters, config)
+
+    # Substitute {parent_workspace_filter} placeholder for workspace-scoped updates
+    if parent_workspace_id:
+        # Add workspace filter when parent_workspace_id is provided
+        workspace_filter = f"AND workspace_id = '{parent_workspace_id}'"
+        sql_script = sql_script.replace("{parent_workspace_filter}", workspace_filter)
+    else:
+        # Remove the placeholder when no filter needed (single workspace export)
+        sql_script = sql_script.replace("{parent_workspace_filter}", "")
 
     try:
         # Try to execute the entire script as a single transaction
@@ -246,7 +262,7 @@ def ensure_columns_exist(cursor, table_name, required_columns):
             )
 
 
-def run_post_export_sql(db_path):
+def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
     """Run all post-export SQL operations on the database.
 
     This is the main entry point for post-export processing.
@@ -254,6 +270,9 @@ def run_post_export_sql(db_path):
 
     Args:
         db_path: Path to the SQLite database
+        parent_workspace_id: Optional workspace ID to filter updates to.
+            When provided, UPDATE statements only affect rows for this workspace.
+            Used in multi-workspace exports to enrich only the parent workspace.
 
     Returns:
         bool: True if all operations successful, False otherwise
@@ -342,8 +361,15 @@ def run_post_export_sql(db_path):
             # Get parameters for procedure items
             parameters = item_config.get("parameters", {}) if is_procedure else None
 
+            # Pass parent_workspace_id only for UPDATE operations (not tables/views)
+            workspace_filter = parent_workspace_id if is_update else None
+
             if execute_sql_file(
-                cursor, sql_path, parameters=parameters, config=export_config
+                cursor,
+                sql_path,
+                parameters=parameters,
+                config=export_config,
+                parent_workspace_id=workspace_filter,
             ):
                 # Run Python populate function if specified (for tables needing regex)
                 python_populate = item_config.get("python_populate")

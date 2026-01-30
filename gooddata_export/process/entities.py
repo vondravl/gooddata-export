@@ -542,6 +542,9 @@ def process_dashboards_visualizations(
         from_rich_text,
         widget_title=None,
         widget_description=None,
+        widget_local_identifier=None,
+        widget_type=None,
+        switcher_local_identifier=None,
     ):
         """Add a relationship if not already present."""
         tracker.add(
@@ -552,12 +555,18 @@ def process_dashboards_visualizations(
                 "from_rich_text": from_rich_text,
                 "widget_title": widget_title,
                 "widget_description": widget_description,
+                "widget_local_identifier": widget_local_identifier,
+                "widget_type": widget_type,
+                "switcher_local_identifier": switcher_local_identifier,
                 "workspace_id": workspace_id,
             }
         )
 
     # Use shared traversal utility
     for dashboard_id, tab_id, widget in iterate_dashboard_widgets(dashboard_data):
+        # Extract widget's local identifier
+        widget_local_id = widget.get("localIdentifier")
+
         # Single visualization widgets
         viz_id = widget.get("insight", {}).get("identifier", {}).get("id")
         if viz_id:
@@ -566,7 +575,14 @@ def process_dashboards_visualizations(
                 widget.get("description") or None
             )  # Convert empty string to None
             add_relationship(
-                dashboard_id, viz_id, tab_id, 0, widget_title, widget_description
+                dashboard_id,
+                viz_id,
+                tab_id,
+                0,
+                widget_title,
+                widget_description,
+                widget_local_id,
+                "insight",
             )
 
         # Multiple visualization widgets (visualizationSwitcher)
@@ -575,8 +591,18 @@ def process_dashboards_visualizations(
             if viz_id:
                 widget_title = viz.get("title")
                 widget_description = viz.get("description") or None
+                # Inner viz has its own localIdentifier, parent switcher ID for grouping
+                inner_viz_local_id = viz.get("localIdentifier")
                 add_relationship(
-                    dashboard_id, viz_id, tab_id, 0, widget_title, widget_description
+                    dashboard_id,
+                    viz_id,
+                    tab_id,
+                    0,
+                    widget_title,
+                    widget_description,
+                    inner_viz_local_id,
+                    "visualizationSwitcher",
+                    widget_local_id,  # Parent switcher's ID for grouping
                 )
 
         # Rich text extraction (single feature-flag gate)
@@ -588,7 +614,12 @@ def process_dashboards_visualizations(
                     rich_text_content, dashboard_id, known_insights
                 ):
                     add_relationship(
-                        dashboard_id, insight["visualization_id"], tab_id, 1
+                        dashboard_id,
+                        insight["visualization_id"],
+                        tab_id,
+                        1,
+                        widget_local_identifier=widget_local_id,
+                        widget_type="richText",
                     )
 
             # Other widget content that might contain insight references
@@ -607,7 +638,12 @@ def process_dashboards_visualizations(
                     widget_content, dashboard_id, known_insights
                 ):
                     add_relationship(
-                        dashboard_id, insight["visualization_id"], tab_id, 1
+                        dashboard_id,
+                        insight["visualization_id"],
+                        tab_id,
+                        1,
+                        widget_local_identifier=widget_local_id,
+                        widget_type="richText",
                     )
 
     return tracker.get_sorted(

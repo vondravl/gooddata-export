@@ -18,6 +18,7 @@ help:
 	@echo ""
 	@echo "Export & Enrichment:"
 	@echo "  make run          - Full export + enrichment (alias for export-enrich)"
+	@echo "  make run-children - Full export with child workspaces (skips enrichment)"
 	@echo "  make export       - Export data only (skip post-processing)"
 	@echo "  make enrich       - Run enrichment/procedures on existing database"
 	@echo "  make export-enrich - Full export + enrichment"
@@ -72,6 +73,13 @@ export-enrich:
 	@echo "📤📊 Running full export + enrichment workflow..."
 	venv/bin/python main.py export
 
+run-children: export-children
+
+export-children:
+	$(call check_venv)
+	@echo "📤 Running export with child workspaces..."
+	INCLUDE_CHILD_WORKSPACES=true venv/bin/python main.py export
+
 ruff-lint:
 	$(call check_venv)
 	@echo "🔍 Checking Python with Ruff..."
@@ -97,4 +105,4 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-.PHONY: help venv dev install export enrich run export-enrich ruff-lint ruff-format test test-cov clean
+.PHONY: help venv dev install export enrich run export-enrich run-children export-children ruff-lint ruff-format test test-cov clean
