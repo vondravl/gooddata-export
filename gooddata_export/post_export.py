@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 
+from gooddata_export.common import ExportError
 from gooddata_export.config import ExportConfig
 from gooddata_export.db import connect_database
 
@@ -54,8 +55,9 @@ def populate_metrics_relationships(cursor):
         relationships,
     )
 
-    logger.info(
-        f"Populated metrics_relationships table with {len(relationships)} relationships"
+    logger.debug(
+        "Populated metrics_relationships table with %d relationships",
+        len(relationships),
     )
 
 
@@ -64,6 +66,15 @@ def populate_metrics_relationships(cursor):
 PYTHON_POPULATE_FUNCTIONS = {
     "populate_metrics_relationships": populate_metrics_relationships,
 }
+
+
+def _log_post_export_failure(error_msg: str) -> None:
+    """Log post-export failure at INFO level so users see it without --debug."""
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("POST-EXPORT PROCESSING FAILED")
+    logger.info("=" * 70)
+    logger.info("Error: %s", error_msg)
 
 
 def load_post_export_config():
@@ -158,20 +169,20 @@ def substitute_parameters(sql_script, parameters, config):
             if hasattr(config, config_key):
                 value = getattr(config, config_key)
                 result = result.replace(f"{{{param_name}}}", str(value))
-                logger.debug(f"  Substituted {{{param_name}}} with {value}")
+                logger.debug("  Substituted {%s} with %s", param_name, value)
             else:
                 logger.warning(
-                    f"  Config key {config_key} not found, skipping substitution"
+                    "  Config key %s not found, skipping substitution", config_key
                 )
         elif param_template.startswith("$$"):
             # $${TOKEN_GOODDATA_DEV} -> replace with ${TOKEN_GOODDATA_DEV} (literal string, remove one $)
             value = param_template[1:]  # Remove one $ to get ${...}
             result = result.replace(f"{{{param_name}}}", value)
-            logger.debug(f"  Substituted {{{param_name}}} with literal {value}")
+            logger.debug("  Substituted {%s} with literal %s", param_name, value)
         else:
             # Direct string substitution
             result = result.replace(f"{{{param_name}}}", param_template)
-            logger.debug(f"  Substituted {{{param_name}}} with {param_template}")
+            logger.debug("  Substituted {%s} with %s", param_name, param_template)
 
     return result
 
@@ -197,10 +208,10 @@ def execute_sql_file(
     """
     sql_path = Path(sql_path)
     if not sql_path.exists():
-        logger.warning(f"SQL file not found: {sql_path}")
+        logger.warning("SQL file not found: %s", sql_path)
         return False
 
-    logger.debug(f"  Executing: {sql_path.name}")
+    logger.debug("  Executing: %s", sql_path.name)
 
     with open(sql_path, "r") as f:
         sql_script = f.read()
@@ -231,12 +242,12 @@ def execute_sql_file(
                 try:
                     cursor.execute(statement)
                 except sqlite3.Error as stmt_error:
-                    logger.error(f"  Error: {stmt_error}")
-                    logger.debug(f"  Statement: {statement[:100]}...")
+                    logger.error("  Error: %s", stmt_error)
+                    logger.debug("  Statement: %s...", statement[:100])
                     raise
         return True
     except Exception as e:
-        logger.error(f"Error executing {sql_path.name}: {str(e)}")
+        logger.error("Error executing %s: %s", sql_path.name, e)
         return False
 
 
@@ -256,13 +267,13 @@ def ensure_columns_exist(cursor, table_name, required_columns):
 
     for column_name, column_type in required_columns.items():
         if column_name not in existing_columns:
-            logger.debug(f"  Adding column: {table_name}.{column_name}")
+            logger.debug("  Adding column: %s.%s", table_name, column_name)
             cursor.execute(
                 f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
             )
 
 
-def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
+def run_post_export_sql(db_path, parent_workspace_id: str | None = None) -> None:
     """Run all post-export SQL operations on the database.
 
     This is the main entry point for post-export processing.
@@ -274,9 +285,10 @@ def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
             When provided, UPDATE statements only affect rows for this workspace.
             Used in multi-workspace exports to enrich only the parent workspace.
 
-    Returns:
-        bool: True if all operations successful, False otherwise
+    Raises:
+        ExportError: If post-export processing fails
     """
+    logger.debug("")
     logger.debug("=" * 70)
     logger.debug("POST-EXPORT PROCESSING")
     logger.debug("=" * 70)
@@ -309,13 +321,13 @@ def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
         try:
             execution_order = topological_sort(all_items)
         except ValueError as e:
-            logger.error(f"Configuration error: {e}")
-            return False
+            error_msg = f"Configuration error: {e}"
+            _log_post_export_failure(error_msg)
+            raise ExportError(error_msg) from e
 
         logger.debug(
-            f"Executing {len(execution_order)} operations in dependency order:"
+            "Executing %d operations in dependency order...", len(execution_order)
         )
-        logger.debug("-" * 70)
 
         # Execute each operation in order
         success_count = 0
@@ -339,13 +351,13 @@ def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
 
             category = item_config.get("category", "unknown")
 
-            logger.debug(f"\n[{item_type}] {item_name} ({category})")
-            logger.debug(f"  Description: {item_config.get('description', 'N/A')}")
+            logger.debug("\n[%s] %s (%s)", item_type, item_name, category)
+            logger.debug("  Description: %s", item_config.get("description", "N/A"))
 
             # Show dependencies if any
             deps = item_config.get("dependencies", [])
             if deps:
-                logger.debug(f"  Dependencies: {', '.join(deps)}")
+                logger.debug("  Dependencies: %s", ", ".join(deps))
 
             # For updates, ensure required columns exist
             if is_update:
@@ -376,28 +388,32 @@ def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
                 if python_populate:
                     populate_func = PYTHON_POPULATE_FUNCTIONS.get(python_populate)
                     if populate_func:
-                        logger.debug(f"  Running Python populate: {python_populate}")
+                        logger.debug("  Running Python populate: %s", python_populate)
                         populate_func(cursor)
                     else:
                         logger.warning(
-                            f"  Unknown python_populate function: {python_populate}"
+                            "  Unknown python_populate function: %s", python_populate
                         )
 
                 success_count += 1
                 logger.debug("  ✓ Success")
             else:
-                logger.error(f"Failed to execute {item_name}")
+                error_msg = f"Failed to execute {item_name}"
                 conn.rollback()
                 conn.close()
-                return False
+                _log_post_export_failure(error_msg)
+                raise ExportError(error_msg)
 
         # Commit all changes
         conn.commit()
         conn.close()
 
+        logger.debug("")
         logger.debug("=" * 70)
         logger.debug(
-            f"ALL OPERATIONS COMPLETED SUCCESSFULLY ({success_count}/{len(execution_order)})"
+            "ALL OPERATIONS COMPLETED SUCCESSFULLY (%d/%d)",
+            success_count,
+            len(execution_order),
         )
         logger.debug("=" * 70)
 
@@ -407,13 +423,19 @@ def run_post_export_sql(db_path, parent_workspace_id: str | None = None):
         update_count = len(yaml_config.get("updates", {}))
         procedure_count = len(yaml_config.get("procedures", {}))
 
-        logger.info(
-            f"Successfully created {table_count} tables, {view_count} views, "
-            f"{procedure_count} procedures, and {update_count} table updates in database"
+        logger.debug(
+            "Successfully created %d tables, %d views, %d procedures, and %d table updates",
+            table_count,
+            view_count,
+            procedure_count,
+            update_count,
         )
+        logger.debug("")
 
-        return True
-
+    except ExportError:
+        # Re-raise ExportError as-is (already logged)
+        raise
     except Exception as e:
-        logger.error(f"Error during post-export processing: {str(e)}")
-        return False
+        error_msg = f"Error during post-export processing: {e}"
+        _log_post_export_failure(error_msg)
+        raise ExportError(error_msg) from e

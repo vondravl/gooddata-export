@@ -12,7 +12,6 @@ def mock_config():
     config = MagicMock()
     config.WORKSPACE_ID = "test-workspace"
     config.BASE_URL = "https://test.gooddata.com"
-    config.DEBUG_WORKSPACE_PROCESSING = False
     config.INCLUDE_CHILD_WORKSPACES = False
     return config
 
@@ -574,7 +573,6 @@ class TestLocalModeIntegration:
         config = MagicMock()
         config.WORKSPACE_ID = "test-workspace"
         config.BASE_URL = "https://test.gooddata.com"
-        config.DEBUG_WORKSPACE_PROCESSING = False
         config.INCLUDE_CHILD_WORKSPACES = False
         config.ENABLE_RICH_TEXT_EXTRACTION = True
         config.CHILD_WORKSPACE_DATA_TYPES = []

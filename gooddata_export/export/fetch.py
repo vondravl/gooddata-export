@@ -155,16 +155,12 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
         if data_type not in config.CHILD_WORKSPACE_DATA_TYPES:
             workspace_data[task_info["key"]] = None
 
-    if config.DEBUG_WORKSPACE_PROCESSING:
-        requested_types = ", ".join(config.CHILD_WORKSPACE_DATA_TYPES)
-        logger.debug("Fetching from %s: %s", workspace_name, requested_types)
+    requested_types = ", ".join(config.CHILD_WORKSPACE_DATA_TYPES)
+    logger.debug("Fetching from %s: %s", workspace_name, requested_types)
 
     # Only proceed with parallel fetching if there are tasks to execute
     if not fetch_tasks:
-        if config.DEBUG_WORKSPACE_PROCESSING:
-            logger.debug(
-                "No data types configured for fetching from %s", workspace_name
-            )
+        logger.debug("No data types configured for fetching from %s", workspace_name)
     else:
         # Use parallel fetching within this workspace too but limit concurrency
         max_workers = min(len(fetch_tasks), MAX_CHILD_WORKSPACE_FETCH_WORKERS)
@@ -191,14 +187,13 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
                         keyword in error_msg
                         for keyword in ["401", "403", "unauthorized", "forbidden"]
                     ):
-                        if config.DEBUG_WORKSPACE_PROCESSING:
-                            logger.debug(
-                                "Permission issue accessing %s in workspace %s: %s",
-                                key,
-                                workspace_id,
-                                e,
-                            )
-                    elif config.DEBUG_WORKSPACE_PROCESSING:
+                        logger.debug(
+                            "Permission issue accessing %s in workspace %s: %s",
+                            key,
+                            workspace_id,
+                            e,
+                        )
+                    else:
                         logger.debug(
                             "Error fetching %s from workspace %s: %s",
                             key,
@@ -215,12 +210,11 @@ def fetch_data_from_workspace(workspace_id, workspace_name, config):
     workspace_data["workspace_name"] = workspace_name
 
     duration = time.time() - start_time
-    if config.DEBUG_WORKSPACE_PROCESSING:
-        logger.debug(
-            "Workspace %s data fetch completed in %.2f seconds",
-            workspace_name,
-            duration,
-        )
+    logger.debug(
+        "Workspace %s data fetch completed in %.2f seconds",
+        workspace_name,
+        duration,
+    )
 
     return workspace_data
 
@@ -229,7 +223,7 @@ def fetch_all_workspace_data(config):
     """Fetch data from parent workspace and optionally child workspaces"""
     # Start with parent workspace data (includes LDM which is shared across all workspaces)
     start_time = time.time()
-    logger.info("Fetching parent workspace data...")
+    logger.debug("Fetching parent workspace data...")
     parent_data = fetch_all_data_parallel(config)
     client = get_api_client(config=config)
     parent_workspace_id = client["workspace_id"]
@@ -239,9 +233,8 @@ def fetch_all_workspace_data(config):
         "Parent workspace data fetch completed in %.2f seconds", parent_duration
     )
 
-    if config.DEBUG_WORKSPACE_PROCESSING:
-        logger.debug("Parent workspace ID: %s", parent_workspace_id)
-        logger.debug("Child workspaces enabled: %s", config.INCLUDE_CHILD_WORKSPACES)
+    logger.debug("Parent workspace ID: %s", parent_workspace_id)
+    logger.debug("Child workspaces enabled: %s", config.INCLUDE_CHILD_WORKSPACES)
 
     all_workspace_data = [
         {
@@ -292,12 +285,11 @@ def fetch_all_workspace_data(config):
                     child_workspace_id = child_workspace["id"]
                     child_workspace_name = child_workspace["attributes"]["name"]
 
-                    if config.DEBUG_WORKSPACE_PROCESSING:
-                        logger.debug(
-                            "Starting fetch for child workspace: %s (%s)",
-                            child_workspace_name,
-                            child_workspace_id,
-                        )
+                    logger.debug(
+                        "Starting fetch for child workspace: %s (%s)",
+                        child_workspace_name,
+                        child_workspace_id,
+                    )
 
                     future = executor.submit(
                         fetch_data_from_workspace,
@@ -327,7 +319,7 @@ def fetch_all_workspace_data(config):
                             }
                         )
 
-                        # Progress reporting
+                        # Progress reporting (user-facing output)
                         percentage = (completed_count / total_count) * 100
                         elapsed_time = time.time() - child_start_time
 
@@ -349,14 +341,7 @@ def fetch_all_workspace_data(config):
                                 workspace_info["name"],
                             )
 
-                        if config.DEBUG_WORKSPACE_PROCESSING:
-                            logger.debug(
-                                "Completed fetch for child workspace: %s",
-                                workspace_info["name"],
-                            )
-
                     except Exception as e:
-                        error_msg = str(e)
                         percentage = (completed_count / total_count) * 100
                         elapsed_time = time.time() - child_start_time
 
@@ -369,17 +354,11 @@ def fetch_all_workspace_data(config):
                             workspace_info["name"],
                         )
 
-                        if config.DEBUG_WORKSPACE_PROCESSING:
-                            logger.debug(
-                                "Error fetching data from child workspace %s: %s",
-                                workspace_info["name"],
-                                error_msg,
-                            )
-                        else:
-                            logger.warning(
-                                "Could not fetch data from child workspace %s",
-                                workspace_info["name"],
-                            )
+                        logger.warning(
+                            "Could not fetch data from child workspace %s: %s",
+                            workspace_info["name"],
+                            e,
+                        )
 
             child_duration = time.time() - child_start_time
             logger.info(
@@ -391,36 +370,33 @@ def fetch_all_workspace_data(config):
             )
 
         else:
-            if config.DEBUG_WORKSPACE_PROCESSING:
-                logger.debug("No child workspaces found for this parent workspace")
-                logger.debug("This could mean:")
-                logger.debug("1. This workspace has no child workspaces")
-                logger.debug("2. This workspace is not a parent workspace")
-                logger.debug("3. There was an error fetching child workspaces")
+            logger.debug("No child workspaces found for this parent workspace")
+            logger.debug("This could mean:")
+            logger.debug("1. This workspace has no child workspaces")
+            logger.debug("2. This workspace is not a parent workspace")
+            logger.debug("3. There was an error fetching child workspaces")
     else:
-        if config.DEBUG_WORKSPACE_PROCESSING:
-            logger.debug("Child workspace processing is disabled")
+        logger.debug("Child workspace processing is disabled")
 
     total_duration = time.time() - start_time
 
-    # Final summary for API FETCH PHASE only (export phase runs next)
-    logger.info("")
-    logger.info("=" * 60)
-    logger.info("API FETCH PHASE SUMMARY")
-    logger.info("(Only API calls; export/write phase runs next)")
-    logger.info("=" * 60)
-    logger.info("Total workspaces fetched: %d", len(all_workspace_data))
-    logger.info("Parent workspace: 1")
-    logger.info("Child workspaces: %d", len(all_workspace_data) - 1)
-    logger.info("API fetch time: %.2f seconds", total_duration)
-    logger.info(
-        "Average fetch time per workspace: %.2f seconds",
-        total_duration / len(all_workspace_data),
-    )
-
+    # Show detailed summary only when processing multiple workspaces
     if len(all_workspace_data) > 1:
         child_count = len(all_workspace_data) - 1
         child_duration = total_duration - parent_duration
+
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("API FETCH PHASE SUMMARY")
+        logger.info("=" * 70)
+        logger.info("Total workspaces fetched: %d", len(all_workspace_data))
+        logger.info("Parent workspace: 1")
+        logger.info("Child workspaces: %d", child_count)
+        logger.info("API fetch time: %.2f seconds", total_duration)
+        logger.info(
+            "Average fetch time per workspace: %.2f seconds",
+            total_duration / len(all_workspace_data),
+        )
         logger.info("Child workspaces API fetch time: %.2f seconds", child_duration)
         logger.info(
             "Average fetch time per child workspace: %.2f seconds",
@@ -434,8 +410,5 @@ def fetch_all_workspace_data(config):
             logger.info(
                 "Processing rate: %.1f workspaces/minute", workspaces_per_minute
             )
-
-    logger.info("=" * 60)
-    logger.info("")
 
     return all_workspace_data

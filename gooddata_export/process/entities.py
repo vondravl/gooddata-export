@@ -69,7 +69,7 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
     client = get_api_client(config=config, client=client)
 
     base_url = f"{client['base_url']}/api/v1/entities/workspaces/{client['workspace_id']}/{endpoint}"
-    logger.info("Fetching %s from workspace: %s", endpoint, client["workspace_id"])
+    logger.debug("Fetching %s from workspace: %s", endpoint, client["workspace_id"])
 
     all_data = []
     page = 0
@@ -196,14 +196,16 @@ def fetch_data(endpoint, client=None, config=None, max_retries=3):
         )
         # Log with page count only if more than 1 page
         if page > 1:
-            logger.info(
+            logger.debug(
                 "%s: Successfully fetched %d items across %d pages",
                 endpoint,
                 len(sorted_data),
                 page,
             )
         else:
-            logger.info("%s: Successfully fetched %d items", endpoint, len(sorted_data))
+            logger.debug(
+                "%s: Successfully fetched %d items", endpoint, len(sorted_data)
+            )
         return sorted_data
     except KeyError as sort_error:
         logger.warning("%s: Could not sort data - %s", endpoint, sort_error)
@@ -224,7 +226,7 @@ def validate_workspace_exists(
     workspace_id = client["workspace_id"]
     url = f"{client['base_url']}/api/v1/entities/workspaces/{workspace_id}"
 
-    logger.info("Validating workspace: %s", workspace_id)
+    logger.debug("Validating workspace: %s", workspace_id)
     try:
         response = requests.get(url, headers=client["headers"], timeout=30)
         if response.status_code == 200:
@@ -288,19 +290,13 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
         if all_workspaces:
             # Log with page count only if more than 1 page
             if page > 1:
-                logger.info(
+                logger.debug(
                     "Found %d total child workspaces across %d pages",
                     len(all_workspaces),
                     page,
                 )
             else:
-                logger.info("Found %d total child workspaces", len(all_workspaces))
-            for child in all_workspaces:
-                logger.debug(
-                    "Child workspace: %s (%s)",
-                    child["attributes"]["name"],
-                    child["id"],
-                )
+                logger.debug("Found %d total child workspaces", len(all_workspaces))
             return all_workspaces
         else:
             logger.debug("No child workspaces found - empty data array")
@@ -533,7 +529,7 @@ def process_dashboards_visualizations(
             known_insights = set()
         elif not isinstance(known_insights, set):
             known_insights = set(known_insights)
-        logger.info("Found %d known insights for validation", len(known_insights))
+        logger.debug("Found %d known insights for validation", len(known_insights))
 
     def add_relationship(
         dashboard_id,

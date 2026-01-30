@@ -99,4 +99,4 @@ def write_to_csv(data, export_dir, filename, fieldnames, exclude_fields=None):
 
 def log_export(name, count, csv_path):
     """Standardized logging for exports"""
-    logger.info("Exported %d %s to %s and %s", count, name, csv_path, DEFAULT_DB_NAME)
+    logger.debug("Exported %d %s to %s and %s", count, name, csv_path, DEFAULT_DB_NAME)

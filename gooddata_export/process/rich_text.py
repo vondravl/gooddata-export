@@ -112,11 +112,11 @@ def debug_rich_text_extraction(
     try:
         with open(output_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(debug_data, indent=2) + "\n\n")
-        logger.info(
-            f"Debug info for {extraction_type} extraction written to {output_file}"
+        logger.debug(
+            "Debug info for %s extraction written to %s", extraction_type, output_file
         )
     except Exception as e:
-        logger.warning(f"Failed to write debug info to file: {str(e)}")
+        logger.warning("Failed to write debug info to file: %s", e)
 
     return debug_data
 
@@ -578,7 +578,7 @@ def process_dashboards_metrics_from_rich_text(
     ]
 
     if DEBUG_RICH_TEXT:
-        logger.info("Scanning dashboards for metrics in rich text...")
+        logger.debug("Scanning dashboards for metrics in rich text...")
 
     # Use shared traversal utility
     for dashboard_id, _tab_id, widget in iterate_dashboard_widgets(dashboard_data):
@@ -615,7 +615,7 @@ def process_dashboards_metrics_from_rich_text(
                 )
 
     if DEBUG_RICH_TEXT:
-        logger.info("Found %d metric references in dashboard rich text", len(tracker))
+        logger.debug("Found %d metric references in dashboard rich text", len(tracker))
 
     # Sort the results for consistency
     return tracker.get_sorted(sort_key=lambda x: (x["dashboard_id"], x["metric_id"]))
