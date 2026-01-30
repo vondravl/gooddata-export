@@ -15,9 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Consistent section formatting**: Standardized phase headers (FETCH PHASE, EXPORT PHASE, POST-EXPORT PROCESSING) and 70-character delimiters in debug output
 - **API FETCH PHASE SUMMARY**: Now only displayed when processing child workspaces (multi-workspace mode)
 - **`run_post_export_sql()` now raises `ExportError` on failure** instead of returning `bool`. This is the standard Pythonic pattern for error handling. Callers should use try/except instead of checking return values.
+- **Child workspace data types default changed to "dashboards"**: Previously defaulted to all types in non-interactive mode and none in interactive mode; now defaults to dashboards only in both modes
 
 ### Added
 - **`configure_logging()` in public API**: Exported from `gooddata_export` for programmatic users who want debug output
+- **`default_selected` parameter for `prompt_checkbox_selection()`**: Allows pre-selecting specific options instead of all-or-none
 
 ### Removed
 - `DEBUG_WORKSPACE_PROCESSING` configuration option from `ExportConfig` and `.env.gdcloud` (use `--debug` CLI flag instead)
