@@ -63,6 +63,7 @@ def prompt_checkbox_selection(
     options: tuple[str, ...] | list[str],
     message: str = "Select options:",
     default_all: bool = True,
+    default_selected: list[str] | None = None,
     skip_prompt: bool = False,
 ) -> list[str]:
     """Display a multi-select checkbox prompt for user selection.
@@ -77,6 +78,8 @@ def prompt_checkbox_selection(
         options: Tuple or list of options to display
         message: Prompt message to display
         default_all: If True, all options start selected; if False, none selected
+            (ignored if default_selected is provided)
+        default_selected: List of options to pre-select (overrides default_all)
         skip_prompt: If True, returns default selection without prompting (for testing)
 
     Returns:
@@ -86,24 +89,30 @@ def prompt_checkbox_selection(
         >>> selected = prompt_checkbox_selection(
         ...     options=("metrics", "dashboards", "visualizations"),
         ...     message="Select data types:",
-        ...     default_all=True,
+        ...     default_selected=["dashboards"],
         ... )
         Select data types:
-        [X] 1. metrics
+        [ ] 1. metrics
         [X] 2. dashboards
-        [X] 3. visualizations
+        [ ] 3. visualizations
 
         Toggle: numbers (1 3), 'a'=all, 'n'=none, Enter=confirm
         >
     """
     options_list = list(options)
 
+    # Determine initial selection state
+    if default_selected is not None:
+        initial_selected = [opt in default_selected for opt in options_list]
+    else:
+        initial_selected = [default_all] * len(options_list)
+
     # Handle skip_prompt or non-interactive mode
     if skip_prompt or not is_interactive():
-        return options_list if default_all else []
+        return [opt for i, opt in enumerate(options_list) if initial_selected[i]]
 
     # Initialize selection state
-    selected = [default_all] * len(options_list)
+    selected = initial_selected
 
     while True:
         # Display current selection state

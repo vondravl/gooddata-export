@@ -8,6 +8,17 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def configure_logging(debug: bool) -> None:
+    """Configure logging level based on debug flag.
+
+    Args:
+        debug: If True, set DEBUG level; otherwise INFO level.
+    """
+    level = logging.DEBUG if debug else logging.INFO
+    # force=True allows reconfiguring after import-time basicConfig calls
+    logging.basicConfig(level=level, format="%(message)s", force=True)
+
+
 class ExportError(Exception):
     """Exception raised for errors during the export process.
 

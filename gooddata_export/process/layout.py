@@ -45,10 +45,10 @@ def _fetch_from_layout_api(
 
         if workspace_scoped:
             url = f"{client['base_url']}/api/v1/layout/workspaces/{client['workspace_id']}/{endpoint}"
-            logger.info(f"Fetching {name} from workspace: {client['workspace_id']}")
+            logger.debug("Fetching %s from workspace: %s", name, client["workspace_id"])
         else:
             url = f"{client['base_url']}/api/v1/layout/{endpoint}"
-            logger.info(f"Fetching {name}")
+            logger.debug("Fetching %s", name)
 
         response = requests.get(url, headers=client["headers"], timeout=timeout)
 
@@ -61,7 +61,7 @@ def _fetch_from_layout_api(
                 )
                 return None
 
-            logger.info(f"{name.capitalize()}: Successfully fetched")
+            logger.debug("%s: Successfully fetched", name.capitalize())
             return json_input
 
         else:
@@ -407,12 +407,12 @@ def process_dashboards_permissions_from_analytics_model(analytics_model, workspa
         return permissions
 
     # Log the top-level keys to understand the structure
-    logger.debug(f"Analytics model top-level keys: {list(analytics_model.keys())}")
+    logger.debug("Analytics model top-level keys: %s", list(analytics_model.keys()))
 
     # Dashboards are under analytics.analyticalDashboards in the layout API response
     analytics = analytics_model.get("analytics", {})
     dashboards = analytics.get("analyticalDashboards", [])
-    logger.info(f"Found {len(dashboards)} dashboards in analytics model")
+    logger.debug("Found %d dashboards in analytics model", len(dashboards))
 
     for dash in dashboards:
         dashboard_id = dash.get("id", "")
@@ -455,7 +455,9 @@ def process_dashboards_permissions_from_analytics_model(analytics_model, workspa
                         }
                     )
 
-    logger.info(f"Found {len(permissions)} dashboard permissions from analytics model")
+    logger.debug(
+        "Found %d dashboard permissions from analytics model", len(permissions)
+    )
 
     return sorted(
         permissions,

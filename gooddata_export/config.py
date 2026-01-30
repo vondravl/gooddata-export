@@ -23,7 +23,6 @@ class ExportConfig:
         max_parallel_workspaces: int | None = None,
         enable_rich_text_extraction: bool | None = None,
         enable_post_export: bool | None = None,
-        debug_workspace_processing: bool | None = None,
         include_content: bool | None = None,
         load_from_env: bool = True,
     ):
@@ -38,7 +37,6 @@ class ExportConfig:
             max_parallel_workspaces: Number of workspaces to process in parallel
             enable_rich_text_extraction: Whether to extract from rich text widgets
             enable_post_export: Whether to run post-export enrichment/procedures
-            debug_workspace_processing: Enable debug logging
             include_content: Whether to include full JSON content fields in database
             load_from_env: Whether to load config from .env files
         """
@@ -57,18 +55,6 @@ class ExportConfig:
         else:
             child_workspaces_value = getenv("INCLUDE_CHILD_WORKSPACES", "False").lower()
             self.INCLUDE_CHILD_WORKSPACES = child_workspaces_value in (
-                "true",
-                "1",
-                "yes",
-                "on",
-            )
-
-        # Debug logging flag
-        if debug_workspace_processing is not None:
-            self.DEBUG_WORKSPACE_PROCESSING = debug_workspace_processing
-        else:
-            debug_env = getenv("DEBUG", "False")
-            self.DEBUG_WORKSPACE_PROCESSING = debug_env.lower() in (
                 "true",
                 "1",
                 "yes",

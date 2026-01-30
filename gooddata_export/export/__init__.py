@@ -74,7 +74,7 @@ def export_all_metadata(
 
     # Clean CSV directory completely to avoid stale data (files mix together, so we need a clean slate)
     if export_dir and Path(export_dir).exists():
-        logger.info("Cleaning CSV directory: %s", export_dir)
+        logger.debug("Cleaning CSV directory: %s", export_dir)
         shutil.rmtree(export_dir)
 
     # Ensure CSV directory exists if needed
@@ -123,18 +123,21 @@ def export_all_metadata(
         ]
     else:
         # API mode: validate workspace and fetch from GoodData API
-        logger.info("Validating workspace access...")
+        logger.debug("")
+        logger.debug("=" * 70)
+        logger.debug("FETCH PHASE")
+        logger.debug("=" * 70)
+        logger.debug("Validating workspace access...")
         validate_workspace_exists(config=config)
 
-        logger.info("Fetching data from GoodData API...")
+        logger.debug("Fetching data from GoodData API...")
         all_workspace_data = fetch_all_workspace_data(config)
 
-    if config.DEBUG_WORKSPACE_PROCESSING:
-        logger.debug(
-            "Successfully fetched data from %d workspace(s)", len(all_workspace_data)
-        )
-        for ws in all_workspace_data:
-            logger.debug("  - %s (%s)", ws["workspace_name"], ws["workspace_id"])
+    logger.debug(
+        "Successfully fetched data from %d workspace(s)", len(all_workspace_data)
+    )
+    for ws in all_workspace_data:
+        logger.debug("  - %s (%s)", ws["workspace_name"], ws["workspace_id"])
 
     # Export functions to run sequentially (workspaces first for reference)
     export_functions = [
@@ -152,8 +155,11 @@ def export_all_metadata(
 
     # Execute each export function with all workspace data
     # Note: Database writes are kept sequential to avoid SQLite concurrency issues
-    logger.info("Processing and writing data to database...")
-    logger.info("=" * 80)
+    logger.debug("")
+    logger.debug("=" * 70)
+    logger.debug("EXPORT PHASE")
+    logger.debug("=" * 70)
+    logger.debug("Processing and writing data to database...")
     for export_func in export_functions:
         try:
             export_func(all_workspace_data, export_dir, config, db_path)
@@ -175,19 +181,21 @@ def export_all_metadata(
 
     # Run post-export processing if requested
     # When child workspaces are included, filter enrichment to parent workspace only
+    post_export_error = None
     if run_post_export:
-        logger.info("")
-        logger.info("Running post-export processing...")
-        logger.info("=" * 80)
-        if config.INCLUDE_CHILD_WORKSPACES:
-            # Multi-workspace: enrich only parent workspace to avoid confusing duplicates
-            logger.info("Multi-workspace mode: enriching parent workspace only")
-            run_post_export_sql(db_path, parent_workspace_id=config.WORKSPACE_ID)
-        else:
-            # Single workspace: enrich all data (no filter needed)
-            run_post_export_sql(db_path)
+        try:
+            if config.INCLUDE_CHILD_WORKSPACES:
+                # Multi-workspace: enrich only parent workspace to avoid confusing duplicates
+                logger.debug("Multi-workspace mode: enriching parent workspace only")
+                run_post_export_sql(db_path, parent_workspace_id=config.WORKSPACE_ID)
+            else:
+                # Single workspace: enrich all data (no filter needed)
+                run_post_export_sql(db_path)
+        except ExportError as e:
+            # Capture error but continue (database still usable without enrichment)
+            post_export_error = str(e)
     else:
-        logger.info("Skipping post-export processing (disabled)")
+        logger.debug("Skipping post-export processing (disabled)")
 
     # Store workspace metadata
     workspace_id = config.WORKSPACE_ID
@@ -200,7 +208,7 @@ def export_all_metadata(
         conn.execute("VACUUM")
         conn.close()
         final_size = os.path.getsize(db_path) / 1024 / 1024
-        logger.info("Database vacuumed (final size: %.1f MB)", final_size)
+        logger.debug("Database vacuumed (final size: %.1f MB)", final_size)
     except Exception as e:
         logger.warning("Could not vacuum database: %s", e)
 
@@ -210,20 +218,20 @@ def export_all_metadata(
         workspace_db = db_path_obj.parent / f"{workspace_id}.db"
         # Create a copy of the database with workspace_id name
         shutil.copy(db_path, workspace_db)
-        logger.info("Created workspace-specific database: %s", workspace_db)
+        logger.debug("Created workspace-specific database: %s", workspace_db)
     except Exception as e:
         logger.warning("Could not create workspace-specific database: %s", e)
 
     # Success message
     total_workspaces = len(all_workspace_data)
     if total_workspaces > 1:
-        logger.info(
+        logger.debug(
             "Successfully processed %d workspaces (%d child workspaces)",
             total_workspaces,
             total_workspaces - 1,
         )
     else:
-        logger.info("Successfully processed parent workspace")
+        logger.debug("Successfully processed parent workspace")
 
     return {
         "db_path": db_path,
@@ -231,6 +239,7 @@ def export_all_metadata(
         "csv_dir": export_dir,
         "workspace_count": total_workspaces,
         "workspace_id": workspace_id,
+        "post_export_error": post_export_error,
     }
 
 

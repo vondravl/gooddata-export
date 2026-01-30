@@ -6,6 +6,7 @@ import pytest
 import requests
 
 from gooddata_export.common import (
+    configure_logging,
     get_api_client,
     raise_for_api_error,
     raise_for_connection_error,
@@ -284,3 +285,51 @@ class TestGetApiClient:
 
         assert result["params"]["origin"] == "ALL"
         assert result["params"]["size"] == "2000"
+
+
+class TestConfigureLogging:
+    """Tests for configure_logging function."""
+
+    @pytest.fixture(autouse=True)
+    def reset_logging(self):
+        """Restore logging state after each test to avoid affecting other tests."""
+        import logging
+
+        root = logging.getLogger()
+        original_level = root.level
+        original_handlers = root.handlers[:]
+        yield
+        root.setLevel(original_level)
+        root.handlers = original_handlers
+
+    def test_debug_true_sets_debug_level(self):
+        """When debug=True, root logger should be set to DEBUG level."""
+        import logging
+
+        configure_logging(debug=True)
+
+        assert logging.getLogger().level == logging.DEBUG
+
+    def test_debug_false_sets_info_level(self):
+        """When debug=False, root logger should be set to INFO level."""
+        import logging
+
+        configure_logging(debug=False)
+
+        assert logging.getLogger().level == logging.INFO
+
+    def test_format_is_message_only(self):
+        """Logging format should be message-only (no timestamps/levels)."""
+        import logging
+
+        configure_logging(debug=False)
+
+        # Check that the root logger's handler uses the expected format
+        root_logger = logging.getLogger()
+        # basicConfig adds a StreamHandler to root logger
+        for handler in root_logger.handlers:
+            if handler.formatter:
+                assert handler.formatter._fmt == "%(message)s"
+                break
+        else:
+            pytest.fail("No handler with formatter found on root logger")

@@ -144,13 +144,13 @@ def store_workspace_metadata(
 
         last_updated = payload.get("last_updated")
         if last_updated:
-            logger.info(
-                f"Stored workspace metadata with last update time: {last_updated}"
+            logger.debug(
+                "Stored workspace metadata with last update time: %s", last_updated
             )
         else:
-            logger.info("Stored workspace metadata (timestamp unchanged)")
+            logger.debug("Stored workspace metadata (timestamp unchanged)")
 
         db.commit()
         db.close()
     except sqlite3.Error as e:
-        logger.error(f"Failed to store workspace metadata: {str(e)}")
+        logger.error("Failed to store workspace metadata: %s", e)

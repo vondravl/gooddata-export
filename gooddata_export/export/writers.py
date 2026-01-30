@@ -45,8 +45,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name) -> None:
         raw_data = workspace_info["data"].get("metrics")
 
         if raw_data is None:
-            if config.DEBUG_WORKSPACE_PROCESSING:
-                logger.debug("No metrics data for workspace %s", workspace_id)
+            logger.debug("No metrics data for workspace %s", workspace_id)
             continue
 
         processed_data = process_metrics(raw_data, workspace_id)
@@ -120,7 +119,7 @@ def export_metrics(all_workspace_data, export_dir, config, db_name) -> None:
     if export_dir is not None:
         log_export("metrics", count, Path(export_dir) / "gooddata_metrics.csv")
     else:
-        logger.info("Exported %d metrics to %s", count, db_name)
+        logger.debug("Exported %d metrics to %s", count, db_name)
 
 
 def export_visualizations(all_workspace_data, export_dir, config, db_name) -> None:
@@ -324,13 +323,13 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             Path(export_dir) / "gooddata_visualizations_attributes.csv",
         )
     else:
-        logger.info("Exported %d visualizations to %s", vis_count, db_name)
-        logger.info(
+        logger.debug("Exported %d visualizations to %s", vis_count, db_name)
+        logger.debug(
             "Exported %d visualization-metric relationships to %s",
             metric_rel_count,
             db_name,
         )
-        logger.info(
+        logger.debug(
             "Exported %d visualization-attribute relationships to %s",
             attr_rel_count,
             db_name,
@@ -359,7 +358,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                     known_insights.add(viz["id"])
 
     if known_insights:
-        logger.info("Found %d known insights for validation", len(known_insights))
+        logger.debug("Found %d known insights for validation", len(known_insights))
 
     # Process dashboards from all workspaces
     for workspace_info in all_workspace_data:
@@ -657,20 +656,20 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 Path(export_dir) / "gooddata_dashboards_widget_filters.csv",
             )
     else:
-        logger.info("Exported %d dashboards to %s", dash_count, db_name)
-        logger.info(
+        logger.debug("Exported %d dashboards to %s", dash_count, db_name)
+        logger.debug(
             "Exported %d dashboard-visualization relationships to %s",
             rel_count,
             db_name,
         )
         if plugin_rel_count > 0:
-            logger.info(
+            logger.debug(
                 "Exported %d dashboard-plugin relationships to %s",
                 plugin_rel_count,
                 db_name,
             )
         if widget_filters_count > 0:
-            logger.info(
+            logger.debug(
                 "Exported %d widget filter configurations to %s",
                 widget_filters_count,
                 db_name,
@@ -877,9 +876,9 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
                 Path(export_dir) / "gooddata_ldm_labels.csv",
             )
         else:
-            logger.info("Exported %d datasets to %s", dataset_count, db_name)
-            logger.info("Exported %d columns to %s", column_count, db_name)
-            logger.info("Exported %d labels to %s", label_count, db_name)
+            logger.debug("Exported %d datasets to %s", dataset_count, db_name)
+            logger.debug("Exported %d columns to %s", column_count, db_name)
+            logger.debug("Exported %d labels to %s", label_count, db_name)
 
 
 def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> None:
@@ -1040,9 +1039,9 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
                 Path(export_dir) / "gooddata_filter_context_fields.csv",
             )
     else:
-        logger.info("Exported %d filter contexts to %s", records_count, db_name)
+        logger.debug("Exported %d filter contexts to %s", records_count, db_name)
         if fields_count > 0:
-            logger.info(
+            logger.debug(
                 "Exported %d filter context fields to %s", fields_count, db_name
             )
 
@@ -1117,7 +1116,7 @@ def export_workspaces(all_workspace_data, export_dir, config, db_name) -> None:
     if export_dir is not None:
         log_export("workspaces", count, Path(export_dir) / "gooddata_workspaces.csv")
     else:
-        logger.info("Exported %d workspaces to %s", count, db_name)
+        logger.debug("Exported %d workspaces to %s", count, db_name)
 
 
 def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name) -> None:
@@ -1162,7 +1161,7 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name) -
                     if metric_id:
                         known_metrics.add(metric_id)
             if known_metrics:
-                logger.info(
+                logger.debug(
                     "Found %d known metrics for validation (source: memory)",
                     len(known_metrics),
                 )
@@ -1171,7 +1170,7 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name) -
 
         # If still empty, proceed without known metrics filtering (no API fallback)
         if not known_metrics:
-            logger.info(
+            logger.debug(
                 "No known metrics available for validation from memory or db; "
                 "proceeding without filter"
             )
@@ -1182,7 +1181,7 @@ def export_dashboards_metrics(all_workspace_data, export_dir, config, db_name) -
             workspaces_to_process = [
                 ws for ws in all_workspace_data if ws.get("is_parent", False)
             ]
-            logger.info(
+            logger.debug(
                 "Rich text extraction: Processing only parent workspace "
                 "(found %d parent workspace(s) out of %d total)",
                 len(workspaces_to_process),
@@ -1426,9 +1425,9 @@ def export_users_and_user_groups(
             Path(export_dir) / "gooddata_user_group_members.csv",
         )
     else:
-        logger.info("Exported %d users to %s", users_count, db_name)
-        logger.info("Exported %d user groups to %s", user_groups_count, db_name)
-        logger.info(
+        logger.debug("Exported %d users to %s", users_count, db_name)
+        logger.debug("Exported %d user groups to %s", user_groups_count, db_name)
+        logger.debug(
             "Exported %d user-group memberships to %s", membership_count, db_name
         )
 
@@ -1522,7 +1521,7 @@ def export_dashboards_permissions(
             Path(export_dir) / "gooddata_dashboards_permissions.csv",
         )
     else:
-        logger.info("Exported %d dashboard permissions to %s", count, db_name)
+        logger.debug("Exported %d dashboard permissions to %s", count, db_name)
 
 
 def export_plugins(all_workspace_data, export_dir, config, db_name) -> None:
@@ -1535,8 +1534,7 @@ def export_plugins(all_workspace_data, export_dir, config, db_name) -> None:
         raw_data = workspace_info["data"].get("plugins")
 
         if raw_data is None:
-            if config.DEBUG_WORKSPACE_PROCESSING:
-                logger.debug("No plugins data for workspace %s", workspace_id)
+            logger.debug("No plugins data for workspace %s", workspace_id)
             continue
 
         processed_data = process_plugins(raw_data, workspace_id)
@@ -1601,4 +1599,4 @@ def export_plugins(all_workspace_data, export_dir, config, db_name) -> None:
     if export_dir is not None:
         log_export("plugins", count, Path(export_dir) / "gooddata_plugins.csv")
     else:
-        logger.info("Exported %d plugins to %s", count, db_name)
+        logger.debug("Exported %d plugins to %s", count, db_name)

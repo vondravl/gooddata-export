@@ -17,7 +17,7 @@ Basic usage:
 
 from importlib.metadata import PackageNotFoundError, version
 
-from gooddata_export.common import ExportError
+from gooddata_export.common import ExportError, configure_logging
 from gooddata_export.config import ExportConfig
 from gooddata_export.export import export_all_metadata
 
@@ -34,7 +34,6 @@ def export_metadata(
     enable_rich_text_extraction: bool = False,
     run_post_export: bool = True,
     include_content: bool = True,
-    debug: bool = False,
     db_path: str = "output/db/gooddata_export.db",
     layout_json: dict | None = None,
 ):
@@ -59,7 +58,6 @@ def export_metadata(
         run_post_export: Whether to run post-export SQL processing for duplicate detection (default: True)
         include_content: Whether to include full JSON content fields in database (default: True)
             Set to False to reduce database size by ~50%
-        debug: Enable debug logging (default: False)
         db_path: Custom path for the SQLite database (default: "output/db/gooddata_export.db")
         layout_json: Optional local layout JSON data. When provided, skips API fetch
             and uses this data directly. Expected format:
@@ -119,7 +117,6 @@ def export_metadata(
         max_parallel_workspaces=max_parallel_workspaces,
         enable_rich_text_extraction=enable_rich_text_extraction,
         include_content=include_content,
-        debug_workspace_processing=debug,
         load_from_env=False,  # Don't load from .env when using this API
     )
 
@@ -134,7 +131,13 @@ def export_metadata(
     )
 
 
-__all__ = ["export_metadata", "ExportConfig", "ExportError", "export_all_metadata"]
+__all__ = [
+    "export_metadata",
+    "ExportConfig",
+    "ExportError",
+    "export_all_metadata",
+    "configure_logging",
+]
 
 try:
     __version__ = version("gooddata-export")

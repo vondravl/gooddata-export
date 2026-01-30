@@ -39,6 +39,7 @@ from pathlib import Path
 
 from gooddata_export import export_metadata
 from gooddata_export.cli.prompts import is_interactive, prompt_checkbox_selection
+from gooddata_export.common import ExportError, configure_logging
 from gooddata_export.config import ExportConfig
 from gooddata_export.constants import CHILD_WORKSPACE_DATA_TYPES
 from gooddata_export.post_export import run_post_export_sql
@@ -150,7 +151,7 @@ def _add_export_arguments(parser):
         "--child-workspace-data-types",
         nargs="+",
         choices=["metrics", "dashboards", "visualizations", "filter_contexts"],
-        help="Data types to fetch from child workspaces - default: all (env: CHILD_WORKSPACE_DATA_TYPES)",
+        help="Data types to fetch from child workspaces - default: dashboards (env: CHILD_WORKSPACE_DATA_TYPES)",
     )
     parser.add_argument(
         "--max-workers",
@@ -207,38 +208,34 @@ def run_enrich_command(args):
     print(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print()
 
+    configure_logging(args.debug)
+
     try:
-        # Set up logging level
-        if args.debug:
-            import logging
-
-            logging.basicConfig(level=logging.DEBUG)
-
         # Run post-export processing
-        success = run_post_export_sql(args.db_path)
+        run_post_export_sql(args.db_path)
 
-        if success:
-            # Calculate duration
-            end_time = datetime.now()
-            duration = end_time - start_time
-            duration_str = str(duration).split(".")[0]  # Remove microseconds
+        # Calculate duration
+        end_time = datetime.now()
+        duration = end_time - start_time
+        duration_str = str(duration).split(".")[0]  # Remove microseconds
 
-            print("\n" + "=" * 70)
-            print("Enrichment Completed Successfully!")
-            print("=" * 70)
-            print(f"\nDatabase enriched: {args.db_path}")
-            print("   - Views created")
-            print("   - Procedures executed")
-            print("   - Table updates applied")
-            print(f"\nFinished: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Duration: {duration_str}")
-            print("\n" + "=" * 70)
-            return 0
-        else:
-            print("\n" + "=" * 70)
-            print("Enrichment Failed!")
-            print("=" * 70)
-            return 1
+        print("\n" + "=" * 70)
+        print("Enrichment Completed Successfully!")
+        print("=" * 70)
+        print(f"\nDatabase enriched: {args.db_path}")
+        print("   - Views created")
+        print("   - Procedures executed")
+        print("   - Table updates applied")
+        print(f"\nFinished: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Duration: {duration_str}")
+        return 0
+
+    except ExportError:
+        # Error already logged by run_post_export_sql
+        print("\n" + "=" * 70)
+        print("Enrichment Failed!")
+        print("=" * 70)
+        return 1
 
     except Exception as e:
         print("\n" + "=" * 70)
@@ -254,7 +251,6 @@ def run_enrich_command(args):
         else:
             print("\nRun with --debug flag for detailed error information.")
 
-        print("\n" + "=" * 70)
         return 1
 
 
@@ -339,7 +335,7 @@ def run_export_command(args):
         )
         # Handle content: CLI --no-content overrides .env INCLUDE_CONTENT
         include_content = False if args.no_content else loaded_config.INCLUDE_CONTENT
-        debug = args.debug if args.debug else loaded_config.DEBUG_WORKSPACE_PROCESSING
+        debug = args.debug
     else:
         # Use CLI args with defaults
         include_child_workspaces = args.include_child_workspaces
@@ -350,21 +346,23 @@ def run_export_command(args):
         include_content = not args.no_content  # Invert the no-content flag
         debug = args.debug
 
+    configure_logging(debug)
+
     # Interactive prompt for child workspace data types if needed
     if include_child_workspaces and not child_workspace_data_types:
         if is_interactive():
             child_workspace_data_types = prompt_checkbox_selection(
                 options=CHILD_WORKSPACE_DATA_TYPES,
                 message="Select data types to fetch from child workspaces:",
-                default_all=False,
+                default_selected=["dashboards"],
             )
             # If user selected nothing, disable child workspace fetching
             if not child_workspace_data_types:
                 print("\nNo data types selected - skipping child workspaces")
                 include_child_workspaces = False
         else:
-            # Non-interactive mode: use all types
-            child_workspace_data_types = list(CHILD_WORKSPACE_DATA_TYPES)
+            # Non-interactive mode: default to dashboards only
+            child_workspace_data_types = ["dashboards"]
 
     # Display configuration
     print("\nConfiguration:")
@@ -419,7 +417,6 @@ def run_export_command(args):
             enable_rich_text_extraction=enable_rich_text_extraction,
             run_post_export=enable_post_export,
             include_content=include_content,
-            debug=debug,
             db_path=db_path,
         )
 
@@ -429,8 +426,12 @@ def run_export_command(args):
         duration_str = str(duration).split(".")[0]  # Remove microseconds
 
         # Display results
+        post_export_error = result.get("post_export_error")
         print("\n" + "=" * 70)
-        print("Export Completed Successfully!")
+        if post_export_error:
+            print("Export Completed with Failures")
+        else:
+            print("Export Completed Successfully!")
         print("=" * 70)
         print("\nResults:")
         print(f"   Workspaces Processed: {result['workspace_count']}")
@@ -443,10 +444,11 @@ def run_export_command(args):
         if "csv" in args.format and result.get("csv_dir"):
             print(f"   CSV Files Directory: {result['csv_dir']}")
 
+        if post_export_error:
+            print(f"\nPost-export error: {post_export_error}")
+
         print(f"\nFinished: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Duration: {duration_str}")
-
-        print("\n" + "=" * 70)
         return 0
 
     except Exception as e:
@@ -463,7 +465,6 @@ def run_export_command(args):
         else:
             print("\nRun with --debug flag for detailed error information.")
 
-        print("\n" + "=" * 70)
         return 1
 
 
