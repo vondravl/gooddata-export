@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-02-04
+
+### Changed
+- **Optimized child workspace fetching**: Always uses layout API (`analyticsModel`) for ~2.7x faster performance
+  - Benchmarks: 64 child workspaces in 8.4s (layout API) vs 22.5s (entity API)
+  - Faster despite fewer parallel API calls (5 vs up to 25) - single call returns all data
+  - Returns native objects only (no inherited duplicates from parent)
+  - Simpler code path (removed conditional API selection logic)
+- **Simplified retry logic using `urllib3.Retry`**: Replaced ~40 lines of manual retry/backoff code in `fetch_data()` with built-in retry handling via `HTTPAdapter`
+  - Automatic retries on rate limiting (429) and server errors (5xx) with exponential backoff
+  - Honors `Retry-After` header from server for optimal backoff timing
+  - Configurable via `create_api_session(max_retries=3, backoff_factor=1.0)`
+- **Shared session for child workspace fetching**: All parallel child workspace fetches now share a single `requests.Session`
+  - TCP/TLS connection reuse across parallel workers (session pool sized to match worker count)
+  - Eliminates per-workspace session creation/teardown overhead
+
+### Added
+- **`create_api_session()` function**: Creates `requests.Session` with connection pooling and automatic retries
+  - Connection pooling via `HTTPAdapter` for TCP connection reuse
+  - Built-in retry strategy for transient failures
+- **`session` parameter for fetch functions**: `fetch_child_workspaces`, `fetch_ldm`, etc. now accept optional session parameter for connection reuse
+- **Consistent retry handling**: Both parent and child workspace API calls now use session with automatic retries
+
+### Removed
+- **`fetch_data()` function**: No longer used - child workspaces now use layout API exclusively
+- **`entity_to_layout()` and `transform_entities_to_layout()` functions**: No longer needed without entity API usage
+
 ## [1.6.1] - 2026-01-30
 
 ### Changed

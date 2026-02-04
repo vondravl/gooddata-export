@@ -50,7 +50,7 @@ python main.py enrich --db-path output/db/gooddata_export.db
 pytest
 
 # Format code
-python formatting_ruff.py
+make ruff-format
 ```
 
 ## Architecture
@@ -62,7 +62,7 @@ gooddata_export/
 ├── __init__.py          # Public API exports
 ├── config.py            # ExportConfig class, environment loading
 ├── constants.py         # Shared constants (DEFAULT_DB_NAME, worker limits)
-├── common.py            # API client utilities (GoodDataClient)
+├── common.py            # API client utilities (get_api_client, create_api_session)
 ├── db.py                # SQLite database utilities
 ├── post_export.py       # Post-processing orchestration, topological sort
 ├── export/              # Export module (orchestration, fetching, writing)
@@ -72,10 +72,11 @@ gooddata_export/
 │   └── utils.py         # Export utilities (write_to_csv, execute_with_retry)
 ├── process/             # Data processing modules
 │   ├── __init__.py      # Exports all process functions
-│   ├── entities.py      # Entity processing (metrics, dashboards, visualizations)
-│   ├── ldm.py           # LDM processing (datasets, columns)
-│   ├── users.py         # User/group processing
-│   └── fetching.py      # API fetching utilities
+│   ├── entities.py      # Entity processing (metrics, dashboards, visualizations) + fetch_child_workspaces
+│   ├── layout.py        # Layout API fetching (fetch_ldm, fetch_analytics_model, fetch_users_and_user_groups)
+│   ├── dashboard_traversal.py  # Dashboard widget/visualization extraction
+│   ├── rich_text.py     # Rich text extraction from dashboards
+│   └── common.py        # Shared utilities (sort_tags)
 └── sql/                 # SQL scripts for post-export processing
     ├── post_export_config.yaml  # YAML configuration for all SQL operations
     ├── tables/          # Table creation scripts (metrics_relationships, etc.)
@@ -87,10 +88,9 @@ gooddata_export/
 ### Data Flow
 
 1. **Export Phase** (`export/` → `process/`)
-   - **API mode**: Fetches from `analyticsModel` endpoint (parent) or entity APIs (children)
+   - **API mode**: Fetches from `analyticsModel` endpoint (parent and children)
    - **Local mode**: Uses provided `layout_json` directly (no API calls)
    - All data is processed in **layout format** (flat structure with `obj["title"]`)
-   - Child workspace entity data is transformed via `entity_to_layout()`
    - Stores in SQLite tables: metrics, visualizations, dashboards, ldm_*, etc.
 
 2. **Post-Export Phase** (`post_export.py`)

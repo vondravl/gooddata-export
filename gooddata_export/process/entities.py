@@ -1,7 +1,6 @@
 """Entity API functions for fetching and processing GoodData entities."""
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -12,7 +11,6 @@ if TYPE_CHECKING:
 from gooddata_export.common import (
     get_api_client,
     raise_for_api_error,
-    raise_for_connection_error,
     raise_for_request_error,
 )
 from gooddata_export.process.common import sort_tags
@@ -20,215 +18,32 @@ from gooddata_export.process.common import sort_tags
 logger = logging.getLogger(__name__)
 
 
-# -----------------------------------------------------------------------------
-# Entity to Layout Transformation Functions
-# -----------------------------------------------------------------------------
-
-
-def entity_to_layout(obj: dict) -> dict:
-    """Transform entity API format to layout format.
-
-    Entity format (from /api/v1/entities/...):
-        {"id": "x", "attributes": {"title": "...", ...}, "meta": {"origin": {...}}}
-
-    Layout format (from /api/v1/layout/.../analyticsModel or local layout.json):
-        {"id": "x", "title": "...", "content": {...}}
-
-    The layout format is simpler and matches local layout.json files,
-    making it the canonical internal format for processing.
-    """
-    attrs = obj.get("attributes", {})
-    meta = obj.get("meta", {})
-    origin = meta.get("origin", {})
-
-    return {
-        "id": obj["id"],
-        "title": attrs.get("title", ""),
-        "description": attrs.get("description", ""),
-        "tags": attrs.get("tags") or [],
-        "content": attrs.get("content", {}),
-        "createdAt": attrs.get("createdAt", ""),
-        "modifiedAt": attrs.get("modifiedAt", attrs.get("createdAt", "")),
-        "areRelationsValid": attrs.get("areRelationsValid", True),
-        "isHidden": attrs.get("isHidden", False),
-        "originType": origin.get("originType", "NATIVE"),
-    }
-
-
-def transform_entities_to_layout(entities: list[dict]) -> list[dict]:
-    """Transform list of entity API objects to layout format.
-
-    Used when fetching from child workspaces via entity API, converting
-    to the canonical layout format for uniform processing.
-    """
-    return [entity_to_layout(e) for e in entities]
-
-
-def fetch_data(endpoint, client=None, config=None, max_retries=3):
-    """Fetch data from GoodData API with pagination and retry mechanism"""
-    client = get_api_client(config=config, client=client)
-
-    base_url = f"{client['base_url']}/api/v1/entities/workspaces/{client['workspace_id']}/{endpoint}"
-    logger.debug("Fetching %s from workspace: %s", endpoint, client["workspace_id"])
-
-    all_data = []
-    page = 0
-
-    while True:
-        # Add page parameter to params
-        params = client["params"].copy()
-        params["page"] = str(page)
-
-        url = base_url
-        logger.debug("Fetching %s page %d", endpoint, page)
-
-        page_success = False
-
-        for attempt in range(max_retries + 1):
-            try:
-                # Increase timeout for parallel requests and add backoff
-                timeout = 60 + (attempt * 15)  # 60s, 75s, 90s, 105s
-                if attempt > 0:
-                    # Add exponential backoff delay
-                    delay = 2**attempt
-                    logger.info(
-                        "Retrying %s page %d (attempt %d/%d) after %ds delay",
-                        endpoint,
-                        page,
-                        attempt + 1,
-                        max_retries + 1,
-                        delay,
-                    )
-                    time.sleep(delay)
-
-                response = requests.get(
-                    url, params=params, headers=client["headers"], timeout=timeout
-                )
-
-                if response.status_code == 200:
-                    json_input = response.json()
-                    page_data = json_input.get("data", [])
-
-                    # If no data returned, we've reached the end
-                    if not page_data:
-                        page_success = True
-                        break
-
-                    all_data.extend(page_data)
-                    logger.debug("Page %d: Found %d items", page, len(page_data))
-                    page_success = True
-                    break  # Success, exit retry loop
-
-                elif response.status_code >= 500:
-                    # Server errors (5xx) are retryable
-                    if attempt < max_retries:
-                        logger.warning(
-                            "Server error for %s page %d (HTTP %d, attempt %d)",
-                            endpoint,
-                            page,
-                            response.status_code,
-                            attempt + 1,
-                        )
-                        continue
-                    # Terminal - raises, never returns
-                    raise_for_api_error(response, endpoint, client["workspace_id"])
-
-                else:
-                    # Client errors (4xx) - not retryable
-                    # Terminal - raises, never returns
-                    raise_for_api_error(response, endpoint, client["workspace_id"])
-
-            except (
-                requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError,
-            ) as e:
-                if attempt < max_retries:
-                    logger.warning(
-                        "Timeout/connection error for %s page %d (attempt %d): %s",
-                        endpoint,
-                        page,
-                        attempt + 1,
-                        e,
-                    )
-                    continue
-                else:
-                    raise_for_connection_error(
-                        endpoint,
-                        e,
-                        base_url=client.get("base_url"),
-                        retry_info=f"after {max_retries + 1} attempts",
-                    )
-
-            except requests.exceptions.RequestException as e:
-                raise_for_request_error(endpoint, e, base_url=client.get("base_url"))
-
-            except Exception as e:
-                logger.error("Unexpected error fetching %s: %s", endpoint, e)
-                raise RuntimeError(f"Unexpected error fetching {endpoint}: {e}")
-
-        # If page fetch was not successful, break pagination loop
-        if not page_success:
-            break
-
-        # If we got data, increment page and continue
-        # If we got no data (empty page), we've already broken out above
-        if page_data:
-            page += 1
-        else:
-            break
-
-    # Process all accumulated data
-    if not all_data:
-        logger.warning("%s: No data received (empty array)", endpoint)
-        return None
-
-    # Filter to NATIVE origin for all entity endpoints fetched via this function
-    filtered_data = []
-    for obj in all_data:
-        origin_type = obj.get("meta", {}).get("origin", {}).get("originType", "NATIVE")
-        if str(origin_type).upper() == "NATIVE":
-            filtered_data.append(obj)
-
-    try:
-        sorted_data = sorted(
-            filtered_data,
-            key=lambda obj: obj.get("attributes", {}).get("title", ""),
-        )
-        # Log with page count only if more than 1 page
-        if page > 1:
-            logger.debug(
-                "%s: Successfully fetched %d items across %d pages",
-                endpoint,
-                len(sorted_data),
-                page,
-            )
-        else:
-            logger.debug(
-                "%s: Successfully fetched %d items", endpoint, len(sorted_data)
-            )
-        return sorted_data
-    except KeyError as sort_error:
-        logger.warning("%s: Could not sort data - %s", endpoint, sort_error)
-        return filtered_data
-
-
 def validate_workspace_exists(
     client: dict[str, Any] | None = None,
     config: "ExportConfig | None" = None,
+    session: "requests.Session | None" = None,
 ) -> None:
     """Check if workspace exists and is accessible.
+
+    Args:
+        client: API client dict (optional if config provided)
+        config: ExportConfig instance (optional if client provided)
+        session: Optional requests.Session for connection pooling.
+            If None, uses requests module directly (no connection reuse).
 
     Raises:
         RuntimeError: If workspace is not accessible (auth, permissions, or not found)
                       or if there's a connection error.
     """
     client = get_api_client(config=config, client=client)
+    # Use session if provided, otherwise fall back to requests module
+    http = session if session is not None else requests
     workspace_id = client["workspace_id"]
     url = f"{client['base_url']}/api/v1/entities/workspaces/{workspace_id}"
 
     logger.debug("Validating workspace: %s", workspace_id)
     try:
-        response = requests.get(url, headers=client["headers"], timeout=30)
+        response = http.get(url, headers=client["headers"], timeout=30)
         if response.status_code == 200:
             return
         raise_for_api_error(response, f"workspace {workspace_id}", workspace_id)
@@ -238,10 +53,28 @@ def validate_workspace_exists(
         )
 
 
-def fetch_child_workspaces(client=None, config=None, size=2000):
-    """Fetch child workspaces from GoodData API with pagination support"""
+def fetch_child_workspaces(
+    client: dict[str, Any] | None = None,
+    config: "ExportConfig | None" = None,
+    size: int = 2000,
+    session: "requests.Session | None" = None,
+) -> list[dict[str, Any]]:
+    """Fetch child workspaces from GoodData API with pagination support.
+
+    Args:
+        client: API client dict (optional if config provided)
+        config: ExportConfig instance (optional if client provided)
+        size: Number of results per page
+        session: Optional requests.Session for connection pooling.
+            If None, uses requests module directly (no connection reuse).
+
+    Returns:
+        List of child workspace entities (may be empty if no children exist).
+    """
     try:
         client = get_api_client(config=config, client=client)
+        # Use session if provided, otherwise fall back to requests module
+        http = session if session is not None else requests
         parent_workspace_id = client["workspace_id"]
         all_workspaces = []
         page = 0
@@ -263,7 +96,7 @@ def fetch_child_workspaces(client=None, config=None, size=2000):
             logger.debug("Request URL: %s", url)
             logger.debug("Request params: %s", params)
 
-            response = requests.get(
+            response = http.get(
                 url, params=params, headers=client["headers"], timeout=30
             )
 

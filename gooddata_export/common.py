@@ -4,8 +4,65 @@ import logging
 from typing import Any, NoReturn
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
+
+
+def create_api_session(
+    pool_connections: int = 1,
+    pool_maxsize: int = 10,
+    max_retries: int = 3,
+    backoff_factor: float = 1.0,
+) -> requests.Session:
+    """Create a requests Session with connection pooling and automatic retries.
+
+    Enables HTTP Keep-Alive, reusing TCP connections and avoiding
+    TCP/TLS handshake overhead on repeated requests to the same host.
+    Automatically retries on rate limiting (429), server errors (5xx),
+    and connection issues. Honors Retry-After headers from the server.
+
+    Args:
+        pool_connections: Number of unique hosts to cache pools for.
+            Defaults to 1 (single GoodData host).
+        pool_maxsize: Max connections per host pool. Should match max
+            parallel workers. Defaults to 10.
+        max_retries: Number of retry attempts for failed requests.
+            Retries on 429 and 5xx errors. Defaults to 3.
+        backoff_factor: Multiplier for exponential backoff between retries.
+            Delay = backoff_factor * (2 ** retry_number). Defaults to 1.0
+            (delays: 1s, 2s, 4s).
+
+    Returns:
+        Configured requests.Session with connection pooling and retries.
+    """
+    session = requests.Session()
+
+    # Configure retry strategy using urllib3
+    retry_strategy = Retry(
+        total=max_retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[
+            429,
+            500,
+            502,
+            503,
+            504,
+        ],  # Retry on rate limit + server errors
+        allowed_methods=["GET"],  # Only retry GET requests (safe/idempotent)
+        raise_on_status=False,  # Don't raise, let caller handle status codes
+        respect_retry_after_header=True,  # Honor server's Retry-After header
+    )
+
+    adapter = HTTPAdapter(
+        pool_connections=pool_connections,
+        pool_maxsize=pool_maxsize,
+        max_retries=retry_strategy,
+    )
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 def configure_logging(debug: bool) -> None:
