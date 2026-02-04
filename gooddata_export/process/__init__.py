@@ -2,8 +2,8 @@
 
 This module provides functions for fetching and processing GoodData metadata.
 It is organized into submodules:
-- entities: Entity API functions (fetch_data, process_*)
-- layout: Layout API functions (fetch_ldm, fetch_users_and_user_groups, etc.)
+- entities: Entity API functions (process_*, fetch_child_workspaces, validate_workspace_exists)
+- layout: Layout API functions (fetch_ldm, fetch_users_and_user_groups, fetch_analytics_model)
 - rich_text: Rich text extraction utilities
 - common: Shared utilities (sort_tags, etc.)
 """
@@ -17,9 +17,7 @@ from gooddata_export.process.common import (
     sort_tags,
 )
 from gooddata_export.process.entities import (
-    entity_to_layout,
     fetch_child_workspaces,
-    fetch_data,
     process_dashboards,
     process_dashboards_plugins,
     process_dashboards_visualizations,
@@ -32,7 +30,6 @@ from gooddata_export.process.entities import (
     process_visualizations_attributes,
     process_visualizations_metrics,
     process_workspaces,
-    transform_entities_to_layout,
     validate_workspace_exists,
 )
 from gooddata_export.process.layout import (
@@ -62,11 +59,7 @@ __all__ = [
     "get_debug_output_dir",
     "import_time_iso",
     "sort_tags",
-    # Entities - transformation
-    "entity_to_layout",
-    "transform_entities_to_layout",
     # Entities - fetching
-    "fetch_data",
     "fetch_child_workspaces",
     "validate_workspace_exists",
     # Entities - processing

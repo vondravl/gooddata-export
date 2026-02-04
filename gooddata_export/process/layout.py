@@ -25,6 +25,7 @@ def _fetch_from_layout_api(
     config: "ExportConfig | None" = None,
     timeout: int = 30,
     workspace_scoped: bool = False,
+    session: "requests.Session | None" = None,
 ):
     """Generic fetcher for GoodData layout API endpoints.
 
@@ -36,12 +37,16 @@ def _fetch_from_layout_api(
         timeout: Request timeout in seconds
         workspace_scoped: If True, endpoint is workspace-specific
                          (uses /workspaces/{id}/{endpoint})
+        session: Optional requests.Session for connection pooling.
+            If None, uses requests module directly (no connection reuse).
 
     Returns:
         Parsed JSON response or None if empty
     """
     try:
         client = get_api_client(config=config, client=client)
+        # Use session if provided, otherwise fall back to requests module
+        http = session if session is not None else requests
 
         if workspace_scoped:
             url = f"{client['base_url']}/api/v1/layout/workspaces/{client['workspace_id']}/{endpoint}"
@@ -50,7 +55,7 @@ def _fetch_from_layout_api(
             url = f"{client['base_url']}/api/v1/layout/{endpoint}"
             logger.debug("Fetching %s", name)
 
-        response = requests.get(url, headers=client["headers"], timeout=timeout)
+        response = http.get(url, headers=client["headers"], timeout=timeout)
 
         if response.status_code == 200:
             json_input = response.json()
@@ -86,6 +91,7 @@ def _fetch_from_layout_api(
 def fetch_users_and_user_groups(
     client: dict[str, Any] | None = None,
     config: "ExportConfig | None" = None,
+    session: "requests.Session | None" = None,
 ):
     """Fetch users and user groups from GoodData API."""
     return _fetch_from_layout_api(
@@ -95,12 +101,14 @@ def fetch_users_and_user_groups(
         config=config,
         timeout=30,
         workspace_scoped=False,
+        session=session,
     )
 
 
 def fetch_ldm(
     client: dict[str, Any] | None = None,
     config: "ExportConfig | None" = None,
+    session: "requests.Session | None" = None,
 ):
     """Fetch logical model from GoodData API."""
     return _fetch_from_layout_api(
@@ -110,12 +118,14 @@ def fetch_ldm(
         config=config,
         timeout=30,
         workspace_scoped=True,
+        session=session,
     )
 
 
 def fetch_analytics_model(
     client: dict[str, Any] | None = None,
     config: "ExportConfig | None" = None,
+    session: "requests.Session | None" = None,
 ):
     """Fetch analytics model from GoodData layout API.
 
@@ -131,6 +141,7 @@ def fetch_analytics_model(
         config=config,
         timeout=60,  # Larger timeout for analytics model (can be big)
         workspace_scoped=True,
+        session=session,
     )
 
 
