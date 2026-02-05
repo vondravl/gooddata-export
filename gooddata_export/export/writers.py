@@ -16,6 +16,7 @@ from gooddata_export.process import (
     process_dashboards_metrics_from_rich_text,
     process_dashboards_permissions_from_analytics_model,
     process_dashboards_plugins,
+    process_dashboards_references,
     process_dashboards_visualizations,
     process_dashboards_widget_filters,
     process_filter_context_fields,
@@ -27,8 +28,7 @@ from gooddata_export.process import (
     process_user_groups,
     process_users,
     process_visualizations,
-    process_visualizations_attributes,
-    process_visualizations_metrics,
+    process_visualizations_references,
     process_workspaces,
 )
 
@@ -123,12 +123,11 @@ def export_metrics(all_workspace_data, export_dir, config, db_name) -> None:
 
 
 def export_visualizations(all_workspace_data, export_dir, config, db_name) -> None:
-    """Export visualizations, visualization-metrics, and visualization-attributes relationships"""
+    """Export visualizations and visualization references (metrics, facts, labels)"""
 
     client = get_api_client(config=config)
     all_processed_visualizations = []
-    all_processed_metric_relationships = []
-    all_processed_attribute_relationships = []
+    all_processed_references = []
 
     # Process visualizations from all workspaces
     for workspace_info in all_workspace_data:
@@ -138,20 +137,14 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
         if raw_data is None:
             continue
 
-        # Process visualizations and both relationship types from same raw data
+        # Process visualizations and references from same raw data
         processed_visualizations = process_visualizations(
             raw_data, client["base_url"], workspace_id
         )
-        processed_metric_relationships = process_visualizations_metrics(
-            raw_data, workspace_id
-        )
-        processed_attribute_relationships = process_visualizations_attributes(
-            raw_data, workspace_id
-        )
+        processed_references = process_visualizations_references(raw_data, workspace_id)
 
         all_processed_visualizations.extend(processed_visualizations)
-        all_processed_metric_relationships.extend(processed_metric_relationships)
-        all_processed_attribute_relationships.extend(processed_attribute_relationships)
+        all_processed_references.extend(processed_references)
 
     # Define column schemas
     visualization_columns = {
@@ -170,21 +163,14 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
         "is_hidden": "BOOLEAN",
         "PRIMARY KEY": "(visualization_id, workspace_id)",
     }
-    metric_relationship_columns = {
+    references_columns = {
         "visualization_id": "TEXT",
-        "metric_id": "TEXT",
+        "referenced_id": "TEXT",
         "workspace_id": "TEXT",
+        "object_type": "TEXT",  # 'metric', 'fact', 'attribute', or 'label' (WHAT is referenced)
+        "source": "TEXT",  # 'measure', 'attribute', or 'filter' (WHERE it's used)
         "label": "TEXT",
-        "PRIMARY KEY": "(visualization_id, metric_id, workspace_id)",
-        "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
-        "FOREIGN KEY (metric_id, workspace_id)": "REFERENCES metrics(metric_id, workspace_id)",
-    }
-    attribute_relationship_columns = {
-        "visualization_id": "TEXT",
-        "attribute_id": "TEXT",
-        "workspace_id": "TEXT",
-        "label": "TEXT",
-        "PRIMARY KEY": "(visualization_id, attribute_id, workspace_id)",
+        "PRIMARY KEY": "(visualization_id, referenced_id, workspace_id, object_type, source)",
         "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
 
@@ -194,9 +180,15 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             conn,
             [
                 ("visualizations", visualization_columns),
-                ("visualizations_metrics", metric_relationship_columns),
-                ("visualizations_attributes", attribute_relationship_columns),
+                ("visualizations_references", references_columns),
             ],
+        )
+
+        # Index for reverse lookups: "which visualizations use this metric/fact/label?"
+        # Used by: metrics_usage_check (is_used_insight), v_metrics_usage, visuals_with_same_content
+        conn.execute(
+            "CREATE INDEX idx_visualizations_references_referenced "
+            "ON visualizations_references(referenced_id, workspace_id, object_type)"
         )
 
         if not all_processed_visualizations:
@@ -241,66 +233,41 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             ],
         )
 
-        # Export visualization-metrics relationships
-        metric_rel_count = len(all_processed_metric_relationships)
-        if export_dir is not None and all_processed_metric_relationships:
-            metric_rel_count = write_to_csv(
-                all_processed_metric_relationships,
+        # Export visualization references
+        ref_count = len(all_processed_references)
+        if export_dir is not None and all_processed_references:
+            ref_count = write_to_csv(
+                all_processed_references,
                 export_dir,
-                "gooddata_visualizations_metrics.csv",
-                fieldnames=["visualization_id", "metric_id", "workspace_id", "label"],
-            )
-
-        if all_processed_metric_relationships:
-            execute_with_retry(
-                conn.cursor(),
-                """
-                INSERT INTO visualizations_metrics
-                (visualization_id, metric_id, workspace_id, label)
-                VALUES (?, ?, ?, ?)
-                """,
-                [
-                    (
-                        d["visualization_id"],
-                        d["metric_id"],
-                        d["workspace_id"],
-                        d.get("label"),
-                    )
-                    for d in all_processed_metric_relationships
-                ],
-            )
-
-        # Export visualization-attributes relationships
-        attr_rel_count = len(all_processed_attribute_relationships)
-        if export_dir is not None and all_processed_attribute_relationships:
-            attr_rel_count = write_to_csv(
-                all_processed_attribute_relationships,
-                export_dir,
-                "gooddata_visualizations_attributes.csv",
+                "gooddata_visualizations_references.csv",
                 fieldnames=[
                     "visualization_id",
-                    "attribute_id",
+                    "referenced_id",
                     "workspace_id",
+                    "object_type",
+                    "source",
                     "label",
                 ],
             )
 
-        if all_processed_attribute_relationships:
+        if all_processed_references:
             execute_with_retry(
                 conn.cursor(),
                 """
-                INSERT INTO visualizations_attributes
-                (visualization_id, attribute_id, workspace_id, label)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO visualizations_references
+                (visualization_id, referenced_id, workspace_id, object_type, source, label)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         d["visualization_id"],
-                        d["attribute_id"],
+                        d["referenced_id"],
                         d["workspace_id"],
+                        d["object_type"],
+                        d["source"],
                         d.get("label"),
                     )
-                    for d in all_processed_attribute_relationships
+                    for d in all_processed_references
                 ],
             )
 
@@ -313,25 +280,15 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             Path(export_dir) / "gooddata_visualizations.csv",
         )
         log_export(
-            "visualization-metric relationships",
-            metric_rel_count,
-            Path(export_dir) / "gooddata_visualizations_metrics.csv",
-        )
-        log_export(
-            "visualization-attribute relationships",
-            attr_rel_count,
-            Path(export_dir) / "gooddata_visualizations_attributes.csv",
+            "visualization references",
+            ref_count,
+            Path(export_dir) / "gooddata_visualizations_references.csv",
         )
     else:
         logger.debug("Exported %d visualizations to %s", vis_count, db_name)
         logger.debug(
-            "Exported %d visualization-metric relationships to %s",
-            metric_rel_count,
-            db_name,
-        )
-        logger.debug(
-            "Exported %d visualization-attribute relationships to %s",
-            attr_rel_count,
+            "Exported %d visualization references to %s",
+            ref_count,
             db_name,
         )
 
@@ -344,6 +301,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
     all_processed_relationships = []
     all_processed_plugin_relationships = []
     all_processed_widget_filters = []
+    all_processed_references = []
 
     # Build known insights once from all workspaces before the loop
     # Parent insights come first, then child-specific insights are added (duplicates ignored by set)
@@ -397,10 +355,14 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
             raw_data, workspace_id
         )
 
+        # Process dashboard-level references (labels, datasets, filter contexts)
+        processed_references = process_dashboards_references(raw_data, workspace_id)
+
         all_processed_dashboards.extend(processed_dashboards)
         all_processed_relationships.extend(processed_relationships)
         all_processed_plugin_relationships.extend(processed_plugin_relationships)
         all_processed_widget_filters.extend(processed_widget_filters)
+        all_processed_references.extend(processed_references)
 
     # Define column schemas
     dashboard_columns = {
@@ -456,6 +418,15 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "PRIMARY KEY": "(dashboard_id, widget_local_identifier, filter_type, reference_id, workspace_id)",
         "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
     }
+    references_columns = {
+        "dashboard_id": "TEXT",
+        "referenced_id": "TEXT",
+        "workspace_id": "TEXT",
+        "object_type": "TEXT",  # 'label', 'dataset', 'filterContext'
+        "source": "TEXT",  # 'attributeFilterConfig', 'dateFilterConfig', 'filterContextRef'
+        "PRIMARY KEY": "(dashboard_id, referenced_id, workspace_id, object_type, source)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
+    }
 
     # Always create all tables (even if empty) for consistency
     with database_connection(db_name) as conn:
@@ -466,6 +437,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 ("dashboards_visualizations", relationship_columns),
                 ("dashboards_plugins", plugin_relationship_columns),
                 ("dashboards_widget_filters", widget_filters_columns),
+                ("dashboards_references", references_columns),
             ],
         )
 
@@ -630,6 +602,42 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 ],
             )
 
+        # Export dashboard references (labels, datasets, filter contexts)
+        ref_count = len(all_processed_references)
+        if export_dir is not None and all_processed_references:
+            ref_count = write_to_csv(
+                all_processed_references,
+                export_dir,
+                "gooddata_dashboards_references.csv",
+                fieldnames=[
+                    "dashboard_id",
+                    "referenced_id",
+                    "workspace_id",
+                    "object_type",
+                    "source",
+                ],
+            )
+
+        if all_processed_references:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO dashboards_references
+                (dashboard_id, referenced_id, workspace_id, object_type, source)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["dashboard_id"],
+                        d["referenced_id"],
+                        d["workspace_id"],
+                        d["object_type"],
+                        d["source"],
+                    )
+                    for d in all_processed_references
+                ],
+            )
+
         conn.commit()
 
     if export_dir is not None:
@@ -655,6 +663,12 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 widget_filters_count,
                 Path(export_dir) / "gooddata_dashboards_widget_filters.csv",
             )
+        if ref_count > 0:
+            log_export(
+                "dashboard references",
+                ref_count,
+                Path(export_dir) / "gooddata_dashboards_references.csv",
+            )
     else:
         logger.debug("Exported %d dashboards to %s", dash_count, db_name)
         logger.debug(
@@ -672,6 +686,12 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
             logger.debug(
                 "Exported %d widget filter configurations to %s",
                 widget_filters_count,
+                db_name,
+            )
+        if ref_count > 0:
+            logger.debug(
+                "Exported %d dashboard references to %s",
+                ref_count,
                 db_name,
             )
 

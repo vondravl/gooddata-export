@@ -25,19 +25,19 @@
 # Tables that need to be created for derived data.
 # Some tables need Python populate step (e.g., regex extraction).
 tables:
-  metrics_relationships:
-    sql_file: tables/metrics_relationships.sql
-    description: Direct metric-to-metric references extracted from MAQL formulas
+  metrics_references:
+    sql_file: tables/metrics_references.sql
+    description: All metric references extracted from MAQL formulas (metrics, attributes, facts)
     category: usage
     dependencies: []
-    python_populate: populate_metrics_relationships  # Requires Python regex extraction
+    python_populate: populate_metrics_references  # Requires Python regex extraction
 
   metrics_ancestry:
     sql_file: tables/metrics_ancestry.sql
     description: Full transitive metric ancestry using recursive CTE
     category: usage
     dependencies:
-      - metrics_relationships  # Must be populated first
+      - metrics_references  # Must be populated first
 
 # ====================
 # VIEWS (Read-Only)
@@ -87,13 +87,13 @@ views:
     category: usage
     dependencies: []
 
-  # Metric Relationship Views - Based on metrics_relationships and metrics_ancestry tables
+  # Metric Relationship Views - Based on metrics_references and metrics_ancestry tables
   v_metrics_relationships:
     sql_file: views/v_metrics_relationships.sql
     description: Direct metric-to-metric relationships with titles and reference status
     category: usage
     dependencies:
-      - metrics_relationships
+      - metrics_references
 
   v_metrics_relationships_ancestry:
     sql_file: views/v_metrics_relationships_ancestry.sql
@@ -107,7 +107,7 @@ views:
     description: Root metrics that don't depend on other metrics
     category: usage
     dependencies:
-      - metrics_relationships
+      - metrics_references
 
   v_visualizations_usage:
     sql_file: views/v_visualizations_usage.sql
@@ -220,7 +220,7 @@ updates:
     category: usage
     table: metrics
     dependencies:
-      - metrics_relationships  # is_used_maql uses this table
+      - metrics_references  # is_used_maql uses this table
     required_columns:
       is_used_insight: INTEGER DEFAULT 0
       is_used_maql: INTEGER DEFAULT 0
@@ -245,4 +245,29 @@ updates:
     dependencies: []
     required_columns:
       is_used: INTEGER DEFAULT 0
+
+  metrics_is_valid:
+    sql_file: updates/metrics_is_valid.sql
+    description: Computes is_valid for local mode metrics based on reference analysis
+    category: validation
+    table: metrics
+    dependencies:
+      - metrics_references
+    required_columns: {}
+
+  visualizations_is_valid:
+    sql_file: updates/visualizations_is_valid.sql
+    description: Computes is_valid for local mode visualizations based on metric/attribute references
+    category: validation
+    table: visualizations
+    dependencies: []  # Queries export-phase tables (visualizations_references, metrics, ldm_*) which always exist before post-export
+    required_columns: {}
+
+  dashboards_is_valid:
+    sql_file: updates/dashboards_is_valid.sql
+    description: Computes is_valid for local mode dashboards based on visualization existence, label, and filter context references
+    category: validation
+    table: dashboards
+    dependencies: []  # Queries export-phase tables (dashboards_visualizations, dashboards_references, etc.) which always exist before post-export
+    required_columns: {}
 

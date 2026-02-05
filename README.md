@@ -281,14 +281,16 @@ The SQLite database contains the following tables:
 - **dashboards**: Dashboard definitions and layouts
 - **ldm_datasets**: Logical data model datasets with tags
 - **ldm_columns**: LDM columns (attributes, facts, references) with tags
+- **ldm_labels**: Attribute label definitions (display forms)
 - **filter_contexts**: Filter context definitions
 - **filter_context_fields**: Individual filters within each filter context (date filters and attribute filters)
 - **workspaces**: Workspace information (always included; child workspaces listed when available)
-- **visualizations_metrics**: Metric-to-visualization relationships
+- **visualizations_references**: Visualization references to metrics, facts, and labels
 - **dashboards_visualizations**: Visualization-to-dashboard relationships
 - **dashboards_metrics**: Metric-to-dashboard relationships (rich text only)
+- **dashboards_references**: Dashboard-level references to labels, datasets, and filter contexts
 - **dictionary_metadata**: Export metadata (timestamp, workspace ID, etc.)
-- **metrics_relationships**: Direct metric-to-metric references (created by post-export)
+- **metrics_references**: All metric references extracted from MAQL - metrics, attributes, labels, and facts (created by post-export)
 - **metrics_ancestry**: Full transitive metric ancestry (created by post-export)
 
 ### CSV Files
@@ -300,10 +302,11 @@ When CSV export is enabled, the following files are created:
 - `gooddata_dashboards.csv`
 - `gooddata_ldm_datasets.csv`
 - `gooddata_ldm_columns.csv`
+- `gooddata_ldm_labels.csv`
 - `gooddata_filter_contexts.csv`
 - `gooddata_filter_context_fields.csv`
 - `gooddata_workspaces.csv` (always included; child workspaces listed when available)
-- `gooddata_visualizations_metrics.csv`
+- `gooddata_visualizations_references.csv`
 - `gooddata_dashboards_visualizations.csv`
 - `gooddata_dashboards_metrics.csv` (rich text only)
 

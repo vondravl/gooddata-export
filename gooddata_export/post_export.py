@@ -21,13 +21,20 @@ from gooddata_export.db import connect_database
 logger = logging.getLogger(__name__)
 
 
-def populate_metrics_relationships(cursor):
-    """Populate metrics_relationships table by extracting references from MAQL.
+def populate_metrics_references(cursor):
+    """Populate metrics_references table by extracting all references from MAQL.
 
     This requires Python regex since SQLite doesn't support regex extraction.
     The table must already exist (created via SQL file in post_export_config.yaml).
 
-    Pattern matched: {metric/metric_id}
+    Patterns matched:
+        {metric/metric_id} - stored with reference_type='metric' (self-references excluded)
+        {attr/attribute_id} - stored with reference_type='attribute'
+        {label/label_id} - stored with reference_type='label'
+        {fact/fact_id} - stored with reference_type='fact'
+
+    Note: MAQL comments start with # (including inline). Everything after # on a line
+    is stripped before extraction.
     """
     cursor.execute("""
         SELECT metric_id, workspace_id, maql
@@ -36,35 +43,56 @@ def populate_metrics_relationships(cursor):
     """)
 
     metric_pattern = re.compile(r"\{metric/([^}]+)\}")
-    relationships = []
+    attr_pattern = re.compile(r"\{attr/([^}]+)\}")
+    label_pattern = re.compile(r"\{label/([^}]+)\}")
+    fact_pattern = re.compile(r"\{fact/([^}]+)\}")
+    references = []
 
     for row in cursor.fetchall():
         source_metric_id, workspace_id, maql = row
-        referenced_metrics = metric_pattern.findall(maql)
 
-        for ref_metric_id in referenced_metrics:
+        # Strip MAQL comments: everything after # on each line is a comment
+        # Handles both full-line comments ("# ...") and inline comments ("SELECT ... # ...")
+        active_maql = "\n".join(line.split("#", 1)[0] for line in maql.split("\n"))
+
+        # Extract metric references (exclude self-references)
+        for ref_metric_id in metric_pattern.findall(active_maql):
             if ref_metric_id != source_metric_id:
-                relationships.append((source_metric_id, workspace_id, ref_metric_id))
+                references.append(
+                    (source_metric_id, workspace_id, ref_metric_id, "metric")
+                )
+
+        # Extract attribute references
+        for attr_id in attr_pattern.findall(active_maql):
+            references.append((source_metric_id, workspace_id, attr_id, "attribute"))
+
+        # Extract label references
+        for label_id in label_pattern.findall(active_maql):
+            references.append((source_metric_id, workspace_id, label_id, "label"))
+
+        # Extract fact references
+        for fact_id in fact_pattern.findall(active_maql):
+            references.append((source_metric_id, workspace_id, fact_id, "fact"))
 
     cursor.executemany(
         """
-        INSERT OR IGNORE INTO metrics_relationships
-        (source_metric_id, source_workspace_id, referenced_metric_id)
-        VALUES (?, ?, ?)
+        INSERT OR IGNORE INTO metrics_references
+        (source_metric_id, source_workspace_id, referenced_id, reference_type)
+        VALUES (?, ?, ?, ?)
     """,
-        relationships,
+        references,
     )
 
     logger.debug(
-        "Populated metrics_relationships table with %d relationships",
-        len(relationships),
+        "Populated metrics_references table with %d references",
+        len(references),
     )
 
 
 # Registry of Python populate functions that can be called from YAML config
 # These are used for operations that require Python (e.g., regex extraction)
 PYTHON_POPULATE_FUNCTIONS = {
-    "populate_metrics_relationships": populate_metrics_relationships,
+    "populate_metrics_references": populate_metrics_references,
 }
 
 
@@ -201,7 +229,12 @@ def execute_sql_file(
         sql_path: Path to SQL file
         parameters: Optional dict of parameters to substitute
         config: Optional ExportConfig instance for parameter values
-        parent_workspace_id: Optional workspace ID for {parent_workspace_filter} substitution
+        parent_workspace_id: Optional workspace ID for {parent_workspace_filter} substitution.
+            When provided, replaces the placeholder with "AND workspace_id = '<id>'".
+            When None, removes the placeholder (empty string).
+            SQL files should use one of these patterns:
+                WHERE 1=1 {parent_workspace_filter};  -- no other conditions
+                WHERE some_condition {parent_workspace_filter};  -- with conditions
 
     Returns:
         bool: True if successful, False otherwise

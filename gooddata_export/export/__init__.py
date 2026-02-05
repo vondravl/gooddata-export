@@ -108,11 +108,8 @@ def export_all_metadata(
                     "dashboards": analytics.get("analyticalDashboards") or [],
                     "visualizations": analytics.get("visualizationObjects") or [],
                     "filter_contexts": analytics.get("filterContexts") or [],
-                    # Not available in local mode:
-                    # - plugins: layout.json only contains plugins used on dashboards, not all
-                    #   workspace plugins. Using partial data could be confusing.
-                    # - child_workspaces, users_and_user_groups: require separate API calls
-                    "plugins": None,
+                    "plugins": analytics.get("dashboardPlugins") or [],
+                    # Not available in local mode (require separate API calls):
                     "child_workspaces": None,
                     "users_and_user_groups": None,
                     # LDM and analytics_model come from layout.json directly:

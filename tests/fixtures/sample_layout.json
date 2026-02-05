@@ -80,7 +80,14 @@
                 }
               ]
             }
-          ]
+          ],
+          "attributeFilterConfigs": {
+            "abc123": {
+              "displayAsLabel": {
+                "identifier": {"id": "region.name", "type": "label"}
+              }
+            }
+          }
         },
         "createdAt": "2024-02-10T10:00:00Z",
         "modifiedAt": "2024-05-20T16:00:00Z",
@@ -171,6 +178,19 @@
           "filterContextRef": {
             "identifier": {"id": "filter_context_default", "type": "filterContext"}
           },
+          "attributeFilterConfigs": [
+            {
+              "displayAsLabel": {
+                "identifier": {"id": "region.name", "type": "label"}
+              },
+              "localIdentifier": "filter_region"
+            }
+          ],
+          "dateFilterConfig": {
+            "dateDataSet": {
+              "identifier": {"id": "date", "type": "dataset"}
+            }
+          },
           "layout": {
             "sections": [
               {
@@ -222,6 +242,13 @@
           "filterContextRef": {
             "identifier": {"id": "filter_context_default", "type": "filterContext"}
           },
+          "plugins": [
+            {
+              "plugin": {
+                "identifier": {"id": "plugin_custom_viz", "type": "dashboardPlugin"}
+              }
+            }
+          ],
           "tabs": [
             {
               "localIdentifier": "tab_overview",
@@ -301,7 +328,19 @@
         }
       }
     ],
-    "dashboardPlugins": []
+    "dashboardPlugins": [
+      {
+        "id": "plugin_custom_viz",
+        "title": "Custom Visualization Plugin",
+        "description": "Adds custom chart types",
+        "content": {
+          "url": "https://example.com/plugins/custom_viz.js",
+          "version": "1.0.0"
+        },
+        "createdAt": "2024-03-01T10:00:00Z",
+        "originType": "NATIVE"
+      }
+    ]
   },
   "ldm": {
     "datasets": [

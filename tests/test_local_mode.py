@@ -149,7 +149,7 @@ class TestLayoutJsonParameterFlow:
         assert data["dashboards"] == [{"id": "d1", "title": "Dashboard 1"}]
         assert data["visualizations"] == [{"id": "v1", "title": "Viz 1"}]
         assert data["filter_contexts"] == [{"id": "fc1", "title": "Filter 1"}]
-        assert data["plugins"] is None  # Not available in local mode
+        assert data["plugins"] == []  # Empty list (no dashboardPlugins in this layout)
         assert data["ldm"]["ldm"]["datasets"] == [{"id": "ds1", "title": "Dataset 1"}]
         assert data["child_workspaces"] is None
         assert data["users_and_user_groups"] is None
@@ -663,10 +663,8 @@ class TestLocalModeIntegration:
         assert "viz_orders_by_region" in viz_ids
         assert "viz_avg_order_value" in viz_ids
 
-    def test_visualization_metrics_relationships(
-        self, sample_layout, mock_config, tmp_path
-    ):
-        """Visualization-metric relationships are extracted."""
+    def test_visualization_references(self, sample_layout, mock_config, tmp_path):
+        """Visualization references (metrics, facts, labels) are extracted."""
         from gooddata_export.export import export_all_metadata
 
         db_path = tmp_path / "test_export.db"
@@ -682,19 +680,42 @@ class TestLocalModeIntegration:
                 )
 
         conn = sqlite3.connect(db_path)
+        # Get metric references (from measures)
         cursor = conn.execute(
-            "SELECT visualization_id, metric_id FROM visualizations_metrics"
+            "SELECT visualization_id, referenced_id, source FROM visualizations_references "
+            "WHERE object_type = 'metric'"
         )
-        relationships = cursor.fetchall()
+        metric_refs = cursor.fetchall()
+
+        # Get label references (from attribute buckets)
+        cursor = conn.execute(
+            "SELECT visualization_id, referenced_id, source FROM visualizations_references "
+            "WHERE object_type = 'label'"
+        )
+        label_refs = cursor.fetchall()
         conn.close()
 
-        # viz_revenue_trend uses metric_total_revenue
-        # viz_orders_by_region uses metric_order_count
+        # viz_revenue_trend uses metric_total_revenue + date.month label
+        # viz_orders_by_region uses metric_order_count + region.name label
         # viz_avg_order_value uses metric_avg_order_value
-        assert len(relationships) == 3
-        assert ("viz_revenue_trend", "metric_total_revenue") in relationships
-        assert ("viz_orders_by_region", "metric_order_count") in relationships
-        assert ("viz_avg_order_value", "metric_avg_order_value") in relationships
+        assert len(metric_refs) == 3
+        assert ("viz_revenue_trend", "metric_total_revenue", "measure") in metric_refs
+        assert ("viz_orders_by_region", "metric_order_count", "measure") in metric_refs
+        assert (
+            "viz_avg_order_value",
+            "metric_avg_order_value",
+            "measure",
+        ) in metric_refs
+
+        # Label references from attribute buckets and attributeFilterConfigs
+        assert len(label_refs) == 3
+        assert ("viz_revenue_trend", "date.month", "attribute") in label_refs
+        assert ("viz_orders_by_region", "region.name", "attribute") in label_refs
+        assert (
+            "viz_revenue_trend",
+            "region.name",
+            "attributeFilterConfig",
+        ) in label_refs
 
     def test_dashboards_exported_correctly(self, sample_layout, mock_config, tmp_path):
         """Dashboards from fixture are exported to database."""
@@ -1178,6 +1199,536 @@ class TestLocalModeIntegration:
         assert "finance" in tags
         assert "kpi" in tags
 
+    def test_dashboards_references_table_created(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """dashboards_references table is created with reference data."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            """SELECT dashboard_id, referenced_id, object_type, source
+               FROM dashboards_references
+               ORDER BY dashboard_id, object_type, referenced_id"""
+        )
+        references = cursor.fetchall()
+        conn.close()
+
+        # dashboard_executive_overview has:
+        # - filterContextRef -> filter_context_default
+        # - attributeFilterConfigs[].displayAsLabel -> region.name
+        # - dateFilterConfig.dateDataSet -> date
+        # dashboard_tabbed_analytics has:
+        # - filterContextRef -> filter_context_default
+
+        # Check filterContext references (both dashboards)
+        filter_context_refs = [r for r in references if r[2] == "filterContext"]
+        assert len(filter_context_refs) == 2
+        assert (
+            "dashboard_executive_overview",
+            "filter_context_default",
+            "filterContext",
+            "filterContextRef",
+        ) in filter_context_refs
+        assert (
+            "dashboard_tabbed_analytics",
+            "filter_context_default",
+            "filterContext",
+            "filterContextRef",
+        ) in filter_context_refs
+
+        # Check label reference (attributeFilterConfigs)
+        label_refs = [r for r in references if r[2] == "label"]
+        assert len(label_refs) == 1
+        assert (
+            "dashboard_executive_overview",
+            "region.name",
+            "label",
+            "attributeFilterConfig",
+        ) in label_refs
+
+        # Check dataset reference (dateFilterConfig)
+        dataset_refs = [r for r in references if r[2] == "dataset"]
+        assert len(dataset_refs) == 1
+        assert (
+            "dashboard_executive_overview",
+            "date",
+            "dataset",
+            "dateFilterConfig",
+        ) in dataset_refs
+
+    def test_dashboards_references_with_invalid_label(self, mock_config, tmp_path):
+        """Dashboard with missing label reference should be marked invalid after post-export."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        # Layout with dashboard referencing non-existent label
+        layout_json = {
+            "analytics": {
+                "metrics": [],
+                "analyticalDashboards": [
+                    {
+                        "id": "dashboard_invalid",
+                        "title": "Invalid Dashboard",
+                        "content": {
+                            "attributeFilterConfigs": [
+                                {
+                                    "displayAsLabel": {
+                                        "identifier": {
+                                            "id": "non_existent_label",
+                                            "type": "label",
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                    }
+                ],
+                "visualizationObjects": [],
+                "filterContexts": [],
+            },
+            # Minimal LDM with no labels - the referenced label won't exist
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "simple_dataset",
+                        "title": "Simple Dataset",
+                        "grain": [],
+                        "attributes": [],
+                        "facts": [
+                            {
+                                "id": "amount",
+                                "title": "Amount",
+                                "sourceColumn": "AMOUNT",
+                                "sourceColumnDataType": "NUMERIC",
+                            }
+                        ],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,  # Run post-export to compute is_valid
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+
+        # Check references were extracted
+        cursor = conn.execute(
+            "SELECT referenced_id, object_type FROM dashboards_references"
+        )
+        refs = cursor.fetchall()
+        assert ("non_existent_label", "label") in refs
+
+        # Check is_valid was computed to 0 (invalid)
+        cursor = conn.execute(
+            "SELECT dashboard_id, is_valid FROM dashboards WHERE dashboard_id = 'dashboard_invalid'"
+        )
+        dashboard = cursor.fetchone()
+        assert dashboard[1] == 0  # is_valid should be 0 (invalid)
+
+        conn.close()
+
+    def test_dashboards_references_with_invalid_filter_context(
+        self, mock_config, tmp_path
+    ):
+        """Dashboard with missing filter context reference should be marked invalid."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        # Layout with dashboard referencing non-existent filter context
+        layout_json = {
+            "analytics": {
+                "metrics": [],
+                "analyticalDashboards": [
+                    {
+                        "id": "dashboard_missing_fc",
+                        "title": "Missing Filter Context",
+                        "content": {
+                            "filterContextRef": {
+                                "identifier": {
+                                    "id": "non_existent_filter_context",
+                                    "type": "filterContext",
+                                }
+                            }
+                        },
+                    }
+                ],
+                "visualizationObjects": [],
+                "filterContexts": [],  # Empty - no filter contexts exist
+            },
+            # Minimal LDM
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "simple_dataset",
+                        "title": "Simple Dataset",
+                        "grain": [],
+                        "attributes": [],
+                        "facts": [
+                            {
+                                "id": "amount",
+                                "title": "Amount",
+                                "sourceColumn": "AMOUNT",
+                                "sourceColumnDataType": "NUMERIC",
+                            }
+                        ],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+
+        # Check is_valid was computed to 0 (invalid)
+        cursor = conn.execute(
+            "SELECT is_valid FROM dashboards WHERE dashboard_id = 'dashboard_missing_fc'"
+        )
+        dashboard = cursor.fetchone()
+        assert dashboard[0] == 0  # is_valid should be 0 (invalid)
+
+        conn.close()
+
+    def test_dashboards_references_valid_dashboard(self, mock_config, tmp_path):
+        """Dashboard with all valid references should be marked valid."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        # Layout with dashboard referencing existing filter context and label
+        layout_json = {
+            "analytics": {
+                "metrics": [],
+                "analyticalDashboards": [
+                    {
+                        "id": "dashboard_valid",
+                        "title": "Valid Dashboard",
+                        "content": {
+                            "filterContextRef": {
+                                "identifier": {
+                                    "id": "my_filter_context",
+                                    "type": "filterContext",
+                                }
+                            },
+                            "attributeFilterConfigs": [
+                                {
+                                    "displayAsLabel": {
+                                        "identifier": {
+                                            "id": "region.name",
+                                            "type": "label",
+                                        }
+                                    }
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "visualizationObjects": [],
+                "filterContexts": [
+                    {
+                        "id": "my_filter_context",
+                        "title": "My Filter Context",
+                        "content": {"filters": []},
+                    }
+                ],
+            },
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "regions",
+                        "title": "Regions",
+                        "grain": [],
+                        "attributes": [
+                            {
+                                "id": "region",
+                                "title": "Region",
+                                "sourceColumn": "REGION",
+                                "sourceColumnDataType": "STRING",
+                                "labels": [
+                                    {
+                                        "id": "region.name",
+                                        "title": "Region Name",
+                                        "sourceColumn": "REGION_NAME",
+                                        "sourceColumnDataType": "STRING",
+                                    }
+                                ],
+                            }
+                        ],
+                        "facts": [],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+
+        # Check is_valid was computed to 1 (valid)
+        cursor = conn.execute(
+            "SELECT is_valid FROM dashboards WHERE dashboard_id = 'dashboard_valid'"
+        )
+        dashboard = cursor.fetchone()
+        assert dashboard[0] == 1  # is_valid should be 1 (valid)
+
+        conn.close()
+
+    def test_plugins_exported_in_local_mode(self, sample_layout, mock_config, tmp_path):
+        """Plugins from dashboardPlugins are exported in local mode."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT plugin_id, title, url FROM plugins ORDER BY plugin_id"
+        )
+        plugins = cursor.fetchall()
+        conn.close()
+
+        assert len(plugins) == 1
+        assert plugins[0][0] == "plugin_custom_viz"
+        assert plugins[0][1] == "Custom Visualization Plugin"
+        assert plugins[0][2] == "https://example.com/plugins/custom_viz.js"
+
+    def test_dashboards_plugins_exported_in_local_mode(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """Dashboard-plugin relationships are exported in local mode."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("SELECT dashboard_id, plugin_id FROM dashboards_plugins")
+        relationships = cursor.fetchall()
+        conn.close()
+
+        assert len(relationships) == 1
+        assert relationships[0] == ("dashboard_tabbed_analytics", "plugin_custom_viz")
+
+    def test_dashboards_is_valid_missing_plugin(self, mock_config, tmp_path):
+        """Dashboard referencing non-existent plugin should be marked invalid."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        layout_json = {
+            "analytics": {
+                "metrics": [],
+                "analyticalDashboards": [
+                    {
+                        "id": "dashboard_with_plugin",
+                        "title": "Dashboard With Plugin",
+                        "content": {
+                            "plugins": [
+                                {
+                                    "plugin": {
+                                        "identifier": {
+                                            "id": "non_existent_plugin",
+                                            "type": "dashboardPlugin",
+                                        }
+                                    }
+                                }
+                            ],
+                            "layout": {"sections": []},
+                        },
+                    }
+                ],
+                "visualizationObjects": [],
+                "filterContexts": [],
+                "dashboardPlugins": [],  # No plugins defined
+            },
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "simple_dataset",
+                        "title": "Simple Dataset",
+                        "grain": [],
+                        "attributes": [],
+                        "facts": [
+                            {
+                                "id": "amount",
+                                "title": "Amount",
+                                "sourceColumn": "AMOUNT",
+                                "sourceColumnDataType": "NUMERIC",
+                            }
+                        ],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+
+        # Check plugin relationship was extracted
+        cursor = conn.execute(
+            "SELECT plugin_id FROM dashboards_plugins WHERE dashboard_id = 'dashboard_with_plugin'"
+        )
+        plugin_refs = cursor.fetchall()
+        assert len(plugin_refs) == 1
+        assert plugin_refs[0][0] == "non_existent_plugin"
+
+        # Check is_valid was computed to 0 (invalid)
+        cursor = conn.execute(
+            "SELECT is_valid FROM dashboards WHERE dashboard_id = 'dashboard_with_plugin'"
+        )
+        dashboard = cursor.fetchone()
+        assert dashboard[0] == 0  # Invalid: references missing plugin
+
+        conn.close()
+
+    def test_dashboards_is_valid_existing_plugin(self, mock_config, tmp_path):
+        """Dashboard referencing existing plugin should be marked valid."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        layout_json = {
+            "analytics": {
+                "metrics": [],
+                "analyticalDashboards": [
+                    {
+                        "id": "dashboard_valid_plugin",
+                        "title": "Dashboard With Valid Plugin",
+                        "content": {
+                            "plugins": [
+                                {
+                                    "plugin": {
+                                        "identifier": {
+                                            "id": "my_plugin",
+                                            "type": "dashboardPlugin",
+                                        }
+                                    }
+                                }
+                            ],
+                            "layout": {"sections": []},
+                        },
+                    }
+                ],
+                "visualizationObjects": [],
+                "filterContexts": [],
+                "dashboardPlugins": [
+                    {
+                        "id": "my_plugin",
+                        "title": "My Plugin",
+                        "content": {
+                            "url": "https://example.com/plugin.js",
+                            "version": "1.0.0",
+                        },
+                    }
+                ],
+            },
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "simple_dataset",
+                        "title": "Simple Dataset",
+                        "grain": [],
+                        "attributes": [],
+                        "facts": [
+                            {
+                                "id": "amount",
+                                "title": "Amount",
+                                "sourceColumn": "AMOUNT",
+                                "sourceColumnDataType": "NUMERIC",
+                            }
+                        ],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+
+        # Check is_valid was computed to 1 (valid)
+        cursor = conn.execute(
+            "SELECT is_valid FROM dashboards WHERE dashboard_id = 'dashboard_valid_plugin'"
+        )
+        dashboard = cursor.fetchone()
+        assert dashboard[0] == 1  # Valid: plugin exists
+
+        conn.close()
+
     def test_minimal_gitops_format_works(self, mock_config, tmp_path):
         """Minimal gitops format (without server timestamps) works correctly.
 
@@ -1252,14 +1803,14 @@ class TestLocalModeIntegration:
         # Verify data exported with defaults for missing fields
         conn = sqlite3.connect(db_path)
 
-        # Metric should have empty timestamps and default validity
+        # Metric should have empty timestamps and NULL validity (computed in post-export)
         cursor = conn.execute(
             "SELECT metric_id, created_at, is_valid, tags FROM metrics"
         )
         metric = cursor.fetchone()
         assert metric[0] == "revenue"
         assert metric[1] == ""  # Empty created_at
-        assert metric[2] == 1  # Default is_valid = True
+        assert metric[2] is None  # NULL in local mode, computed in post-export
         assert metric[3] == "[]"  # Empty tags
 
         # Dashboard should also work

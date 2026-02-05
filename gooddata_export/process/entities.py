@@ -164,7 +164,9 @@ def process_metrics(data, workspace_id=None):
                 "format": content.get("format", ""),
                 "created_at": obj.get("createdAt", ""),
                 "modified_at": obj.get("modifiedAt", obj.get("createdAt", "")),
-                "is_valid": obj.get("areRelationsValid", True),
+                "is_valid": obj.get(
+                    "areRelationsValid"
+                ),  # None if missing, computed in post-export
                 "is_hidden": obj.get("isHidden", False),
                 "workspace_id": workspace_id,
                 "origin_type": obj.get("originType", "NATIVE"),
@@ -198,106 +200,135 @@ def process_visualizations(data, base_url, workspace_id):
                 "workspace_id": workspace_id,
                 "origin_type": obj.get("originType", "NATIVE"),
                 "content": obj,
-                "is_valid": obj.get("areRelationsValid", True),
+                "is_valid": obj.get("areRelationsValid"),  # None in local mode
                 "is_hidden": obj.get("isHidden", False),
             }
         )
     return processed_data
 
 
-def process_visualizations_metrics(visualization_data, workspace_id=None):
-    """Extract unique metric IDs used in each visualization with their labels.
+def process_visualizations_references(visualization_data, workspace_id=None):
+    """Extract all object references from visualizations with source context.
 
     Accepts layout format where content is at top level:
-        {"id": "x", "content": {"buckets": [...]}}
+        {"id": "x", "content": {"buckets": [...], "filters": [...]}}
+
+    Extracts with two dimensions:
+        - object_type: what is being referenced (metric, fact, attribute, label)
+        - source: where in the visualization (measure, attribute, filter, attributeFilterConfig)
+
+    This allows answering questions like:
+        - "What metrics does this viz use?" (filter by object_type='metric')
+        - "Is this attribute used as a filter or dimension?" (check source)
     """
-    # Using dict to store unique combinations with labels
-    # Key: (viz_id, metric_id, workspace_id), Value: label
-    unique_relationships = {}
+    from gooddata_export.process.common import UniqueRelationshipTracker
+
+    tracker = UniqueRelationshipTracker(
+        key_fields=[
+            "visualization_id",
+            "referenced_id",
+            "workspace_id",
+            "object_type",
+            "source",
+        ]
+    )
 
     for viz in visualization_data:
         content = viz.get("content", {})
 
-        if "buckets" not in content:
-            continue
-
-        for bucket in content["buckets"]:
-            if "items" not in bucket:
-                continue
-
-            for item in bucket["items"]:
+        # Extract references from buckets
+        for bucket in content.get("buckets", []):
+            for item in bucket.get("items", []):
+                # Extract metric/fact/attribute references from measures
                 measure = item.get("measure", {})
                 measure_def = measure.get("definition", {}).get("measureDefinition", {})
-                metric_id = measure_def.get("item", {}).get("identifier", {}).get("id")
+                identifier = measure_def.get("item", {}).get("identifier", {})
+                ref_id = identifier.get("id")
+                # Default to 'metric' for backwards compatibility with older data
+                object_type = identifier.get("type", "metric")
 
-                if metric_id:
-                    # Get label: prefer alias, fall back to title, then None
-                    label = measure.get("alias") or measure.get("title")
-                    key = (viz["id"], metric_id, workspace_id)
-                    # Only store if not already present (keep first occurrence)
-                    if key not in unique_relationships:
-                        unique_relationships[key] = label
+                if ref_id:
+                    tracker.add(
+                        {
+                            "visualization_id": viz["id"],
+                            "referenced_id": ref_id,
+                            "workspace_id": workspace_id,
+                            "object_type": object_type,
+                            "source": "measure",
+                            "label": measure.get("alias") or measure.get("title"),
+                        }
+                    )
 
-    # Convert dict to list of dictionaries
-    result = [
-        {
-            "visualization_id": viz_id,
-            "metric_id": metric_id,
-            "workspace_id": ws_id,
-            "label": label,
-        }
-        for (viz_id, metric_id, ws_id), label in sorted(unique_relationships.items())
-    ]
-
-    return result
-
-
-def process_visualizations_attributes(visualization_data, workspace_id=None):
-    """Extract unique attribute IDs (display forms) used in each visualization with their labels.
-
-    Accepts layout format where content is at top level:
-        {"id": "x", "content": {"buckets": [...]}}
-    """
-    # Using dict to store unique combinations with labels
-    # Key: (viz_id, attribute_id, workspace_id), Value: label
-    unique_relationships = {}
-
-    for viz in visualization_data:
-        content = viz.get("content", {})
-
-        if "buckets" not in content:
-            continue
-
-        for bucket in content["buckets"]:
-            if "items" not in bucket:
-                continue
-
-            for item in bucket["items"]:
-                # Attributes are stored with displayForm reference
+                # Extract label/display form references from attributes (rows/columns)
                 attribute_def = item.get("attribute", {})
                 display_form = attribute_def.get("displayForm", {})
-                attribute_id = display_form.get("identifier", {}).get("id")
+                label_id = display_form.get("identifier", {}).get("id")
+                label_type = display_form.get("identifier", {}).get("type", "label")
 
-                if attribute_id:
-                    # Get label: prefer alias, fall back to None
-                    label = attribute_def.get("alias")
-                    key = (viz["id"], attribute_id, workspace_id)
-                    # Only store if not already present (keep first occurrence)
-                    if key not in unique_relationships:
-                        unique_relationships[key] = label
+                if label_id:
+                    tracker.add(
+                        {
+                            "visualization_id": viz["id"],
+                            "referenced_id": label_id,
+                            "workspace_id": workspace_id,
+                            "object_type": label_type,
+                            "source": "attribute",
+                            "label": attribute_def.get("alias"),
+                        }
+                    )
 
-    # Convert dict to list of dictionaries
-    result = [
-        {
-            "visualization_id": viz_id,
-            "attribute_id": attr_id,
-            "workspace_id": ws_id,
-            "label": label,
-        }
-        for (viz_id, attr_id, ws_id), label in sorted(unique_relationships.items())
-    ]
+        # Extract label references from attributeFilterConfigs
+        # These specify which label to use for displaying attribute filter values
+        # In visualizations, attributeFilterConfigs is a dict keyed by UUID:
+        #   {"uuid": {"displayAsLabel": {"identifier": {"id": ..., "type": ...}}}}
+        # (Dashboards use a list format instead — see process_dashboards_references)
+        for config in content.get("attributeFilterConfigs", {}).values():
+            display_as_label = config.get("displayAsLabel", {})
+            label_id = display_as_label.get("identifier", {}).get("id")
+            if label_id:
+                label_type = display_as_label.get("identifier", {}).get("type", "label")
+                tracker.add(
+                    {
+                        "visualization_id": viz["id"],
+                        "referenced_id": label_id,
+                        "workspace_id": workspace_id,
+                        "object_type": label_type,
+                        "source": "attributeFilterConfig",
+                        "label": None,
+                    }
+                )
 
-    return result
+        # Extract references from filters
+        for filter_def in content.get("filters", []):
+            # Handle attribute filters (positive and negative)
+            for filter_type in ("negativeAttributeFilter", "positiveAttributeFilter"):
+                attr_filter = filter_def.get(filter_type, {})
+                display_form = attr_filter.get("displayForm", {})
+                identifier = display_form.get("identifier", {})
+                filter_id = identifier.get("id")
+                object_type = identifier.get("type", "label")
+
+                if filter_id:
+                    tracker.add(
+                        {
+                            "visualization_id": viz["id"],
+                            "referenced_id": filter_id,
+                            "workspace_id": workspace_id,
+                            "object_type": object_type,
+                            "source": "filter",
+                            "label": None,
+                        }
+                    )
+
+    return tracker.get_sorted(
+        sort_key=lambda x: (
+            x["visualization_id"],
+            x["referenced_id"],
+            x["workspace_id"],
+            x["object_type"],
+            x["source"],
+        )
+    )
 
 
 def process_dashboards(data, base_url, workspace_id):
@@ -325,7 +356,7 @@ def process_dashboards(data, base_url, workspace_id):
                 "workspace_id": workspace_id,
                 "origin_type": obj.get("originType", "NATIVE"),
                 "content": content,
-                "is_valid": obj.get("areRelationsValid", True),
+                "is_valid": obj.get("areRelationsValid"),  # None in local mode
                 "is_hidden": obj.get("isHidden", False),
                 "filter_context_id": content.get("filterContextRef", {})
                 .get("identifier", {})
@@ -670,6 +701,101 @@ def process_dashboards_plugins(
                 )
 
     return tracker.get_sorted(sort_key=lambda x: (x["dashboard_id"], x["plugin_id"]))
+
+
+def process_dashboards_references(
+    dashboard_data: list[dict], workspace_id: str | None = None
+) -> list[dict]:
+    """Extract all object references from dashboards.
+
+    Extracts references from dashboard-level configurations:
+        - attributeFilterConfigs[].displayAsLabel (object_type='label', source='attributeFilterConfig')
+        - dateFilterConfig.dateDataSet (object_type='dataset', source='dateFilterConfig')
+        - filterContextRef (object_type='filterContext', source='filterContextRef')
+
+    Widget-level references (insight, dateDataSet) are tracked in dashboards_visualizations
+    and dashboards_widget_filters tables respectively.
+
+    Args:
+        dashboard_data: List of dashboard objects with "id" and "content" fields
+        workspace_id: Workspace ID to include in output
+
+    Returns:
+        List of reference dictionaries with dashboard_id, referenced_id, workspace_id,
+        object_type, and source fields.
+    """
+    from gooddata_export.process.common import UniqueRelationshipTracker
+
+    tracker = UniqueRelationshipTracker(
+        key_fields=[
+            "dashboard_id",
+            "referenced_id",
+            "workspace_id",
+            "object_type",
+            "source",
+        ]
+    )
+
+    for dash in dashboard_data:
+        dashboard_id = dash["id"]
+        content = dash.get("content", {})
+        if not content:
+            continue
+
+        # Extract attributeFilterConfigs[].displayAsLabel references
+        # These specify which label to use for displaying attribute filter values
+        # In dashboards, attributeFilterConfigs is a list of config objects:
+        #   [{"displayAsLabel": {"identifier": {"id": ..., "type": ...}}, "localIdentifier": ...}]
+        # (Visualizations use a dict keyed by UUID instead — see process_visualizations_references)
+        attribute_filter_configs = content.get("attributeFilterConfigs", [])
+        for config in attribute_filter_configs:
+            display_as_label = config.get("displayAsLabel", {})
+            label_id = display_as_label.get("identifier", {}).get("id")
+            if label_id:
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "referenced_id": label_id,
+                        "workspace_id": workspace_id,
+                        "object_type": "label",
+                        "source": "attributeFilterConfig",
+                    }
+                )
+
+        # Extract dateFilterConfig.dateDataSet reference
+        # This specifies which date dataset the dashboard's date filter applies to
+        date_filter_config = content.get("dateFilterConfig", {})
+        date_data_set = date_filter_config.get("dateDataSet", {})
+        dataset_id = date_data_set.get("identifier", {}).get("id")
+        if dataset_id:
+            tracker.add(
+                {
+                    "dashboard_id": dashboard_id,
+                    "referenced_id": dataset_id,
+                    "workspace_id": workspace_id,
+                    "object_type": "dataset",
+                    "source": "dateFilterConfig",
+                }
+            )
+
+        # Extract filterContextRef reference
+        # This specifies the filter context used by the dashboard
+        filter_context_ref = content.get("filterContextRef", {})
+        filter_context_id = filter_context_ref.get("identifier", {}).get("id")
+        if filter_context_id:
+            tracker.add(
+                {
+                    "dashboard_id": dashboard_id,
+                    "referenced_id": filter_context_id,
+                    "workspace_id": workspace_id,
+                    "object_type": "filterContext",
+                    "source": "filterContextRef",
+                }
+            )
+
+    return tracker.get_sorted(
+        sort_key=lambda x: (x["dashboard_id"], x["object_type"], x["referenced_id"])
+    )
 
 
 def process_dashboards_widget_filters(

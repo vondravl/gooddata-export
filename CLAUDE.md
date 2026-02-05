@@ -79,7 +79,7 @@ gooddata_export/
 │   └── common.py        # Shared utilities (sort_tags)
 └── sql/                 # SQL scripts for post-export processing
     ├── post_export_config.yaml  # YAML configuration for all SQL operations
-    ├── tables/          # Table creation scripts (metrics_relationships, etc.)
+    ├── tables/          # Table creation scripts (metrics_references, etc.)
     ├── views/           # Analytical views (v_metrics_*, v_*_tags, etc.)
     ├── updates/         # Table modification scripts (duplicate detection)
     └── procedures/      # Parameterized views for API automation
@@ -97,7 +97,7 @@ gooddata_export/
    - Loads `sql/post_export_config.yaml`
    - Topologically sorts operations by dependencies
    - Executes tables → views → procedures → updates in order
-   - Python populate functions run for tables needing regex (e.g., `metrics_relationships`)
+   - Python populate functions run for tables needing regex (e.g., `metrics_references`)
 
 ### Key Tables
 
@@ -106,8 +106,8 @@ gooddata_export/
 | `metrics` | Metric definitions with MAQL formulas |
 | `visualizations` | Visualization configurations |
 | `dashboards` | Dashboard definitions |
-| `metrics_relationships` | Direct metric-to-metric references (Python populates) |
-| `metrics_ancestry` | Transitive metric ancestry (recursive CTE) |
+| `metrics_references` | All metric references from MAQL - metrics, attributes, labels, facts (Python populates) |
+| `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
 
 ### Key Views
 
@@ -118,6 +118,34 @@ gooddata_export/
 | `v_metrics_relationships_root` | Root metrics (no outgoing dependencies) |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |
+
+### Label Reference Validation
+
+Both metrics and visualizations validate label references against **both** `ldm_labels` and `ldm_columns` (type='attribute').
+
+**Data model:**
+```
+Attribute: id="region"           <- in ldm_columns (type='attribute')
+  └── Label: id="region.name"    <- in ldm_labels only
+  └── Label: id="region.code"    <- in ldm_labels only
+
+Attribute: id="date.month"       <- in ldm_columns (type='attribute')
+  └── Label: id="date.month"     <- in ldm_labels (shares attribute ID)
+```
+
+**Label IDs can be:**
+- Specific label IDs like `region.name` → only in `ldm_labels`
+- Attribute IDs like `date.month` where default label shares the ID → in `ldm_columns`
+- Date granularities like `process_date.day` → only in `ldm_columns`
+
+**Validation logic (same for both):**
+```sql
+LEFT JOIN ldm_labels ll ON referenced_id = ll.id
+LEFT JOIN ldm_columns lc ON referenced_id = lc.id AND lc.type = 'attribute'
+WHERE ll.id IS NULL AND lc.id IS NULL  -- Invalid only if not in EITHER
+```
+
+This ensures any valid label reference is accepted regardless of whether it's a specific label ID or an attribute ID used as default label.
 
 ## Configuration
 
@@ -164,6 +192,41 @@ views:
 2. Add Python function in `post_export.py`
 3. Register in `PYTHON_POPULATE_FUNCTIONS` dict
 4. Add to YAML with `python_populate: your_function_name`
+
+### Adding an Update
+
+Updates modify existing tables during post-export processing.
+
+1. Create SQL file in `sql/updates/your_update.sql`
+2. Add to `sql/post_export_config.yaml`:
+```yaml
+updates:
+  your_update:
+    sql_file: updates/your_update.sql
+    description: What this update does
+    category: usage
+    table: target_table_name
+    dependencies: []
+    required_columns:
+      new_column: INTEGER DEFAULT 0  # Columns to add if missing
+```
+
+3. **Important**: Include `{parent_workspace_filter}` placeholder in WHERE clauses:
+```sql
+-- Pattern 1: When you have no other conditions
+UPDATE metrics
+SET some_column = value
+WHERE 1=1 {parent_workspace_filter};
+
+-- Pattern 2: When you have existing conditions
+UPDATE metrics
+SET some_column = value
+WHERE is_valid IS NULL {parent_workspace_filter};
+```
+
+This placeholder is replaced at runtime:
+- **Multi-workspace exports**: `AND workspace_id = 'parent_ws_id'` (only updates parent workspace)
+- **Single-workspace exports**: empty string (updates all rows)
 
 ### Dependency Management
 

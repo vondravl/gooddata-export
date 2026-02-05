@@ -42,7 +42,7 @@ Scripts that modify existing tables (ALTER TABLE, UPDATE).
 Operations are executed in **dependency order** using topological sort. The actual execution order is determined automatically based on the `dependencies` field in the YAML configuration.
 
 ### Phase 0: Tables (Metric Relationships)
-1. **`metrics_relationships`** - Direct metric-to-metric references (Python populates via regex)
+1. **`metrics_references`** - Direct metric-to-metric references (Python populates via regex)
 2. **`metrics_ancestry`** - Full transitive metric ancestry (recursive CTE)
 
 ### Phase 1: Views
@@ -50,9 +50,9 @@ Operations are executed in **dependency order** using topological sort. The actu
 2. **`v_visualizations_tags`** - Unnests visualization tags into individual rows
 3. **`v_dashboards_tags`** - Unnests dashboard tags into individual rows
 4. **`v_metrics_usage`** - Shows where metrics are used
-5. **`v_metrics_relationships`** - Direct metric-to-metric relationships with titles
-6. **`v_metrics_relationships_ancestry`** - Full metric ancestry with titles
-7. **`v_metrics_relationships_root`** - Root metrics that don't depend on others
+5. **`v_metrics_references`** - Direct metric-to-metric relationships with titles
+6. **`v_metrics_references_ancestry`** - Full metric ancestry with titles
+7. **`v_metrics_references_root`** - Root metrics that don't depend on others
 8. **`v_visualizations_usage`** - Shows where visualizations are used
 
 ### Phase 1.5: Procedures (with parameter substitution)
@@ -73,7 +73,7 @@ Operations are executed in **dependency order** using topological sort. The actu
    - Updates: `metrics` table
    - Column: `similar_metric_id`
 
-4. **`metrics_usage_check`** (depends on: `metrics_relationships`)
+4. **`metrics_usage_check`** (depends on: `metrics_references`)
    - Updates: `metrics` table
    - Columns: `is_used_insight`, `is_used_maql`
 
