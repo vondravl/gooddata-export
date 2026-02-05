@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-05
+
+### Changed
+- **`is_valid` defaults to `NULL` in local mode**: Metrics, visualizations, and dashboards now default to `NULL` when `areRelationsValid` field is absent (local layout files). Previously defaulted to `True` which was misleading.
+  - API mode: retains original `is_valid` value from the API
+  - Local mode: `NULL` (unknown) - computed in post-export for metrics and visualizations; dashboards remain `NULL`
+- **BREAKING: `visualizations_references` replaces `visualizations_metrics` and `visualizations_attributes`**: Consolidated into single table with two-dimensional classification
+  - `object_type`: 'metric', 'fact', 'attribute', or 'label' (WHAT is being referenced)
+  - `source`: 'measure', 'attribute', or 'filter' (WHERE in the visualization it's used)
+  - Columns: `visualization_id`, `referenced_id`, `workspace_id`, `object_type`, `source`, `label`
+  - Enables answering "Is this attribute used as a filter or dimension?" queries
+  - Extracts filter references from `negativeAttributeFilter` and `positiveAttributeFilter`
+  - CSV file renamed to `gooddata_visualizations_references.csv`
+- **BREAKING: `metrics_references` replaces `metrics_relationships` and `metrics_ldm_references`**: Consolidated into single table with `reference_type` column
+  - `reference_type`: 'metric', 'attribute', 'label', or 'fact'
+  - Columns: `source_metric_id`, `source_workspace_id`, `referenced_id`, `reference_type`
+  - Follows the same pattern as `visualizations_references` for consistency
+  - Views `v_metrics_relationships` and `v_metrics_relationships_root` now filter by `reference_type = 'metric'`
+  - `metrics_ancestry` CTE unchanged (still metric-to-metric only, as transitive closure only applies to metrics)
+  - **Note**: `{label/id}` in MAQL references the attribute's default label, which shares the same ID as the attribute in `ldm_columns`. Label references are validated against `ldm_columns` (type='attribute'), not `ldm_labels`.
+
+### Added
+- **`{label/...}` extraction from MAQL**: Now extracts label references in addition to metric, attribute, and fact references
+  - Label references are stored with `reference_type='label'` in `metrics_references`
+  - Validated against `ldm_columns` (type='attribute') since `{label/id}` uses the attribute's ID
+- **Date instance support in LDM export**: Now processes `ldm.dateInstances` in addition to `ldm.datasets`
+  - Date instances (e.g., `process_date`, `FirstDayQuarter`) are stored as datasets in `ldm_datasets`
+  - Date granularities (e.g., `process_date.day`, `process_date.month`) are stored as attributes in `ldm_columns`
+  - Enables proper validation of `{label/date.granularity}` references in MAQL
+- **`metrics_is_valid` post-export update**: Computes `is_valid` for metrics in local mode based on reference analysis:
+  - Invalid (0): Metric references another metric, attribute, label, or fact that doesn't exist
+  - Valid (1): All referenced objects exist, or metric has no references
+  - Checks `metrics_references` with appropriate `reference_type` filters
+- **`visualizations_is_valid` post-export update**: Computes `is_valid` for visualizations in local mode:
+  - Invalid (0): Visualization references a metric/fact/label that doesn't exist
+  - Valid (1): All referenced objects exist, or visualization has no references
+  - Checks via `visualizations_references`: metrics → `metrics`, facts → `ldm_columns`, labels → `ldm_labels`
+
 ## [1.6.2] - 2026-02-04
 
 ### Changed

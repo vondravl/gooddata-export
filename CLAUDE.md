@@ -79,7 +79,7 @@ gooddata_export/
 │   └── common.py        # Shared utilities (sort_tags)
 └── sql/                 # SQL scripts for post-export processing
     ├── post_export_config.yaml  # YAML configuration for all SQL operations
-    ├── tables/          # Table creation scripts (metrics_relationships, etc.)
+    ├── tables/          # Table creation scripts (metrics_references, etc.)
     ├── views/           # Analytical views (v_metrics_*, v_*_tags, etc.)
     ├── updates/         # Table modification scripts (duplicate detection)
     └── procedures/      # Parameterized views for API automation
@@ -97,7 +97,7 @@ gooddata_export/
    - Loads `sql/post_export_config.yaml`
    - Topologically sorts operations by dependencies
    - Executes tables → views → procedures → updates in order
-   - Python populate functions run for tables needing regex (e.g., `metrics_relationships`)
+   - Python populate functions run for tables needing regex (e.g., `metrics_references`)
 
 ### Key Tables
 
@@ -106,8 +106,8 @@ gooddata_export/
 | `metrics` | Metric definitions with MAQL formulas |
 | `visualizations` | Visualization configurations |
 | `dashboards` | Dashboard definitions |
-| `metrics_relationships` | Direct metric-to-metric references (Python populates) |
-| `metrics_ancestry` | Transitive metric ancestry (recursive CTE) |
+| `metrics_references` | All metric references from MAQL - metrics, attributes, facts (Python populates) |
+| `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
 
 ### Key Views
 

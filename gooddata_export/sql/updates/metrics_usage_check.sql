@@ -13,23 +13,25 @@ SET is_used_insight = CASE
           AND dm.workspace_id = metrics.workspace_id
     ) OR EXISTS (
         SELECT 1
-        FROM visualizations_metrics vm
-        WHERE vm.metric_id = metrics.metric_id
-          AND vm.workspace_id = metrics.workspace_id
+        FROM visualizations_references vr
+        WHERE vr.referenced_id = metrics.metric_id
+          AND vr.workspace_id = metrics.workspace_id
+          AND vr.object_type = 'metric'
     ) THEN 1
     ELSE 0
 END
 WHERE 1=1 {parent_workspace_filter};
 
 -- Update is_used_maql: Check if metric is referenced in other metrics' MAQL formulas
--- Uses metrics_relationships table (populated by Python regex extraction)
+-- Uses metrics_references table with reference_type='metric' (populated by Python regex extraction)
 UPDATE metrics
 SET is_used_maql = CASE
     WHEN EXISTS (
         SELECT 1
-        FROM metrics_relationships mr
-        WHERE mr.referenced_metric_id = metrics.metric_id
+        FROM metrics_references mr
+        WHERE mr.referenced_id = metrics.metric_id
           AND mr.source_workspace_id = metrics.workspace_id
+          AND mr.reference_type = 'metric'
     ) THEN 1
     ELSE 0
 END

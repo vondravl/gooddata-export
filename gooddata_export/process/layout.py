@@ -150,15 +150,80 @@ def process_ldm(data):
 
     Returns:
         tuple: (datasets, columns, labels) where:
-            - datasets: List of dataset records
-            - columns: List of column records (attributes, facts, references, etc.)
+            - datasets: List of dataset records (including date instances)
+            - columns: List of column records (attributes, facts, references, date granularities)
             - labels: List of attribute label records
     """
     datasets = []
     columns = []
     labels = []
 
-    # First pass: Process all datasets basic info
+    # Process date instances first (they can be referenced by regular datasets)
+    # Date instances have granularities like DAY, WEEK, MONTH that become label references
+    # e.g., {label/process_date.day} references the DAY granularity of process_date
+    for date_instance in data.get("ldm", {}).get("dateInstances", []):
+        date_id = date_instance["id"]
+
+        # Add date instance as a dataset (type: date)
+        datasets.append(
+            {
+                "title": date_instance.get("title", date_id),
+                "description": date_instance.get("description", ""),
+                "id": date_id,
+                "tags": str(sort_tags(date_instance.get("tags", []))),
+                "attributes_count": len(date_instance.get("granularities", [])),
+                "facts_count": 0,
+                "references_count": 0,
+                "workspace_data_filter_columns_count": 0,
+                "total_columns": len(date_instance.get("granularities", [])),
+                "data_source_id": "",
+                "source_table": "",
+                "source_table_path": "",
+            }
+        )
+
+        # Create synthetic attribute columns for each granularity
+        # These are what {label/date_id.granularity} references in MAQL
+        granularity_to_title = {
+            "MINUTE": "Minute",
+            "HOUR": "Hour",
+            "DAY": "Day",
+            "WEEK": "Week",
+            "MONTH": "Month",
+            "QUARTER": "Quarter",
+            "YEAR": "Year",
+            "MINUTE_OF_HOUR": "Minute of Hour",
+            "HOUR_OF_DAY": "Hour of Day",
+            "DAY_OF_WEEK": "Day of Week",
+            "DAY_OF_MONTH": "Day of Month",
+            "DAY_OF_QUARTER": "Day of Quarter",
+            "DAY_OF_YEAR": "Day of Year",
+            "WEEK_OF_YEAR": "Week of Year",
+            "MONTH_OF_YEAR": "Month of Year",
+            "QUARTER_OF_YEAR": "Quarter of Year",
+        }
+
+        for granularity in date_instance.get("granularities", []):
+            # ID format matches MAQL: {label/process_date.day} -> process_date.day
+            granularity_id = f"{date_id}.{granularity.lower()}"
+            columns.append(
+                {
+                    "dataset_id": date_id,
+                    "dataset_name": date_instance.get("title", date_id),
+                    "title": granularity_to_title.get(granularity, granularity),
+                    "description": "",
+                    "id": granularity_id,
+                    "tags": "",
+                    "data_type": "DATE",
+                    "source_column": "",
+                    "type": "attribute",  # Date granularities are treated as attributes
+                    "grain": "No",
+                    "reference_to_id": "",
+                    "reference_to_title": "",
+                }
+            )
+
+    # First pass: Process all regular datasets basic info
     dataset_map = {}
     for dataset in data["ldm"]["datasets"]:
         dataset_info = {

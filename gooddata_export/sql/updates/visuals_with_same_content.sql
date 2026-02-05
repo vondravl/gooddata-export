@@ -1,14 +1,13 @@
 DROP TABLE IF EXISTS duplicities;
 
 -- Create temporary table with duplicities
--- Uses junction tables (visualizations_metrics, visualizations_attributes) instead of parsing JSON
+-- Uses visualizations_references table instead of parsing JSON
 -- This works regardless of whether content field is populated
 CREATE TEMPORARY TABLE duplicities AS
 WITH visualization_columns AS (
-    -- Combine metrics and attributes into a single list per visualization
-    SELECT visualization_id, workspace_id, metric_id AS col_id FROM visualizations_metrics
-    UNION ALL
-    SELECT visualization_id, workspace_id, attribute_id AS col_id FROM visualizations_attributes
+    -- Get all references (metrics, facts, labels) per visualization
+    SELECT visualization_id, workspace_id, referenced_id AS col_id
+    FROM visualizations_references
 ),
 same_columns AS (
     SELECT visualization_id, workspace_id, title, visualization_url, columns, tags

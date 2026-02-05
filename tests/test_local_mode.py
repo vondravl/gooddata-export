@@ -663,10 +663,8 @@ class TestLocalModeIntegration:
         assert "viz_orders_by_region" in viz_ids
         assert "viz_avg_order_value" in viz_ids
 
-    def test_visualization_metrics_relationships(
-        self, sample_layout, mock_config, tmp_path
-    ):
-        """Visualization-metric relationships are extracted."""
+    def test_visualization_references(self, sample_layout, mock_config, tmp_path):
+        """Visualization references (metrics, facts, labels) are extracted."""
         from gooddata_export.export import export_all_metadata
 
         db_path = tmp_path / "test_export.db"
@@ -682,19 +680,37 @@ class TestLocalModeIntegration:
                 )
 
         conn = sqlite3.connect(db_path)
+        # Get metric references (from measures)
         cursor = conn.execute(
-            "SELECT visualization_id, metric_id FROM visualizations_metrics"
+            "SELECT visualization_id, referenced_id, source FROM visualizations_references "
+            "WHERE object_type = 'metric'"
         )
-        relationships = cursor.fetchall()
+        metric_refs = cursor.fetchall()
+
+        # Get label references (from attribute buckets)
+        cursor = conn.execute(
+            "SELECT visualization_id, referenced_id, source FROM visualizations_references "
+            "WHERE object_type = 'label'"
+        )
+        label_refs = cursor.fetchall()
         conn.close()
 
-        # viz_revenue_trend uses metric_total_revenue
-        # viz_orders_by_region uses metric_order_count
+        # viz_revenue_trend uses metric_total_revenue + date.month label
+        # viz_orders_by_region uses metric_order_count + region.name label
         # viz_avg_order_value uses metric_avg_order_value
-        assert len(relationships) == 3
-        assert ("viz_revenue_trend", "metric_total_revenue") in relationships
-        assert ("viz_orders_by_region", "metric_order_count") in relationships
-        assert ("viz_avg_order_value", "metric_avg_order_value") in relationships
+        assert len(metric_refs) == 3
+        assert ("viz_revenue_trend", "metric_total_revenue", "measure") in metric_refs
+        assert ("viz_orders_by_region", "metric_order_count", "measure") in metric_refs
+        assert (
+            "viz_avg_order_value",
+            "metric_avg_order_value",
+            "measure",
+        ) in metric_refs
+
+        # Label references from attribute buckets (rows/columns)
+        assert len(label_refs) == 2
+        assert ("viz_revenue_trend", "date.month", "attribute") in label_refs
+        assert ("viz_orders_by_region", "region.name", "attribute") in label_refs
 
     def test_dashboards_exported_correctly(self, sample_layout, mock_config, tmp_path):
         """Dashboards from fixture are exported to database."""
@@ -1252,14 +1268,14 @@ class TestLocalModeIntegration:
         # Verify data exported with defaults for missing fields
         conn = sqlite3.connect(db_path)
 
-        # Metric should have empty timestamps and default validity
+        # Metric should have empty timestamps and NULL validity (computed in post-export)
         cursor = conn.execute(
             "SELECT metric_id, created_at, is_valid, tags FROM metrics"
         )
         metric = cursor.fetchone()
         assert metric[0] == "revenue"
         assert metric[1] == ""  # Empty created_at
-        assert metric[2] == 1  # Default is_valid = True
+        assert metric[2] is None  # NULL in local mode, computed in post-export
         assert metric[3] == "[]"  # Empty tags
 
         # Dashboard should also work

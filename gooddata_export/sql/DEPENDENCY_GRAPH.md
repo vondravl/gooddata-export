@@ -27,7 +27,7 @@ This document visualizes the dependencies between views, procedures, and updates
     └────┬────────────┘                                               │
          │                                                            │
     ┌────▼────────────────────────┐                                   │
-    │v_metrics_relationships_*    │ ◄─ VIEWS (ancestry, root, etc)    │
+    │v_metrics_references_*    │ ◄─ VIEWS (ancestry, root, etc)    │
     └─────────────────────────────┘                                   │
          │                                                            │
     ┌────▼────┐                                                       │
@@ -75,15 +75,15 @@ This document visualizes the dependencies between views, procedures, and updates
 | `v_visualizations_tags` | VIEW | (none) | `visuals_with_same_content` ⚠️ |
 | `v_dashboards_tags` | VIEW | (none) | (none) |
 | `v_metrics_usage` | VIEW | (none) | (none) |
-| `metrics_relationships` | TABLE | (none) | `metrics_ancestry`, `v_metrics_relationships_*` |
-| `metrics_ancestry` | TABLE | `metrics_relationships` | `v_metrics_relationships_ancestry` |
-| `v_metrics_relationships` | VIEW | `metrics_relationships` | (none) |
-| `v_metrics_relationships_ancestry` | VIEW | `metrics_ancestry` | (none) |
-| `v_metrics_relationships_root` | VIEW | `metrics_relationships` | (none) |
+| `metrics_references` | TABLE | (none) | `metrics_ancestry`, `v_metrics_references_*` |
+| `metrics_ancestry` | TABLE | `metrics_references` | `v_metrics_references_ancestry` |
+| `v_metrics_references` | VIEW | `metrics_references` | (none) |
+| `v_metrics_references_ancestry` | VIEW | `metrics_ancestry` | (none) |
+| `v_metrics_references_root` | VIEW | `metrics_references` | (none) |
 | `v_visualizations_usage` | VIEW | (none) | (none) |
 | `v_procedures_api_metrics` | PROCEDURE | (none) | (none) |
 | `metrics_probable_duplicates` | UPDATE | (none) | (none) |
-| `metrics_usage_check` | UPDATE | `metrics_relationships` | (none) |
+| `metrics_usage_check` | UPDATE | `metrics_references` | (none) |
 | `visualizations_usage_check` | UPDATE | (none) | (none) |
 | `visuals_with_same_content` | UPDATE | `v_visualization_tags` | (none) |
 
@@ -110,11 +110,11 @@ The system automatically computes this execution order:
 1. metrics_probable_duplicates    ← UPDATE (no dependencies)
 2. metrics_usage_check             ← UPDATE (depends on #4)
 3. v_dashboards_tags               ← VIEW (no dependencies)
-4. metrics_relationships           ← TABLE (Python populate, no dependencies)
+4. metrics_references           ← TABLE (Python populate, no dependencies)
 5. metrics_ancestry                ← TABLE (depends on #4)
-6. v_metrics_relationships         ← VIEW (depends on #4)
-7. v_metrics_relationships_ancestry← VIEW (depends on #5)
-8. v_metrics_relationships_root    ← VIEW (depends on #4)
+6. v_metrics_references         ← VIEW (depends on #4)
+7. v_metrics_references_ancestry← VIEW (depends on #5)
+8. v_metrics_references_root    ← VIEW (depends on #4)
 9. v_metrics_tags                  ← VIEW (no dependencies)
 10. v_metrics_usage                ← VIEW (no dependencies)
 11. v_procedures_api_metrics       ← PROCEDURE (no dependencies, with parameters)
@@ -124,7 +124,7 @@ The system automatically computes this execution order:
 15. visuals_with_same_content      ← UPDATE (depends on #12) ⚠️
 ```
 
-**Key observation**: Items without dependencies can execute in any order (alphabetically sorted for determinism). Metric relationship tables/views have dependencies on `metrics_relationships` table which must be populated by Python first. `visuals_with_same_content` MUST come after `v_visualizations_tags`.
+**Key observation**: Items without dependencies can execute in any order (alphabetically sorted for determinism). Metric relationship tables/views have dependencies on `metrics_references` table which must be populated by Python first. `visuals_with_same_content` MUST come after `v_visualizations_tags`.
 
 ## How Dependencies Work
 

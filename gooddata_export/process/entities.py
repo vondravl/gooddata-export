@@ -164,7 +164,9 @@ def process_metrics(data, workspace_id=None):
                 "format": content.get("format", ""),
                 "created_at": obj.get("createdAt", ""),
                 "modified_at": obj.get("modifiedAt", obj.get("createdAt", "")),
-                "is_valid": obj.get("areRelationsValid", True),
+                "is_valid": obj.get(
+                    "areRelationsValid"
+                ),  # None if missing, computed in post-export
                 "is_hidden": obj.get("isHidden", False),
                 "workspace_id": workspace_id,
                 "origin_type": obj.get("originType", "NATIVE"),
@@ -198,103 +200,90 @@ def process_visualizations(data, base_url, workspace_id):
                 "workspace_id": workspace_id,
                 "origin_type": obj.get("originType", "NATIVE"),
                 "content": obj,
-                "is_valid": obj.get("areRelationsValid", True),
+                "is_valid": obj.get("areRelationsValid"),  # None in local mode
                 "is_hidden": obj.get("isHidden", False),
             }
         )
     return processed_data
 
 
-def process_visualizations_metrics(visualization_data, workspace_id=None):
-    """Extract unique metric IDs used in each visualization with their labels.
+def process_visualizations_references(visualization_data, workspace_id=None):
+    """Extract all object references from visualizations with source context.
 
     Accepts layout format where content is at top level:
-        {"id": "x", "content": {"buckets": [...]}}
+        {"id": "x", "content": {"buckets": [...], "filters": [...]}}
+
+    Extracts with two dimensions:
+        - object_type: what is being referenced (metric, fact, attribute, label)
+        - source: where in the visualization (measure, attribute, filter)
+
+    This allows answering questions like:
+        - "What metrics does this viz use?" (filter by object_type='metric')
+        - "Is this attribute used as a filter or dimension?" (check source)
     """
-    # Using dict to store unique combinations with labels
-    # Key: (viz_id, metric_id, workspace_id), Value: label
-    unique_relationships = {}
+    # Key: (viz_id, referenced_id, workspace_id, object_type, source), Value: label
+    references = {}
 
     for viz in visualization_data:
         content = viz.get("content", {})
 
-        if "buckets" not in content:
-            continue
-
-        for bucket in content["buckets"]:
-            if "items" not in bucket:
-                continue
-
-            for item in bucket["items"]:
+        # Extract references from buckets
+        for bucket in content.get("buckets", []):
+            for item in bucket.get("items", []):
+                # Extract metric/fact/attribute references from measures
                 measure = item.get("measure", {})
                 measure_def = measure.get("definition", {}).get("measureDefinition", {})
-                metric_id = measure_def.get("item", {}).get("identifier", {}).get("id")
+                identifier = measure_def.get("item", {}).get("identifier", {})
+                ref_id = identifier.get("id")
+                # Default to 'metric' for backwards compatibility with older data
+                object_type = identifier.get("type", "metric")
 
-                if metric_id:
-                    # Get label: prefer alias, fall back to title, then None
+                if ref_id:
                     label = measure.get("alias") or measure.get("title")
-                    key = (viz["id"], metric_id, workspace_id)
-                    # Only store if not already present (keep first occurrence)
-                    if key not in unique_relationships:
-                        unique_relationships[key] = label
+                    key = (viz["id"], ref_id, workspace_id, object_type, "measure")
+                    if key not in references:
+                        references[key] = label
 
-    # Convert dict to list of dictionaries
-    result = [
-        {
-            "visualization_id": viz_id,
-            "metric_id": metric_id,
-            "workspace_id": ws_id,
-            "label": label,
-        }
-        for (viz_id, metric_id, ws_id), label in sorted(unique_relationships.items())
-    ]
-
-    return result
-
-
-def process_visualizations_attributes(visualization_data, workspace_id=None):
-    """Extract unique attribute IDs (display forms) used in each visualization with their labels.
-
-    Accepts layout format where content is at top level:
-        {"id": "x", "content": {"buckets": [...]}}
-    """
-    # Using dict to store unique combinations with labels
-    # Key: (viz_id, attribute_id, workspace_id), Value: label
-    unique_relationships = {}
-
-    for viz in visualization_data:
-        content = viz.get("content", {})
-
-        if "buckets" not in content:
-            continue
-
-        for bucket in content["buckets"]:
-            if "items" not in bucket:
-                continue
-
-            for item in bucket["items"]:
-                # Attributes are stored with displayForm reference
+                # Extract label/display form references from attributes (rows/columns)
                 attribute_def = item.get("attribute", {})
                 display_form = attribute_def.get("displayForm", {})
-                attribute_id = display_form.get("identifier", {}).get("id")
+                label_id = display_form.get("identifier", {}).get("id")
+                label_type = display_form.get("identifier", {}).get("type", "label")
 
-                if attribute_id:
-                    # Get label: prefer alias, fall back to None
+                if label_id:
                     label = attribute_def.get("alias")
-                    key = (viz["id"], attribute_id, workspace_id)
-                    # Only store if not already present (keep first occurrence)
-                    if key not in unique_relationships:
-                        unique_relationships[key] = label
+                    key = (viz["id"], label_id, workspace_id, label_type, "attribute")
+                    if key not in references:
+                        references[key] = label
+
+        # Extract references from filters
+        for filter_def in content.get("filters", []):
+            # Handle attribute filters (positive and negative)
+            for filter_type in ("negativeAttributeFilter", "positiveAttributeFilter"):
+                attr_filter = filter_def.get(filter_type, {})
+                display_form = attr_filter.get("displayForm", {})
+                identifier = display_form.get("identifier", {})
+                filter_id = identifier.get("id")
+                object_type = identifier.get("type", "label")
+
+                if filter_id:
+                    key = (viz["id"], filter_id, workspace_id, object_type, "filter")
+                    if key not in references:
+                        references[key] = None  # Filters don't have aliases
 
     # Convert dict to list of dictionaries
     result = [
         {
             "visualization_id": viz_id,
-            "attribute_id": attr_id,
+            "referenced_id": ref_id,
             "workspace_id": ws_id,
+            "object_type": obj_type,
+            "source": source,
             "label": label,
         }
-        for (viz_id, attr_id, ws_id), label in sorted(unique_relationships.items())
+        for (viz_id, ref_id, ws_id, obj_type, source), label in sorted(
+            references.items()
+        )
     ]
 
     return result
@@ -325,7 +314,7 @@ def process_dashboards(data, base_url, workspace_id):
                 "workspace_id": workspace_id,
                 "origin_type": obj.get("originType", "NATIVE"),
                 "content": content,
-                "is_valid": obj.get("areRelationsValid", True),
+                "is_valid": obj.get("areRelationsValid"),  # None in local mode
                 "is_hidden": obj.get("isHidden", False),
                 "filter_context_id": content.get("filterContextRef", {})
                 .get("identifier", {})
