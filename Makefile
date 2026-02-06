@@ -18,6 +18,7 @@ help:
 	@echo ""
 	@echo "Export & Enrichment:"
 	@echo "  make run          - Full export + enrichment (alias for export-enrich)"
+	@echo "  make run-lite     - Export without content fields (smaller DB for browser)"
 	@echo "  make run-children - Full export with child workspaces (skips enrichment)"
 	@echo "  make export       - Export data only (skip post-processing)"
 	@echo "  make enrich       - Run enrichment/procedures on existing database"
@@ -73,6 +74,11 @@ export-enrich:
 	@echo "📤📊 Running full export + enrichment workflow..."
 	venv/bin/python main.py export
 
+run-lite:
+	$(call check_venv)
+	@echo "📤📊 Running export without content fields (smaller DB)..."
+	INCLUDE_CONTENT=false venv/bin/python main.py export
+
 run-children: export-children
 
 export-children:
@@ -105,4 +111,4 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-.PHONY: help venv dev install export enrich run export-enrich run-children export-children ruff-lint ruff-format test test-cov clean
+.PHONY: help venv dev install export enrich run run-lite export-enrich run-children export-children ruff-lint ruff-format test test-cov clean
