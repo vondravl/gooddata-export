@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-02-11
+
+### Fixed
+- **`base_url` in local mode procedures**: `run_post_export_sql()` now accepts a `config` parameter from the caller instead of always creating a fresh `ExportConfig(load_from_env=True)`
+  - Prevents `"None"` appearing in curl command URLs when running in local mode without `.env` files
+  - Falls back to `dictionary_metadata` table in the database if `BASE_URL` is still None
+  - `substitute_parameters()` now skips substitution when a config value is `None` instead of converting to literal `"None"` string
+
 ## [1.7.0] - 2026-02-05
 
 ### Changed

@@ -211,8 +211,11 @@ def run_enrich_command(args):
     configure_logging(args.debug)
 
     try:
+        # Load config for parameter substitution (procedures need base_url etc.)
+        config = ExportConfig(load_from_env=True)
+
         # Run post-export processing
-        run_post_export_sql(args.db_path)
+        run_post_export_sql(args.db_path, config=config)
 
         # Calculate duration
         end_time = datetime.now()
