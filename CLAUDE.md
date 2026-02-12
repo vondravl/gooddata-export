@@ -20,6 +20,8 @@ The library supports two modes:
 
 2. Update `CHANGELOG.md` with the changes (follow [Keep a Changelog](https://keepachangelog.com/) format)
 
+3. A git tag `vX.Y.Z` is **auto-created** when the PR merges to `main` (via `create_tag.yml` workflow). To preview locally: `python scripts/create_tag.py --dry-run`
+
 ## Security Considerations
 
 This is a **public package**. Before committing:
@@ -42,9 +44,9 @@ make export
 make enrich
 make enrich DB=output/db/custom.db
 
-# Run with Python directly
-python main.py export
-python main.py enrich --db-path output/db/gooddata_export.db
+# Run with CLI directly
+gooddata-export export
+gooddata-export enrich --db-path output/db/gooddata_export.db
 
 # Run tests
 pytest
@@ -83,6 +85,9 @@ gooddata_export/
     ├── views/           # Analytical views (v_metrics_*, v_*_tags, etc.)
     ├── updates/         # Table modification scripts (duplicate detection)
     └── procedures/      # Parameterized views for API automation
+
+scripts/
+└── create_tag.py        # Auto-create git tag from pyproject.toml version (CI + manual)
 ```
 
 ### Data Flow
@@ -163,7 +168,7 @@ BEARER_TOKEN=your_api_token
 `sql/post_export_config.yaml` defines:
 - **tables**: Created tables (some with `python_populate` for Python processing)
 - **views**: Read-only analytical views
-- **procedures**: Parameterized views with `{{CONFIG_KEY}}` substitution
+- **procedures**: Parameterized views (`base_url`/`workspace_id` from `dictionary_metadata` CTE, only `bearer_token` substituted)
 - **updates**: Table modifications with `required_columns`
 
 Each entry has:
@@ -277,7 +282,7 @@ make ruff-format
 
 ### Type Hints (Modern Syntax)
 
-This project targets **Python 3.13+**. Use built-in generics and `|` union syntax - no `typing` imports needed:
+This project targets **Python 3.14+**. Use built-in generics and `|` union syntax - no `typing` imports needed:
 
 ```python
 def process(items: list[str], config: dict[str, int] | None = None) -> set[str]: ...
@@ -285,7 +290,9 @@ def get_class() -> type[MyClass]: ...
 def fetch(id: str | int) -> tuple[str, bool]: ...
 ```
 
-**Only import from `typing`:** `Any`, `TypeVar`, `TYPE_CHECKING`, `Protocol`, `Literal`, `TypedDict`
+**Only import from `typing`:** `Any`, `Never`, `TypeVar`, `TYPE_CHECKING`, `Protocol`, `Literal`, `TypedDict`
+
+**Exception syntax**: Python 3.14 allows `except A, B:` without parentheses (equivalent to `except (A, B):`). Both forms are valid.
 
 ### Avoiding Over-Engineering
 

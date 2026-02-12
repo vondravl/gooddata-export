@@ -81,7 +81,7 @@ This document visualizes the dependencies between views, procedures, and updates
 | `v_metrics_references_ancestry` | VIEW | `metrics_ancestry` | (none) |
 | `v_metrics_references_root` | VIEW | `metrics_references` | (none) |
 | `v_visualizations_usage` | VIEW | (none) | (none) |
-| `v_procedures_api_metrics` | PROCEDURE | (none) | (none) |
+| `v_api_automation_metrics` | PROCEDURE | (none) | (none) |
 | `metrics_probable_duplicates` | UPDATE | (none) | (none) |
 | `metrics_usage_check` | UPDATE | `metrics_references` | (none) |
 | `visualizations_usage_check` | UPDATE | (none) | (none) |
@@ -117,7 +117,7 @@ The system automatically computes this execution order:
 8. v_metrics_references_root    ← VIEW (depends on #4)
 9. v_metrics_tags                  ← VIEW (no dependencies)
 10. v_metrics_usage                ← VIEW (no dependencies)
-11. v_procedures_api_metrics       ← PROCEDURE (no dependencies, with parameters)
+11. v_api_automation_metrics       ← PROCEDURE (no dependencies, with parameters)
 12. v_visualizations_tags          ← VIEW (no dependencies) ⚠️
 13. v_visualizations_usage         ← VIEW (no dependencies)
 14. visualizations_usage_check     ← UPDATE (no dependencies)
@@ -136,11 +136,10 @@ views:
     dependencies: []
 
 procedures:
-  v_procedures_api_metrics:
-    sql_file: procedures/v_procedures_api_metrics.sql
+  v_api_automation_metrics:
+    sql_file: procedures/v_api_automation_metrics.sql
     dependencies: []
     parameters:
-      workspace_id: "{{WORKSPACE_ID}}"  # Replaced with actual value
       bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Replaced with literal ${TOKEN_GOODDATA_DEV}
 
 updates:
@@ -158,20 +157,21 @@ Operations are executed in the sorted order, ensuring all dependencies are satis
 
 ## Procedures (Parameterized Views)
 
-SQLite doesn't support stored procedures, so we simulate them with **parameterized views** that support runtime parameter substitution:
+SQLite doesn't support stored procedures, so we simulate them with **parameterized views** that support runtime parameter substitution.
+
+### How Parameters Work
+
+- **`base_url` and `workspace_id`** are read from the `dictionary_metadata` table via a CTE directly in the SQL file — no YAML substitution needed
+- **`bearer_token`** uses `$$` substitution in YAML: `$${TOKEN_GOODDATA_DEV}` → literal `${TOKEN_GOODDATA_DEV}` for shell variable expansion
 
 ### Parameter Types
 
-1. **Config Value Substitution** - `{{CONFIG_KEY}}`
-   - Replaced with actual value from ExportConfig
-   - Example: `{{WORKSPACE_ID}}` → `"my-workspace"`
-
-2. **Literal String Substitution** - `$${LITERAL}`
+1. **Literal String Substitution** - `$${LITERAL}`
    - Escaped $ - replaced with the literal string minus one $
    - Example: `$${TOKEN_GOODDATA_DEV}` → `${TOKEN_GOODDATA_DEV}`
    - Useful for shell variables in generated commands
 
-3. **Direct Substitution** - Plain string
+2. **Direct Substitution** - Plain string
    - Replaced as-is
    - Example: `"production"` → `"production"`
 
@@ -179,17 +179,16 @@ SQLite doesn't support stored procedures, so we simulate them with **parameteriz
 
 ```yaml
 procedures:
-  v_procedures_api_metrics:
-    sql_file: procedures/v_procedures_api_metrics.sql
+  v_api_automation_metrics:
+    sql_file: procedures/v_api_automation_metrics.sql
     description: Procedure to generate API curl commands for metric operations
     category: procedures
     parameters:
-      workspace_id: "{{WORKSPACE_ID}}"
       bearer_token: "$${TOKEN_GOODDATA_DEV}"
 ```
 
-This procedure generates curl commands with placeholders that get replaced at runtime:
-- `{workspace_id}` → actual workspace ID from config
+This procedure generates curl commands where:
+- `base_url` and `workspace_id` come from a `dictionary_metadata` CTE in the SQL
 - `{bearer_token}` → literal string `${TOKEN_GOODDATA_DEV}` for shell usage
 
 ## Adding Dependencies
@@ -233,16 +232,16 @@ If you create a new procedure for API operations:
 
 ```yaml
 procedures:
-  v_procedures_api_dashboards:
-    sql_file: procedures/v_procedures_api_dashboards.sql
+  v_api_automation_dashboards:
+    sql_file: procedures/v_api_automation_dashboards.sql
     description: Procedure to generate API curl commands for dashboard operations
     category: procedures
     dependencies: []  # or reference views if needed
     parameters:
-      workspace_id: "{{WORKSPACE_ID}}"
-      api_endpoint: "https://api.example.com"
       auth_token: "$${MY_TOKEN_VAR}"
 ```
+
+> **Note**: `base_url` and `workspace_id` should be read from `dictionary_metadata` via a CTE in the SQL file, not passed as YAML parameters.
 
 ## Circular Dependency Detection
 

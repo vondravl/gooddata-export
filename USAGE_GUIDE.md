@@ -18,17 +18,17 @@ make enrich
 make enrich DB=output/db/custom.db
 ```
 
-### Option 2: Using Python Directly
+### Option 2: Using CLI Directly
 
 ```bash
 # Full workflow: Export + Enrichment
-python main.py export
+gooddata-export export
 
 # Export only (skip post-processing)
-python main.py export --skip-post-export
+gooddata-export export --skip-post-export
 
 # Enrichment only
-python main.py enrich --db-path output/db/gooddata_export.db
+gooddata-export enrich --db-path output/db/gooddata_export.db
 ```
 
 ## Three Workflows
@@ -52,7 +52,7 @@ Exports data from GoodData to SQLite/CSV **without** running post-processing.
 ```bash
 make export
 # or
-python main.py export --skip-post-export
+gooddata-export export --skip-post-export
 ```
 
 ### 2. Enrich Only (`make enrich`)
@@ -67,7 +67,7 @@ Runs post-processing on an existing database.
 
 **What it does:**
 - Creates views (v_metric_tags, v_visualization_tags, etc.)
-- Executes procedures (v_procedures_api_metrics, etc.)
+- Executes procedures (v_api_automation_metrics, etc.)
 - Updates tables (duplicate detection, usage checks)
 - Applies all SQL from `post_export_config.yaml`
 
@@ -79,9 +79,9 @@ make enrich
 # Specific database
 make enrich DB=output/db/my_workspace.db
 
-# With Python
-python main.py enrich --db-path output/db/gooddata_export.db
-python main.py enrich --db-path output/db/custom.db --debug
+# With CLI
+gooddata-export enrich --db-path output/db/gooddata_export.db
+gooddata-export enrich --db-path output/db/custom.db --debug
 ```
 
 ### 3. Full Workflow (`make export-enrich`)
@@ -103,7 +103,7 @@ Complete end-to-end process: export data, then enrich it.
 ```bash
 make export-enrich
 # or
-python main.py export  # (enrichment runs by default)
+gooddata-export export  # (enrichment runs by default)
 ```
 
 ## Post-Processing (Enrichment) Details
@@ -125,8 +125,8 @@ When you run enrichment, it executes all SQL operations defined in `gooddata_exp
 - `v_ldm_dataset_column_tag_check` - Validates dataset-column tag consistency
 
 ### Procedures Executed
-- `v_procedures_api_metrics` - Generates curl commands for API operations
-  - Parameters substituted: workspace_id, bearer_token
+- `v_api_automation_metrics` - Generates curl commands for API operations
+  - `base_url`/`workspace_id` from `dictionary_metadata` CTE, `bearer_token` substituted from YAML
   - Returns: POST, PUT, DELETE commands with Excel formulas
 
 ### Table Updates Applied
@@ -180,20 +180,20 @@ make enrich
 
 ```bash
 # Export workspace A
-python main.py export --workspace-id workspace-a --db-name workspace-a.db
+gooddata-export export --workspace-id workspace-a --db-name workspace-a.db
 
-# Export workspace B  
-python main.py export --workspace-id workspace-b --db-name workspace-b.db
+# Export workspace B
+gooddata-export export --workspace-id workspace-b --db-name workspace-b.db
 
 # Enrich both
-python main.py enrich --db-path output/db/workspace-a.db
-python main.py enrich --db-path output/db/workspace-b.db
+gooddata-export enrich --db-path output/db/workspace-a.db
+gooddata-export enrich --db-path output/db/workspace-b.db
 ```
 
 ### Production Export with Custom Settings
 
 ```bash
-python main.py export \
+gooddata-export export \
   --format sqlite \
   --include-child-workspaces \
   --max-workers 10 \
@@ -209,7 +209,7 @@ After enrichment, query the enriched database:
 SELECT * FROM v_metrics_usage WHERE usage_count > 5;
 
 -- Call procedures (query parameterized views)
-SELECT * FROM v_procedures_api_metrics WHERE metric_id LIKE 'revenue%';
+SELECT * FROM v_api_automation_metrics WHERE metric_id LIKE 'revenue%';
 
 -- Check table updates
 SELECT * FROM metrics WHERE is_used_insight = 1;
@@ -228,13 +228,13 @@ make enrich DB=output/db/gooddata_export.db
 
 Run with debug flag:
 ```bash
-python main.py enrich --db-path output/db/gooddata_export.db --debug
+gooddata-export enrich --db-path output/db/gooddata_export.db --debug
 ```
 
 ### Want to skip enrichment temporarily
 
 ```bash
-make export  # or python main.py export --skip-post-export
+make export  # or gooddata-export export --skip-post-export
 ```
 
 ### Re-run enrichment after SQL changes
@@ -268,9 +268,9 @@ See `gooddata_export/sql/procedures/README.md` for details.
 # Makefile help
 make help
 
-# Python CLI help
-python main.py --help
-python main.py export --help
-python main.py enrich --help
+# CLI help
+gooddata-export --help
+gooddata-export export --help
+gooddata-export enrich --help
 ```
 

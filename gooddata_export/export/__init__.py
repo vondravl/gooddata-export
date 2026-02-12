@@ -187,11 +187,10 @@ def export_all_metadata(
                 run_post_export_sql(
                     db_path,
                     parent_workspace_id=config.WORKSPACE_ID,
-                    config=config,
                 )
             else:
                 # Single workspace: enrich all data (no filter needed)
-                run_post_export_sql(db_path, config=config)
+                run_post_export_sql(db_path)
         except ExportError as e:
             # Capture error but continue (database still usable without enrichment)
             post_export_error = str(e)

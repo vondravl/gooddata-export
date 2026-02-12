@@ -4,31 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gooddata-export"
-version = "1.7.1"
+version = "1.8.0"
 description = "Export GoodData workspace metadata to SQLite and CSV"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
     {name = "Vlastimil Vondra"}
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Topic :: Database",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "python-dotenv>=1.0.0",
-    "requests>=2.32.0",
-    "pyyaml>=6.0.0",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "pyyaml>=6.0.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.8.0",
-    "pytest>=7.0.0",
+    "ruff>=0.15.0",
+    "pytest>=9.0.2",
 ]
 
 [project.scripts]
@@ -43,6 +42,7 @@ include = ["gooddata_export*"]
 
 [tool.setuptools.package-data]
 gooddata_export = [
+    "py.typed",
     "sql/*.yaml",
     "sql/*.md",
     "sql/tables/*.sql",
@@ -51,9 +51,12 @@ gooddata_export = [
     "sql/procedures/*.sql",
 ]
 
+[tool.uv]
+package = true
+
 [tool.ruff]
-# Target Python 3.13+
-target-version = "py313"
+# Target Python 3.14+
+target-version = "py314"
 
 # Exclude directories
 exclude = [

@@ -1,7 +1,5 @@
 """Tests for post_export.py - topological sort and parameter substitution."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from gooddata_export.post_export import substitute_parameters, topological_sort
@@ -86,43 +84,12 @@ class TestTopologicalSort:
 class TestSubstituteParameters:
     """Tests for the substitute_parameters function."""
 
-    def test_basic_substitution(self):
-        """Basic {{KEY}} substitution works."""
-        sql = "SELECT * FROM table WHERE workspace_id = '{workspace_id}'"
-        parameters = {"workspace_id": "{{WORKSPACE_ID}}"}
-
-        mock_config = MagicMock()
-        mock_config.WORKSPACE_ID = "test-workspace"
-
-        result = substitute_parameters(sql, parameters, mock_config)
-        assert "test-workspace" in result
-        assert "{workspace_id}" not in result
-
-    def test_multiple_parameters(self):
-        """Multiple parameters in one SQL are substituted."""
-        sql = "url='{base_url}' workspace='{workspace_id}'"
-        parameters = {
-            "base_url": "{{BASE_URL}}",
-            "workspace_id": "{{WORKSPACE_ID}}",
-        }
-
-        mock_config = MagicMock()
-        mock_config.BASE_URL = "https://example.com"
-        mock_config.WORKSPACE_ID = "ws-123"
-
-        result = substitute_parameters(sql, parameters, mock_config)
-        assert "https://example.com" in result
-        assert "ws-123" in result
-        assert "{base_url}" not in result
-        assert "{workspace_id}" not in result
-
     def test_literal_dollar_substitution(self):
         """$${VAR} becomes ${VAR} (literal variable)."""
         sql = "token='{token}'"
         parameters = {"token": "$${TOKEN_VAR}"}
 
-        mock_config = MagicMock()
-        result = substitute_parameters(sql, parameters, mock_config)
+        result = substitute_parameters(sql, parameters)
         assert "${TOKEN_VAR}" in result
         assert "$$" not in result
 
@@ -131,26 +98,14 @@ class TestSubstituteParameters:
         sql = "value='{custom}'"
         parameters = {"custom": "my-direct-value"}
 
-        mock_config = MagicMock()
-        result = substitute_parameters(sql, parameters, mock_config)
+        result = substitute_parameters(sql, parameters)
         assert "my-direct-value" in result
 
     def test_no_parameters(self):
         """Empty parameters returns unchanged SQL."""
         sql = "SELECT * FROM table"
-        result = substitute_parameters(sql, None, MagicMock())
+        result = substitute_parameters(sql, None)
         assert result == sql
 
-        result = substitute_parameters(sql, {}, MagicMock())
+        result = substitute_parameters(sql, {})
         assert result == sql
-
-    def test_missing_config_key(self):
-        """Missing config key logs warning but doesn't crash."""
-        sql = "value='{missing}'"
-        parameters = {"missing": "{{NONEXISTENT_KEY}}"}
-
-        mock_config = MagicMock(spec=[])  # No attributes
-        # Should not raise, just leave the placeholder
-        result = substitute_parameters(sql, parameters, mock_config)
-        # The placeholder should still be there since config key doesn't exist
-        assert "{missing}" in result

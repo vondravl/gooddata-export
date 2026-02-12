@@ -15,8 +15,7 @@ from pathlib import Path
 import yaml
 
 from gooddata_export.common import ExportError
-from gooddata_export.config import ExportConfig
-from gooddata_export.db import connect_database, database_connection
+from gooddata_export.db import connect_database
 
 logger = logging.getLogger(__name__)
 
@@ -174,13 +173,12 @@ def topological_sort(items_dict):
     return result
 
 
-def substitute_parameters(sql_script, parameters, config):
+def substitute_parameters(sql_script, parameters):
     """Substitute parameters in SQL script.
 
     Args:
         sql_script: The SQL script content
         parameters: Dict of parameter definitions from config
-        config: ExportConfig instance for accessing runtime values
 
     Returns:
         str: SQL script with substituted parameters
@@ -190,26 +188,7 @@ def substitute_parameters(sql_script, parameters, config):
 
     result = sql_script
     for param_name, param_template in parameters.items():
-        # Handle special template syntax
-        if param_template.startswith("{{") and param_template.endswith("}}"):
-            # {{WORKSPACE_ID}} -> get actual value from config
-            config_key = param_template[2:-2].strip()
-            if hasattr(config, config_key):
-                value = getattr(config, config_key)
-                if value is None:
-                    logger.warning(
-                        "  Config key %s is None, skipping substitution for {%s}",
-                        config_key,
-                        param_name,
-                    )
-                else:
-                    result = result.replace(f"{{{param_name}}}", str(value))
-                    logger.debug("  Substituted {%s} with %s", param_name, value)
-            else:
-                logger.warning(
-                    "  Config key %s not found, skipping substitution", config_key
-                )
-        elif param_template.startswith("$$"):
+        if param_template.startswith("$$"):
             # $${TOKEN_GOODDATA_DEV} -> replace with ${TOKEN_GOODDATA_DEV} (literal string, remove one $)
             value = param_template[1:]  # Remove one $ to get ${...}
             result = result.replace(f"{{{param_name}}}", value)
@@ -226,7 +205,6 @@ def execute_sql_file(
     cursor,
     sql_path,
     parameters=None,
-    config=None,
     parent_workspace_id: str | None = None,
 ):
     """Execute a SQL file with optional parameter substitution.
@@ -235,7 +213,6 @@ def execute_sql_file(
         cursor: Database cursor
         sql_path: Path to SQL file
         parameters: Optional dict of parameters to substitute
-        config: Optional ExportConfig instance for parameter values
         parent_workspace_id: Optional workspace ID for {parent_workspace_filter} substitution.
             When provided, replaces the placeholder with "AND workspace_id = '<id>'".
             When None, removes the placeholder (empty string).
@@ -257,8 +234,8 @@ def execute_sql_file(
         sql_script = f.read()
 
     # Perform parameter substitution if needed
-    if parameters and config:
-        sql_script = substitute_parameters(sql_script, parameters, config)
+    if parameters:
+        sql_script = substitute_parameters(sql_script, parameters)
 
     # Substitute {parent_workspace_filter} placeholder for workspace-scoped updates
     if parent_workspace_id:
@@ -313,33 +290,9 @@ def ensure_columns_exist(cursor, table_name, required_columns):
             )
 
 
-def _read_metadata_value(db_path: str, key: str) -> str | None:
-    """Read a single value from dictionary_metadata table.
-
-    Args:
-        db_path: Path to the SQLite database
-        key: Metadata key to look up
-
-    Returns:
-        str | None: The value if found, None otherwise
-    """
-    try:
-        with database_connection(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT value FROM dictionary_metadata WHERE key = ?", (key,)
-            )
-            row = cursor.fetchone()
-            return row[0] if row and row[0] else None
-    except Exception as e:
-        logger.debug("Could not read metadata key '%s': %s", key, e)
-        return None
-
-
 def run_post_export_sql(
     db_path,
     parent_workspace_id: str | None = None,
-    config: ExportConfig | None = None,
 ) -> None:
     """Run all post-export SQL operations on the database.
 
@@ -351,9 +304,6 @@ def run_post_export_sql(
         parent_workspace_id: Optional workspace ID to filter updates to.
             When provided, UPDATE statements only affect rows for this workspace.
             Used in multi-workspace exports to enrich only the parent workspace.
-        config: Optional ExportConfig instance. When provided, used for parameter
-            substitution in procedures. Falls back to ExportConfig(load_from_env=True)
-            if not provided, then to dictionary_metadata table for base_url.
 
     Raises:
         ExportError: If post-export processing fails
@@ -367,16 +317,6 @@ def run_post_export_sql(
         # Load configuration
         yaml_config = load_post_export_config()
         sql_dir = Path(__file__).parent / "sql"
-
-        # Use provided config or fall back to env-loaded config
-        export_config = config or ExportConfig(load_from_env=True)
-
-        # If BASE_URL is still None (e.g. local mode without .env), read from DB
-        if not export_config.BASE_URL:
-            db_base_url = _read_metadata_value(db_path, "base_url")
-            if db_base_url:
-                export_config.BASE_URL = db_base_url
-                logger.debug("Loaded BASE_URL from database metadata: %s", db_base_url)
 
         # Connect to database
         conn = connect_database(db_path)
@@ -457,7 +397,6 @@ def run_post_export_sql(
                 cursor,
                 sql_path,
                 parameters=parameters,
-                config=export_config,
                 parent_workspace_id=workspace_filter,
             ):
                 # Run Python populate function if specified (for tables needing regex)

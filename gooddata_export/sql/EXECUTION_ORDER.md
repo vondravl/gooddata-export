@@ -25,8 +25,8 @@ Database views that can reference any tables or other views.
 ### 2. Procedures (Parameterized Views)
 SQLite doesn't support stored procedures, so we simulate them with parameterized views.
 - Accept input parameters via YAML configuration
-- Support config value substitution (e.g., `{{WORKSPACE_ID}}`)
-- Support literal string substitution (e.g., `$${TOKEN_VAR}`)
+- Read `base_url`/`workspace_id` from `dictionary_metadata` CTE in SQL
+- Support literal string substitution for secrets (e.g., `$${TOKEN_VAR}`)
 - Return result sets like regular views
 - Parameters substituted at execution time
 
@@ -56,8 +56,8 @@ Operations are executed in **dependency order** using topological sort. The actu
 8. **`v_visualizations_usage`** - Shows where visualizations are used
 
 ### Phase 1.5: Procedures (with parameter substitution)
-1. **`v_procedures_api_metrics`** - Procedure to generate curl commands for API metric operations
-   - Parameters: `workspace_id` (from config), `bearer_token` (literal `${TOKEN_GOODDATA_DEV}`)
+1. **`v_api_automation_metrics`** - Procedure to generate curl commands for API metric operations
+   - `base_url`/`workspace_id` from `dictionary_metadata` CTE, `bearer_token` (literal `${TOKEN_GOODDATA_DEV}`)
    - Returns: POST, PUT, DELETE commands with Excel formula helpers
 
 ### Phase 2: Updates (executed in dependency order)
@@ -92,26 +92,26 @@ views:
 ### To Add a Procedure:
 ```yaml
 procedures:
-  v_procedures_your_operation:
-    sql_file: procedures/v_procedures_your_operation.sql
+  v_api_automation_your_operation:
+    sql_file: procedures/v_api_automation_your_operation.sql
     description: What this procedure does and returns
     category: procedures
     dependencies: []  # or list views it depends on
     parameters:
-      workspace_id: "{{WORKSPACE_ID}}"  # Config value substitution
       bearer_token: "$${TOKEN_VAR}"     # Literal string substitution (shell var)
-      api_url: "https://api.example.com"  # Direct string substitution
 ```
 
 **Parameter Types (Simulating Procedure Arguments):**
-- `{{CONFIG_KEY}}` - Replaced with value from ExportConfig (e.g., WORKSPACE_ID, BASE_URL)
 - `$${LITERAL}` - Replaced with literal string `${LITERAL}` (for shell variables)
 - Plain string - Replaced as-is
 
+**Note:** `base_url` and `workspace_id` are read from the `dictionary_metadata` table via a CTE in the SQL file — they are not passed as YAML parameters. Only secrets like `bearer_token` use YAML substitution.
+
 **Note:** SQLite doesn't support stored procedures. This system simulates procedures by:
-1. Accepting parameters via YAML configuration
-2. Substituting parameters into the SQL at runtime
-3. Creating views that return computed results
+1. Reading config values from `dictionary_metadata` via CTE
+2. Accepting secret parameters via YAML configuration
+3. Substituting parameters into the SQL at runtime
+4. Creating views that return computed results
 
 ### To Add an Update:
 ```yaml
@@ -185,7 +185,7 @@ gooddata_export/sql/
 │   ├── v_visualizations_tags.sql
 │   └── ...
 ├── procedures/                 # Procedures (parameterized views)
-│   ├── v_procedures_api_metrics.sql
+│   ├── v_api_automation_metrics.sql
 │   └── ...
 └── updates/                    # Update SQL files
     ├── visuals_with_same_content.sql

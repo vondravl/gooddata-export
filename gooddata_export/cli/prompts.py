@@ -125,7 +125,7 @@ def prompt_checkbox_selection(
 
         try:
             user_input = input("> ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             # Return current selection on Ctrl+C or EOF
             print()
             return [opt for i, opt in enumerate(options_list) if selected[i]]
@@ -182,7 +182,7 @@ def prompt_yes_no(
     while True:
         try:
             user_input = input(prompt_text).strip().lower()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print()
             return default
 
