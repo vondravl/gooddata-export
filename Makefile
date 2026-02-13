@@ -1,20 +1,15 @@
 .DEFAULT_GOAL := help
 
-# Reusable function to check for venv
-define check_venv
-	@if [ ! -d "venv" ]; then \
-		echo "Virtual environment not found. Run 'make venv' first."; \
-		exit 1; \
-	fi
-endef
+# Tool runner: override with `make run RUN=` when entry points are on PATH
+RUN ?= uv run
 
 help:
 	@echo "GoodData Export - Available commands:"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make venv         - Create/update Python virtual environment"
-	@echo "  make dev          - Set up development environment (alias for venv)"
-	@echo "  make install      - Install package in development mode (current env)"
+	@echo "  make install      - Install package (required dependencies only)"
+	@echo "  make dev          - Install with dev dependencies (ruff, pytest)"
+	@echo "  make venv         - Create Python venv with pip (non-uv fallback)"
 	@echo ""
 	@echo "Export & Enrichment:"
 	@echo "  make run          - Full export + enrichment (alias for export-enrich)"
@@ -33,7 +28,27 @@ help:
 	@echo "  make ruff-format  - Format code with ruff"
 	@echo ""
 	@echo "Other:"
-	@echo "  make clean        - Remove build artifacts and virtual environment"
+	@echo "  make clean        - Remove build artifacts and virtual environments"
+	@echo ""
+	@echo "Override RUN variable: make run RUN=  (uses entry points from activated venv)"
+
+install:
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "Installing with uv..."; \
+		uv sync; \
+	else \
+		echo "Installing with pip..."; \
+		pip install -e .; \
+	fi
+
+dev:
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "Installing with uv (including dev dependencies)..."; \
+		uv sync --extra dev; \
+	else \
+		echo "Installing with pip (including dev dependencies)..."; \
+		pip install -e ".[dev]"; \
+	fi
 
 venv: pyproject.toml
 	@if [ ! -d "venv" ]; then \
@@ -47,68 +62,54 @@ venv: pyproject.toml
 		touch venv/bin/activate; \
 	fi
 
-dev: venv
-
-install:
-	pip install -e .
-
 export:
-	$(call check_venv)
-	@echo "📤 Running export only (skipping post-processing)..."
-	venv/bin/python main.py export --skip-post-export
+	@echo "Running export only (skipping post-processing)..."
+	$(RUN) gooddata-export export --skip-post-export
 
 enrich:
-	$(call check_venv)
 	@if [ -z "$(DB)" ]; then \
-		echo "📊 Running enrichment on default database..."; \
-		venv/bin/python main.py enrich --db-path output/db/gooddata_export.db; \
+		echo "Running enrichment on default database..."; \
+		$(RUN) gooddata-export enrich --db-path output/db/gooddata_export.db; \
 	else \
-		echo "📊 Running enrichment on $(DB)..."; \
-		venv/bin/python main.py enrich --db-path $(DB); \
+		echo "Running enrichment on $(DB)..."; \
+		$(RUN) gooddata-export enrich --db-path $(DB); \
 	fi
 
 run: export-enrich
 
 export-enrich:
-	$(call check_venv)
-	@echo "📤📊 Running full export + enrichment workflow..."
-	venv/bin/python main.py export
+	@echo "Running full export + enrichment workflow..."
+	$(RUN) gooddata-export export
 
 run-lite:
-	$(call check_venv)
-	@echo "📤📊 Running export without content fields (smaller DB)..."
-	INCLUDE_CONTENT=false venv/bin/python main.py export
+	@echo "Running export without content fields (smaller DB)..."
+	INCLUDE_CONTENT=false $(RUN) gooddata-export export
 
 run-children: export-children
 
 export-children:
-	$(call check_venv)
-	@echo "📤 Running export with child workspaces..."
-	INCLUDE_CHILD_WORKSPACES=true venv/bin/python main.py export
+	@echo "Running export with child workspaces..."
+	INCLUDE_CHILD_WORKSPACES=true $(RUN) gooddata-export export
 
 ruff-lint:
-	$(call check_venv)
-	@echo "🔍 Checking Python with Ruff..."
-	@venv/bin/ruff check . && venv/bin/ruff format --check --diff .
+	@echo "Checking Python with Ruff..."
+	@$(RUN) ruff check . && $(RUN) ruff format --check --diff .
 
 ruff-format:
-	$(call check_venv)
-	@echo "🔧 Formatting Python with Ruff..."
-	@venv/bin/ruff check --fix . && venv/bin/ruff format .
+	@echo "Formatting Python with Ruff..."
+	@$(RUN) ruff check --fix . && $(RUN) ruff format .
 
 test:
-	$(call check_venv)
-	@echo "🧪 Running tests..."
-	@venv/bin/pytest tests/ -v
+	@echo "Running tests..."
+	@$(RUN) pytest tests/ -v
 
 test-cov:
-	$(call check_venv)
-	@echo "🧪 Running tests with coverage..."
-	@venv/bin/pytest tests/ --cov=gooddata_export --cov-report=term-missing
+	@echo "Running tests with coverage..."
+	@$(RUN) pytest tests/ --cov=gooddata_export --cov-report=term-missing
 
 clean:
-	rm -rf venv build/ dist/ *.egg-info
+	rm -rf venv .venv build/ dist/ *.egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-.PHONY: help venv dev install export enrich run run-lite export-enrich run-children export-children ruff-lint ruff-format test test-cov clean
+.PHONY: help install dev venv export enrich run run-lite export-enrich run-children export-children ruff-lint ruff-format test test-cov clean

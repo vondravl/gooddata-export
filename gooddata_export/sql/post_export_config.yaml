@@ -156,7 +156,8 @@ views:
 # PROCEDURES (Parameterized)
 # ====================
 # SQLite doesn't support stored procedures, so we simulate them with parameterized views.
-# Parameters are substituted at execution time from ExportConfig and environment.
+# base_url and workspace_id are read from dictionary_metadata via CTE in each SQL file.
+# Only bearer_token is substituted at execution time (as a shell variable reference).
 procedures:
   v_api_automation_metrics:
     sql_file: procedures/v_api_automation_metrics.sql
@@ -164,18 +165,15 @@ procedures:
     category: procedures
     dependencies: []
     parameters:
-      base_url: "{{BASE_URL}}"  # Will be replaced with actual base_url from config
-      workspace_id: "{{WORKSPACE_ID}}"  # Will be replaced with actual workspace_id from config
-      bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Will be replaced with literal ${TOKEN_GOODDATA_DEV} for shell
-  
+      bearer_token: "$${TOKEN_GOODDATA_DEV}"
+
   v_api_automation_workspaces:
     sql_file: procedures/v_api_automation_workspaces.sql
     description: Procedure to generate API curl commands for workspace operations
     category: procedures
     dependencies: []
     parameters:
-      base_url: "{{BASE_URL}}"  # Will be replaced with actual base_url from config
-      bearer_token: "$${TOKEN_GOODDATA_DEV}"  # Will be replaced with literal ${TOKEN_GOODDATA_DEV} for shell
+      bearer_token: "$${TOKEN_GOODDATA_DEV}"
 
 # ====================
 # TABLE UPDATES

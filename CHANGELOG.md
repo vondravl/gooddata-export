@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-02-12
+
+### Added
+- **Auto-create git tag on PR merge**: GitHub Actions workflow (`create_tag.yml`) reads version from `pyproject.toml` and creates a `vX.Y.Z` tag on push to `main`. Includes `scripts/create_tag.py` with `--dry-run` support for local testing.
+
+### Changed
+- **Simplified procedure parameter substitution**: `base_url` and `workspace_id` are now read directly from `dictionary_metadata` via CTE in SQL procedure files, instead of being substituted by Python. Only `bearer_token` remains as a substituted parameter.
+  - Removes `ExportConfig` dependency from `run_post_export_sql()` and `enrich` CLI command
+  - Removes `_read_metadata_value()` helper and `{{CONFIG_KEY}}` substitution branch
+  - Procedures are now more self-documenting (SQL reads its own config from the database)
+  - Missing config values fall back to Postman-style `{{base_url}}`/`{{workspace_id}}` placeholders
+- **Minimum Python raised from 3.13 to 3.14**: Updated `requires-python`, classifiers, and ruff `target-version`
+- **Makefile modernized to use uv**: Replaced `venv/bin/python main.py` with `$(RUN) gooddata-export` pattern (`RUN ?= uv run`); override with `make run RUN=` for activated venvs
+- **GitHub Actions updated**: Uses `astral-sh/setup-uv@v5` and `uv sync` instead of `make dev`
+- **Documentation updated to use `gooddata-export` CLI**: Replaced `python main.py` references throughout USAGE_GUIDE.md, CLAUDE.md, and .env.gdcloud.example
+
+### Added
+- **PEP 561 `py.typed` marker**: Enables type checking for downstream consumers of the package
+
+### Fixed
+- **Copyright year in LICENSE**: Updated from 2024 to 2024-2026
+- **Stale documentation references**: Updated README.md project structure (flat `cli.py`/`export.py`/`process.py` → `cli/`/`export/`/`process/` packages), removed `{{CONFIG_KEY}}` substitution references from DEPENDENCY_GRAPH.md, EXECUTION_ORDER.md, and USAGE_GUIDE.md, renamed `v_procedures_api_metrics` → `v_api_automation_metrics`
+
 ## [1.7.0] - 2026-02-05
 
 ### Changed

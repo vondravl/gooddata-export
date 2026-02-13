@@ -184,7 +184,10 @@ def export_all_metadata(
             if config.INCLUDE_CHILD_WORKSPACES:
                 # Multi-workspace: enrich only parent workspace to avoid confusing duplicates
                 logger.debug("Multi-workspace mode: enriching parent workspace only")
-                run_post_export_sql(db_path, parent_workspace_id=config.WORKSPACE_ID)
+                run_post_export_sql(
+                    db_path,
+                    parent_workspace_id=config.WORKSPACE_ID,
+                )
             else:
                 # Single workspace: enrich all data (no filter needed)
                 run_post_export_sql(db_path)

@@ -1,7 +1,7 @@
 """Common utilities for GoodData API interaction."""
 
 import logging
-from typing import Any, NoReturn
+from typing import Any, Never
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -91,7 +91,7 @@ def raise_for_connection_error(
     error: Exception,
     base_url: str | None = None,
     retry_info: str | None = None,
-) -> NoReturn:
+) -> Never:
     """Raise RuntimeError with detailed message for connection errors.
 
     Args:
@@ -119,7 +119,7 @@ def raise_for_api_error(
     response: requests.Response,
     context: str,
     workspace_id: str | None = None,
-) -> NoReturn:
+) -> Never:
     """Raise RuntimeError with detailed message for HTTP errors.
 
     This is a terminal function that always raises - it never returns.
@@ -179,7 +179,7 @@ def raise_for_request_error(
     error: Exception,
     base_url: str | None = None,
     retry_info: str | None = None,
-) -> NoReturn:
+) -> Never:
     """Unified handler for requests exceptions.
 
     Dispatches to appropriate handler based on exception type:

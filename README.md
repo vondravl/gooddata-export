@@ -18,6 +18,10 @@ A Python library for exporting GoodData workspace metadata to SQLite databases a
 ### From Git
 
 ```bash
+# With uv
+uv pip install git+https://github.com/vondravl/gooddata-export.git
+
+# With pip
 pip install git+https://github.com/vondravl/gooddata-export.git
 ```
 
@@ -26,7 +30,12 @@ pip install git+https://github.com/vondravl/gooddata-export.git
 ```bash
 git clone https://github.com/vondravl/gooddata-export.git
 cd gooddata-export
-pip install -e .
+
+# With uv (recommended)
+uv sync
+
+# With pip
+pip install -e ".[dev]"
 ```
 
 ## Quick Start
@@ -366,10 +375,12 @@ result = export_metadata(
 ### Running Tests
 
 ```bash
-# Install development dependencies
-pip install -e ".[dev]"
+# With uv
+uv sync
+uv run pytest
 
-# Run tests
+# With pip
+pip install -e ".[dev]"
 pytest
 ```
 
@@ -379,13 +390,27 @@ pytest
 gooddata-export/
 ├── gooddata_export/           # Core library package
 │   ├── __init__.py           # Main API exports
-│   ├── cli.py                # Command-line interface
+│   ├── cli/                  # Command-line interface
+│   │   ├── __init__.py       # Package exports (main function)
+│   │   ├── main.py           # CLI commands and argument parsing
+│   │   └── prompts.py        # Interactive prompt utilities
 │   ├── config.py             # Configuration handling
-│   ├── export.py             # Export orchestration
-│   ├── process.py            # Data processing logic
+│   ├── constants.py          # Shared constants
 │   ├── common.py             # API client utilities
 │   ├── db.py                 # Database utilities
 │   ├── post_export.py        # Post-processing orchestration
+│   ├── export/               # Export orchestration
+│   │   ├── __init__.py       # Main orchestration (export_all_metadata)
+│   │   ├── fetch.py          # Data fetching functions (API calls)
+│   │   ├── writers.py        # Database/CSV writer functions
+│   │   └── utils.py          # Export utilities
+│   ├── process/              # Data processing logic
+│   │   ├── __init__.py       # Exports all process functions
+│   │   ├── entities.py       # Entity processing
+│   │   ├── layout.py         # Layout API fetching
+│   │   ├── dashboard_traversal.py  # Dashboard widget extraction
+│   │   ├── rich_text.py      # Rich text extraction
+│   │   └── common.py         # Shared utilities
 │   └── sql/                  # SQL scripts (auto-executed during post-export)
 │       ├── procedures/       # Stored procedures and automation views
 │       ├── updates/          # Data enrichment scripts (duplicates, usage analysis)
