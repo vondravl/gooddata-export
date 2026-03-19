@@ -708,10 +708,15 @@ def process_dashboards_references(
 ) -> list[dict]:
     """Extract all object references from dashboards.
 
-    Extracts references from dashboard-level configurations:
+    Extracts references from dashboard-level and tab-level configurations:
         - attributeFilterConfigs[].displayAsLabel (object_type='label', source='attributeFilterConfig')
         - dateFilterConfig.dateDataSet (object_type='dataset', source='dateFilterConfig')
         - filterContextRef (object_type='filterContext', source='filterContextRef')
+
+    For tabbed dashboards, each tab can have its own filter configs that override
+    the dashboard-level defaults. Both top-level and tab-level configs are
+    processed because tabs may inherit from top-level (UniqueRelationshipTracker
+    deduplicates any overlapping references).
 
     Widget-level references (insight, dateDataSet) are tracked in dashboards_visualizations
     and dashboards_widget_filters tables respectively.
@@ -742,56 +747,67 @@ def process_dashboards_references(
         if not content:
             continue
 
-        # Extract attributeFilterConfigs[].displayAsLabel references
-        # These specify which label to use for displaying attribute filter values
-        # In dashboards, attributeFilterConfigs is a list of config objects:
-        #   [{"displayAsLabel": {"identifier": {"id": ..., "type": ...}}, "localIdentifier": ...}]
-        # (Visualizations use a dict keyed by UUID instead — see process_visualizations_references)
-        attribute_filter_configs = content.get("attributeFilterConfigs", [])
-        for config in attribute_filter_configs:
-            display_as_label = config.get("displayAsLabel", {})
-            label_id = display_as_label.get("identifier", {}).get("id")
-            if label_id:
+        # Collect config sources: top-level content + each tab
+        # Unlike widget traversal (iterate_dashboard_widgets), we can't use
+        # `tabs or [content]` here because tabs may not have their own
+        # filterContextRef/attributeFilterConfigs — they can inherit from
+        # the top-level content. We must always include top-level content.
+        # UniqueRelationshipTracker deduplicates any overlapping refs.
+        config_sources = [content]
+        for tab in content.get("tabs", []):
+            config_sources.append(tab)
+
+        for config_source in config_sources:
+            # Extract attributeFilterConfigs[].displayAsLabel references
+            # These specify which label to use for displaying attribute filter values
+            # In dashboards, attributeFilterConfigs is a list of config objects:
+            #   [{"displayAsLabel": {"identifier": {"id": ..., "type": ...}}, ...}]
+            # (Visualizations use a dict keyed by UUID — see process_visualizations_references)
+            attribute_filter_configs = config_source.get("attributeFilterConfigs", [])
+            for config in attribute_filter_configs:
+                display_as_label = config.get("displayAsLabel", {})
+                label_id = display_as_label.get("identifier", {}).get("id")
+                if label_id:
+                    tracker.add(
+                        {
+                            "dashboard_id": dashboard_id,
+                            "referenced_id": label_id,
+                            "workspace_id": workspace_id,
+                            "object_type": "label",
+                            "source": "attributeFilterConfig",
+                        }
+                    )
+
+            # Extract dateFilterConfig.dateDataSet reference
+            # This specifies which date dataset the dashboard's date filter applies to
+            date_filter_config = config_source.get("dateFilterConfig", {})
+            date_data_set = date_filter_config.get("dateDataSet", {})
+            dataset_id = date_data_set.get("identifier", {}).get("id")
+            if dataset_id:
                 tracker.add(
                     {
                         "dashboard_id": dashboard_id,
-                        "referenced_id": label_id,
+                        "referenced_id": dataset_id,
                         "workspace_id": workspace_id,
-                        "object_type": "label",
-                        "source": "attributeFilterConfig",
+                        "object_type": "dataset",
+                        "source": "dateFilterConfig",
                     }
                 )
 
-        # Extract dateFilterConfig.dateDataSet reference
-        # This specifies which date dataset the dashboard's date filter applies to
-        date_filter_config = content.get("dateFilterConfig", {})
-        date_data_set = date_filter_config.get("dateDataSet", {})
-        dataset_id = date_data_set.get("identifier", {}).get("id")
-        if dataset_id:
-            tracker.add(
-                {
-                    "dashboard_id": dashboard_id,
-                    "referenced_id": dataset_id,
-                    "workspace_id": workspace_id,
-                    "object_type": "dataset",
-                    "source": "dateFilterConfig",
-                }
-            )
-
-        # Extract filterContextRef reference
-        # This specifies the filter context used by the dashboard
-        filter_context_ref = content.get("filterContextRef", {})
-        filter_context_id = filter_context_ref.get("identifier", {}).get("id")
-        if filter_context_id:
-            tracker.add(
-                {
-                    "dashboard_id": dashboard_id,
-                    "referenced_id": filter_context_id,
-                    "workspace_id": workspace_id,
-                    "object_type": "filterContext",
-                    "source": "filterContextRef",
-                }
-            )
+            # Extract filterContextRef reference
+            # This specifies the filter context used by the dashboard (or tab)
+            filter_context_ref = config_source.get("filterContextRef", {})
+            filter_context_id = filter_context_ref.get("identifier", {}).get("id")
+            if filter_context_id:
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "referenced_id": filter_context_id,
+                        "workspace_id": workspace_id,
+                        "object_type": "filterContext",
+                        "source": "filterContextRef",
+                    }
+                )
 
     return tracker.get_sorted(
         sort_key=lambda x: (x["dashboard_id"], x["object_type"], x["referenced_id"])

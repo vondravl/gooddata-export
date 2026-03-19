@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-03-19
+
+### Fixed
+- **Tab-level filter context references not tracked**: Tabbed dashboards have per-tab `filterContextRef` that was not being extracted by `process_dashboards_references()`, causing tab-specific filter contexts to be incorrectly flagged as unused. Now iterates both top-level content and each tab's config.
+- **Filter context usage check missed dashboards_references**: `filter_contexts_usage_check.sql` only checked `dashboards.filter_context_id` (top-level). Now also checks `dashboards_references` table for `object_type='filterContext'` entries (tab-level refs).
+- **Filter context usage view incomplete**: `v_filter_contexts_usage.sql` now uses a CTE combining both `dashboards.filter_context_id` and `dashboards_references` to show all dashboard-filter context relationships.
+
 ## [1.8.0] - 2026-02-12
 
 ### Added
