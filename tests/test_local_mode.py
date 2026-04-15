@@ -695,11 +695,16 @@ class TestLocalModeIntegration:
         label_refs = cursor.fetchall()
         conn.close()
 
-        # viz_revenue_trend uses metric_total_revenue + date.month label
-        # viz_orders_by_region uses metric_order_count + region.name label
+        # viz_revenue_trend uses metric_total_revenue (measure + rankingFilter)
+        # viz_orders_by_region uses metric_order_count
         # viz_avg_order_value uses metric_avg_order_value
-        assert len(metric_refs) == 3
+        assert len(metric_refs) == 4
         assert ("viz_revenue_trend", "metric_total_revenue", "measure") in metric_refs
+        assert (
+            "viz_revenue_trend",
+            "metric_total_revenue",
+            "rankingFilter",
+        ) in metric_refs
         assert ("viz_orders_by_region", "metric_order_count", "measure") in metric_refs
         assert (
             "viz_avg_order_value",
@@ -1171,6 +1176,48 @@ class TestLocalModeIntegration:
 
         assert len(filter_contexts) == 1
         assert filter_contexts[0][0] == "filter_context_default"
+
+    def test_filter_context_validate_by_exported(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """validateElementsBy and filterElementsBy are captured."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT filter_context_id, filter_index, source, referenced_id, "
+            "referenced_type, over_attributes "
+            "FROM filter_context_validate_by ORDER BY filter_index, source"
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        assert len(rows) == 2
+
+        # filterElementsBy: product_group_name → product_type_name filter
+        assert rows[0][0] == "filter_context_default"
+        assert rows[0][2] == "filterElementsBy"
+        assert rows[0][3] == "product_type_name_7_attributeFilter"
+        assert rows[0][4] == "attributeFilter"
+        assert rows[0][5] == '["product_type"]'  # over_attributes JSON
+
+        # validateElementsBy: product_name → transaction_count metric
+        assert rows[1][2] == "validateElementsBy"
+        assert rows[1][3] == "transaction_count"
+        assert rows[1][4] == "metric"
+        assert rows[1][5] is None  # no over_attributes for metrics
 
     def test_tags_preserved(self, sample_layout, mock_config, tmp_path):
         """Tags are properly preserved in exports."""

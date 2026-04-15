@@ -24,6 +24,7 @@ from gooddata_export.process.entities import (
     process_dashboards_visualizations,
     process_dashboards_widget_filters,
     process_filter_context_fields,
+    process_filter_context_validate_by,
     process_filter_contexts,
     process_metrics,
     process_plugins,
@@ -74,6 +75,7 @@ __all__ = [
     "process_dashboards_widget_filters",
     "process_filter_contexts",
     "process_filter_context_fields",
+    "process_filter_context_validate_by",
     "process_workspaces",
     # Layout
     "fetch_ldm",

@@ -1,5 +1,6 @@
 """Entity API functions for fetching and processing GoodData entities."""
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -236,6 +237,21 @@ def process_visualizations_references(visualization_data, workspace_id=None):
     for viz in visualization_data:
         content = viz.get("content", {})
 
+        # Build lookup: measure localIdentifier → (metric ID, type)
+        # Needed to resolve rankingFilter references which use localIdentifier
+        measure_local_id_map = {}
+        for bucket in content.get("buckets", []):
+            for item in bucket.get("items", []):
+                measure = item.get("measure", {})
+                local_id = measure.get("localIdentifier")
+                measure_def = measure.get("definition", {}).get("measureDefinition", {})
+                identifier = measure_def.get("item", {}).get("identifier", {})
+                if local_id and identifier.get("id"):
+                    measure_local_id_map[local_id] = {
+                        "id": identifier["id"],
+                        "type": identifier.get("type", "metric"),
+                    }
+
         # Extract references from buckets
         for bucket in content.get("buckets", []):
             for item in bucket.get("items", []):
@@ -316,6 +332,24 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "workspace_id": workspace_id,
                             "object_type": object_type,
                             "source": "filter",
+                            "label": None,
+                        }
+                    )
+
+            # Handle ranking filters (TOP/BOTTOM N by measure)
+            # rankingFilter.measure uses a localIdentifier that maps to a bucket measure
+            ranking = filter_def.get("rankingFilter", {})
+            measure_local_id = ranking.get("measure", {}).get("localIdentifier")
+            if measure_local_id:
+                resolved = measure_local_id_map.get(measure_local_id)
+                if resolved:
+                    tracker.add(
+                        {
+                            "visualization_id": viz["id"],
+                            "referenced_id": resolved["id"],
+                            "workspace_id": workspace_id,
+                            "object_type": resolved["type"],
+                            "source": "rankingFilter",
                             "label": None,
                         }
                     )
@@ -606,6 +640,85 @@ def process_filter_context_fields(data, workspace_id=None):
                 )
 
     return processed_fields
+
+
+def process_filter_context_validate_by(data, workspace_id=None):
+    """Extract validateElementsBy and filterElementsBy from attribute filters.
+
+    Attribute filters can constrain valid elements in two ways:
+    - validateElementsBy: references a metric (only non-null results shown)
+    - filterElementsBy: references another dashboard filter by localIdentifier,
+      optionally scoped via 'over.attributes'
+
+    Returns list of dicts with: filter_context_id, workspace_id, filter_index,
+    source (validateElementsBy|filterElementsBy), referenced_id, referenced_type,
+    over_attributes (JSON array of attribute IDs, only for filterElementsBy).
+    """
+    results = []
+
+    for obj in data:
+        filter_context_id = obj["id"]
+        content = obj.get("content", {})
+        filters = content.get("filters", [])
+
+        for filter_index, filter_obj in enumerate(filters):
+            if "attributeFilter" not in filter_obj:
+                continue
+
+            attr_filter = filter_obj["attributeFilter"]
+
+            # validateElementsBy: metric references
+            for ref in attr_filter.get("validateElementsBy", []):
+                identifier = ref.get("identifier", {})
+                referenced_id = identifier.get("id", "")
+                referenced_type = identifier.get("type", "")
+
+                if referenced_id:
+                    results.append(
+                        {
+                            "filter_context_id": filter_context_id,
+                            "workspace_id": workspace_id,
+                            "filter_index": filter_index,
+                            "source": "validateElementsBy",
+                            "referenced_id": referenced_id,
+                            "referenced_type": referenced_type,
+                            "over_attributes": None,
+                        }
+                    )
+
+            # filterElementsBy: parent filter references
+            for ref in attr_filter.get("filterElementsBy", []):
+                filter_local_id = ref.get("filterLocalIdentifier", "")
+                over_attrs = ref.get("over", {}).get("attributes", [])
+                # Extract attribute IDs from identifier objects
+                over_attr_ids = []
+                for a in over_attrs:
+                    if not a:
+                        continue
+                    attr_id = (
+                        a.get("identifier", {}).get("id", "")
+                        if isinstance(a, dict)
+                        else str(a)
+                    )
+                    if attr_id:
+                        over_attr_ids.append(attr_id)
+
+                if filter_local_id:
+                    results.append(
+                        {
+                            "filter_context_id": filter_context_id,
+                            "workspace_id": workspace_id,
+                            "filter_index": filter_index,
+                            "source": "filterElementsBy",
+                            "referenced_id": filter_local_id,
+                            "referenced_type": "attributeFilter",
+                            "over_attributes": (
+                                json.dumps(over_attr_ids) if over_attr_ids else None
+                            ),
+                        }
+                    )
+
+    return results
 
 
 def process_workspaces(
