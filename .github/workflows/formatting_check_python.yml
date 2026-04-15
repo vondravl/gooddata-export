@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Use action for linting - output-format=github enables annotations
       - name: Check Python linting (ruff check)
