@@ -20,6 +20,7 @@ from gooddata_export.process import (
     process_dashboards_visualizations,
     process_dashboards_widget_filters,
     process_filter_context_fields,
+    process_filter_context_validate_by,
     process_filter_contexts,
     process_ldm,
     process_metrics,
@@ -912,6 +913,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
     """
     all_processed_data = []
     all_processed_fields = []
+    all_processed_validate_by = []
 
     # Process filter contexts from all workspaces
     for workspace_info in all_workspace_data:
@@ -928,6 +930,12 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
         # Process filter context fields (individual filters)
         processed_fields = process_filter_context_fields(raw_data, workspace_id)
         all_processed_fields.extend(processed_fields)
+
+        # Process validateElementsBy references
+        processed_validate_by = process_filter_context_validate_by(
+            raw_data, workspace_id
+        )
+        all_processed_validate_by.extend(processed_validate_by)
 
     # Define column schemas
     filter_contexts_columns = {
@@ -957,6 +965,17 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
         "PRIMARY KEY": "(filter_context_id, workspace_id, filter_index)",
         "FOREIGN KEY (filter_context_id, workspace_id)": "REFERENCES filter_contexts(filter_context_id, workspace_id)",
     }
+    filter_context_validate_by_columns = {
+        "filter_context_id": "TEXT",
+        "workspace_id": "TEXT",
+        "filter_index": "INTEGER",
+        "source": "TEXT",
+        "referenced_id": "TEXT",
+        "referenced_type": "TEXT",
+        "over_attributes": "JSON",
+        "PRIMARY KEY": "(filter_context_id, workspace_id, filter_index, source, referenced_id)",
+        "FOREIGN KEY (filter_context_id, workspace_id, filter_index)": "REFERENCES filter_context_fields(filter_context_id, workspace_id, filter_index)",
+    }
 
     # Always create all tables (even if empty) for consistency
     with database_connection(db_name) as conn:
@@ -965,6 +984,7 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
             [
                 ("filter_contexts", filter_contexts_columns),
                 ("filter_context_fields", filter_context_fields_columns),
+                ("filter_context_validate_by", filter_context_validate_by_columns),
             ],
         )
 
@@ -1044,6 +1064,39 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
                 ],
             )
 
+        # Export filter_context_validate_by table
+        validate_by_count = len(all_processed_validate_by)
+        if export_dir is not None and all_processed_validate_by:
+            validate_by_count = write_to_csv(
+                all_processed_validate_by,
+                export_dir,
+                "gooddata_filter_context_validate_by.csv",
+                fieldnames=filter_context_validate_by_columns.keys(),
+            )
+
+        if all_processed_validate_by:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO filter_context_validate_by
+                (filter_context_id, workspace_id, filter_index,
+                 source, referenced_id, referenced_type, over_attributes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["filter_context_id"],
+                        d["workspace_id"],
+                        d["filter_index"],
+                        d["source"],
+                        d["referenced_id"],
+                        d["referenced_type"],
+                        d["over_attributes"],
+                    )
+                    for d in all_processed_validate_by
+                ],
+            )
+
         conn.commit()
 
     if export_dir is not None:
@@ -1058,11 +1111,23 @@ def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> N
                 fields_count,
                 Path(export_dir) / "gooddata_filter_context_fields.csv",
             )
+        if validate_by_count > 0:
+            log_export(
+                "filter context validate by",
+                validate_by_count,
+                Path(export_dir) / "gooddata_filter_context_validate_by.csv",
+            )
     else:
         logger.debug("Exported %d filter contexts to %s", records_count, db_name)
         if fields_count > 0:
             logger.debug(
                 "Exported %d filter context fields to %s", fields_count, db_name
+            )
+        if validate_by_count > 0:
+            logger.debug(
+                "Exported %d filter context validate_by to %s",
+                validate_by_count,
+                db_name,
             )
 
 

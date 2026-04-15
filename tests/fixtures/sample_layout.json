@@ -81,6 +81,15 @@
               ]
             }
           ],
+          "filters": [
+            {
+              "rankingFilter": {
+                "measure": {"localIdentifier": "m1"},
+                "operator": "TOP",
+                "value": 3
+              }
+            }
+          ],
           "attributeFilterConfigs": {
             "abc123": {
               "displayAsLabel": {
@@ -322,6 +331,49 @@
                 "granularity": "GDC.time.month",
                 "from": -11,
                 "to": 0
+              }
+            },
+            {
+              "attributeFilter": {
+                "attributeElements": {"uris": []},
+                "displayForm": {"identifier": {"id": "product_type_name", "type": "label"}},
+                "filterElementsBy": [],
+                "localIdentifier": "product_type_name_7_attributeFilter",
+                "negativeSelection": true,
+                "selectionMode": "multi",
+                "title": "Product type",
+                "validateElementsBy": []
+              }
+            },
+            {
+              "attributeFilter": {
+                "attributeElements": {"uris": []},
+                "displayForm": {"identifier": {"id": "product_group_name", "type": "label"}},
+                "filterElementsBy": [
+                  {
+                    "filterLocalIdentifier": "product_type_name_7_attributeFilter",
+                    "over": {"attributes": [{"identifier": {"id": "product_type", "type": "attribute"}}]}
+                  }
+                ],
+                "localIdentifier": "product_group_name_5_attributeFilter",
+                "negativeSelection": true,
+                "selectionMode": "multi",
+                "title": "Product group",
+                "validateElementsBy": []
+              }
+            },
+            {
+              "attributeFilter": {
+                "attributeElements": {"uris": []},
+                "displayForm": {"identifier": {"id": "product_name", "type": "label"}},
+                "filterElementsBy": [],
+                "localIdentifier": "product_name_9_attributeFilter",
+                "negativeSelection": true,
+                "selectionMode": "multi",
+                "title": "Product",
+                "validateElementsBy": [
+                  {"identifier": {"id": "transaction_count", "type": "metric"}}
+                ]
               }
             }
           ]

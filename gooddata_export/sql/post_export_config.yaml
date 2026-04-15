@@ -115,9 +115,21 @@ views:
     category: usage
     dependencies: []
 
+  v_visualizations_references:
+    sql_file: views/v_visualizations_references.sql
+    description: Visualization references with visualization and metric titles
+    category: usage
+    dependencies: []
+
   v_filter_contexts_usage:
     sql_file: views/v_filter_contexts_usage.sql
     description: Shows where filter contexts are used in dashboards
+    category: usage
+    dependencies: []
+
+  v_filter_contexts_validate_by:
+    sql_file: views/v_filter_contexts_validate_by.sql
+    description: Filter element validation dependencies with human-readable filter names
     category: usage
     dependencies: []
 

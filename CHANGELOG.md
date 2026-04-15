@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-04-15
+
+### Added
+- **`filter_context_validate_by` table**: Captures `validateElementsBy` (metric references) and `filterElementsBy` (parent dashboard filter references) from attribute filters in filter contexts. The `source` column distinguishes between the two, and `over_attributes` stores the scoping attributes for `filterElementsBy` entries.
+- **Ranking filter references in `visualizations_references`**: `rankingFilter` metric references are now extracted with `source='rankingFilter'`, resolving the measure `localIdentifier` to the actual metric ID.
+- **`v_visualizations_references` view**: Convenience view over `visualizations_references` that includes the visualization title.
+
 ## [1.8.1] - 2026-03-19
 
 ### Fixed
