@@ -109,6 +109,14 @@ views:
     dependencies:
       - metrics_references
 
+  v_metrics_datasets_ancestry:
+    sql_file: views/v_metrics_datasets_ancestry.sql
+    description: Maps each metric to LDM datasets it depends on, including transitive dependencies via ancestry
+    category: usage
+    dependencies:
+      - metrics_references
+      - metrics_ancestry
+
   v_visualizations_usage:
     sql_file: views/v_visualizations_usage.sql
     description: Shows where visualizations are used in dashboards

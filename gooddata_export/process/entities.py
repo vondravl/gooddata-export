@@ -336,23 +336,30 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                         }
                     )
 
-            # Handle ranking filters (TOP/BOTTOM N by measure)
-            # rankingFilter.measure uses a localIdentifier that maps to a bucket measure
-            ranking = filter_def.get("rankingFilter", {})
-            measure_local_id = ranking.get("measure", {}).get("localIdentifier")
-            if measure_local_id:
-                resolved = measure_local_id_map.get(measure_local_id)
-                if resolved:
-                    tracker.add(
-                        {
-                            "visualization_id": viz["id"],
-                            "referenced_id": resolved["id"],
-                            "workspace_id": workspace_id,
-                            "object_type": resolved["type"],
-                            "source": "rankingFilter",
-                            "label": None,
-                        }
-                    )
+            # Handle ranking filters (TOP/BOTTOM N by measure) and measure-value
+            # filters (filter rows by a measure's value). Both reference a bucket
+            # measure via measure.localIdentifier — same resolution path.
+            for filter_key, source_label in (
+                ("rankingFilter", "rankingFilter"),
+                ("measureValueFilter", "measureValueFilter"),
+            ):
+                measure_filter = filter_def.get(filter_key, {})
+                measure_local_id = measure_filter.get("measure", {}).get(
+                    "localIdentifier"
+                )
+                if measure_local_id:
+                    resolved = measure_local_id_map.get(measure_local_id)
+                    if resolved:
+                        tracker.add(
+                            {
+                                "visualization_id": viz["id"],
+                                "referenced_id": resolved["id"],
+                                "workspace_id": workspace_id,
+                                "object_type": resolved["type"],
+                                "source": source_label,
+                                "label": None,
+                            }
+                        )
 
     return tracker.get_sorted(
         sort_key=lambda x: (
