@@ -695,15 +695,21 @@ class TestLocalModeIntegration:
         label_refs = cursor.fetchall()
         conn.close()
 
-        # viz_revenue_trend uses metric_total_revenue (measure + rankingFilter)
+        # viz_revenue_trend uses metric_total_revenue
+        #   (measure + rankingFilter + measureValueFilter)
         # viz_orders_by_region uses metric_order_count
         # viz_avg_order_value uses metric_avg_order_value
-        assert len(metric_refs) == 4
+        assert len(metric_refs) == 5
         assert ("viz_revenue_trend", "metric_total_revenue", "measure") in metric_refs
         assert (
             "viz_revenue_trend",
             "metric_total_revenue",
             "rankingFilter",
+        ) in metric_refs
+        assert (
+            "viz_revenue_trend",
+            "metric_total_revenue",
+            "measureValueFilter",
         ) in metric_refs
         assert ("viz_orders_by_region", "metric_order_count", "measure") in metric_refs
         assert (

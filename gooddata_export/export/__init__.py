@@ -10,11 +10,10 @@ Main entry point:
 import logging
 import os
 import shutil
-import sqlite3
 from pathlib import Path
 
 from gooddata_export.common import ExportError
-from gooddata_export.db import store_workspace_metadata
+from gooddata_export.db import connect_database, store_workspace_metadata
 from gooddata_export.export.fetch import fetch_all_workspace_data
 from gooddata_export.export.writers import (
     export_dashboards,
@@ -204,7 +203,7 @@ def export_all_metadata(
 
     # Vacuum database to reclaim space (especially after content exclusion or truncation)
     try:
-        conn = sqlite3.connect(db_path)
+        conn = connect_database(db_path)
         conn.execute("VACUUM")
         conn.close()
         final_size = os.path.getsize(db_path) / 1024 / 1024

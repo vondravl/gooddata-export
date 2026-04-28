@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-04-27
+
+### Added
+- **Measure value filter references in `visualizations_references`**: `measureValueFilter` metric references are now extracted with `source='measureValueFilter'`, resolving the measure `localIdentifier` to the actual metric ID. Enables detecting visualizations that combine `rankingFilter` and `measureValueFilter` (a known source of execution errors) via a simple query against `visualizations_references`.
+- **`v_metrics_datasets_ancestry` view**: Maps each metric to the LDM datasets it depends on, including transitive dependencies via metric ancestry.
+
+### Changed
+- **SQLite tuning for ETL workload**: `connect_database()` now sets `journal_mode=WAL`, `synchronous=NORMAL`, `temp_store=MEMORY`, and `cache_size=-65536` (~64 MiB) on every connection. Measured ~10% reduction in post-export wall time on a local-mode benchmark (scale 500, macOS APFS); larger gains expected on slower disks (CI runners, network volumes). WAL is persisted on the database file — after first open, expect `-wal` and `-shm` sidecar files next to the `.db`; copy them along with the `.db` if relocating the database, or close the connection cleanly first.
+
 ## [1.9.0] - 2026-04-15
 
 ### Added

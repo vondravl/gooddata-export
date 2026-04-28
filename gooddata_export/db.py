@@ -34,6 +34,16 @@ def connect_database(db_name):
     # Create connection
     conn = sqlite3.connect(db_name)
 
+    # Tune for single-writer ETL workload: WAL journaling avoids the per-commit
+    # rollback-journal rewrite, synchronous=NORMAL fsync's only at checkpoints,
+    # and an in-memory temp store + larger page cache keep post-export sorts and
+    # CTEs off disk. These pragmas affect this connection only (except WAL,
+    # which is persisted on the database file).
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA temp_store = MEMORY")
+    conn.execute("PRAGMA cache_size = -65536")  # ~64 MiB
+
     return conn
 
 
