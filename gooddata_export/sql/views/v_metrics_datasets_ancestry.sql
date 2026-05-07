@@ -7,6 +7,7 @@
 --   - attributes                            -> resolve through ldm_columns (type='attribute')
 --   - default labels (label_id == attribute_id) -> resolve through ldm_columns (type='attribute')
 --   - specific labels                       -> resolve through ldm_labels
+--   - datasets ({dataset/...})              -> referenced_id is the dataset_id
 --
 -- For every metric, considers both its own direct references and the
 -- references of all its ancestor metrics (from metrics_ancestry).
@@ -50,6 +51,12 @@ WITH refs AS (
     FROM metrics_references mr
     JOIN ldm_labels l ON l.id = mr.referenced_id
     WHERE mr.reference_type = 'label'
+    UNION ALL
+    -- Direct dataset references -> referenced_id is the dataset_id
+    SELECT mr.source_metric_id, mr.source_workspace_id, d.id, mr.reference_type
+    FROM metrics_references mr
+    JOIN ldm_datasets d ON d.id = mr.referenced_id
+    WHERE mr.reference_type = 'dataset'
 ),
 all_metric_pairs AS (
     SELECT metric_id, workspace_id, metric_id AS effective_metric FROM metrics
