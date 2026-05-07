@@ -1,7 +1,7 @@
 """Tests for metrics_references table and is_valid computation.
 
 These tests verify that the consolidated metrics_references table correctly:
-1. Extracts all reference types (metric, attribute, label, fact) from MAQL
+1. Extracts all reference types (metric, attribute, label, fact, dataset) from MAQL
 2. Excludes self-references for metric type
 3. Supports metrics_ancestry (metric-to-metric only)
 4. Works with v_metrics_relationships and v_metrics_relationships_root views
@@ -127,15 +127,41 @@ class TestPopulateMetricsReferences:
         assert len(results) == 1
         assert results[0] == ("card_present_code", "label")
 
-    def test_extracts_all_reference_types(self, db_connection):
-        """Single metric with all four reference types."""
+    def test_extracts_dataset_references(self, db_connection):
+        """Extracts {dataset/...} patterns with reference_type='dataset'."""
         cursor = db_connection.cursor()
         cursor.execute(
             "INSERT INTO metrics VALUES (?, ?, ?)",
             (
                 "m1",
                 "ws1",
-                'SELECT {metric/base_metric} * {fact/amount} / COUNT({attr/customer_id}) WHERE {label/status_code} = "1"',
+                "SELECT MIN({label/process_date.day}, {dataset/fact_txn_level_mdes})",
+            ),
+        )
+        db_connection.commit()
+
+        populate_metrics_references(cursor)
+        db_connection.commit()
+
+        cursor.execute(
+            "SELECT referenced_id, reference_type FROM metrics_references "
+            "WHERE reference_type = 'dataset'"
+        )
+        results = cursor.fetchall()
+
+        assert len(results) == 1
+        assert results[0] == ("fact_txn_level_mdes", "dataset")
+
+    def test_extracts_all_reference_types(self, db_connection):
+        """Single metric with all five reference types."""
+        cursor = db_connection.cursor()
+        cursor.execute(
+            "INSERT INTO metrics VALUES (?, ?, ?)",
+            (
+                "m1",
+                "ws1",
+                "SELECT {metric/base_metric} * {fact/amount} / COUNT({attr/customer_id}) "
+                'WHERE {label/status_code} = "1" AND {dataset/orders_ds} IS NOT NULL',
             ),
         )
         db_connection.commit()
@@ -148,9 +174,10 @@ class TestPopulateMetricsReferences:
         )
         results = cursor.fetchall()
 
-        assert len(results) == 4
-        # Sorted by reference_type: attribute, fact, label, metric
+        assert len(results) == 5
+        # Sorted by reference_type: attribute, dataset, fact, label, metric
         assert ("customer_id", "attribute") in results
+        assert ("orders_ds", "dataset") in results
         assert ("amount", "fact") in results
         assert ("status_code", "label") in results
         assert ("base_metric", "metric") in results
@@ -693,6 +720,146 @@ class TestMetricsIsValidComputation:
         result = cursor.fetchone()
 
         assert result[0] == 0  # Invalid due to missing fact
+
+        conn.close()
+
+    def test_is_valid_invalid_dataset_reference(self, mock_config, tmp_path):
+        """Metric referencing nonexistent dataset is marked invalid."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test.db"
+
+        layout_json = {
+            "analytics": {
+                "metrics": [
+                    {
+                        "id": "bad_dataset_metric",
+                        "title": "Bad Dataset Metric",
+                        # MAQL references a dataset that does not exist in the LDM
+                        "content": {
+                            "maql": (
+                                "SELECT MIN({label/process_date.day}, "
+                                "{dataset/__nonexistent_dataset__})"
+                            )
+                        },
+                    },
+                ],
+                "analyticalDashboards": [],
+                "visualizationObjects": [],
+                "filterContexts": [],
+            },
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "process_date",
+                        "title": "Process Date",
+                        "grain": [],
+                        "attributes": [
+                            {
+                                "id": "process_date.day",
+                                "title": "Day",
+                                "sourceColumn": "DAY",
+                                "sourceColumnDataType": "STRING",
+                            }
+                        ],
+                        "facts": [],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT is_valid FROM metrics WHERE metric_id = 'bad_dataset_metric'"
+        )
+        assert cursor.fetchone()[0] == 0  # Invalid due to missing dataset
+
+        # Confirm the dataset reference was actually extracted into the table
+        cursor.execute(
+            "SELECT COUNT(*) FROM metrics_references WHERE reference_type = 'dataset'"
+        )
+        assert cursor.fetchone()[0] >= 1
+
+        conn.close()
+
+    def test_is_valid_existing_dataset_reference(self, mock_config, tmp_path):
+        """Metric referencing an existing dataset is valid."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test.db"
+
+        layout_json = {
+            "analytics": {
+                "metrics": [
+                    {
+                        "id": "good_dataset_metric",
+                        "title": "Good Dataset Metric",
+                        "content": {
+                            "maql": "SELECT COUNT({dataset/orders_ds})",
+                        },
+                    },
+                ],
+                "analyticalDashboards": [],
+                "visualizationObjects": [],
+                "filterContexts": [],
+            },
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "orders_ds",
+                        "title": "Orders",
+                        "grain": [],
+                        "attributes": [],
+                        "facts": [
+                            {
+                                "id": "orders_amount",
+                                "title": "Amount",
+                                "sourceColumn": "COL",
+                                "sourceColumnDataType": "NUMERIC",
+                            }
+                        ],
+                        "references": [],
+                    }
+                ]
+            },
+        }
+
+        with patch("gooddata_export.export.store_workspace_metadata"):
+            export_all_metadata(
+                mock_config,
+                db_path=str(db_path),
+                export_formats=["sqlite"],
+                run_post_export=True,
+                layout_json=layout_json,
+            )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT is_valid FROM metrics WHERE metric_id = 'good_dataset_metric'"
+        )
+        assert cursor.fetchone()[0] == 1  # Valid: dataset exists
+
+        # Direct {dataset/...} reference must surface in v_metrics_datasets_ancestry
+        cursor.execute(
+            "SELECT dataset_id FROM v_metrics_datasets_ancestry "
+            "WHERE metric_id = 'good_dataset_metric'"
+        )
+        ancestry_datasets = {row[0] for row in cursor.fetchall()}
+        assert "orders_ds" in ancestry_datasets
 
         conn.close()
 

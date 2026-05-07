@@ -299,7 +299,7 @@ The SQLite database contains the following tables:
 - **dashboards_metrics**: Metric-to-dashboard relationships (rich text only)
 - **dashboards_references**: Dashboard-level references to labels, datasets, and filter contexts
 - **dictionary_metadata**: Export metadata (timestamp, workspace ID, etc.)
-- **metrics_references**: All metric references extracted from MAQL - metrics, attributes, labels, and facts (created by post-export)
+- **metrics_references**: All metric references extracted from MAQL - metrics, attributes, labels, facts, and datasets (created by post-export)
 - **metrics_ancestry**: Full transitive metric ancestry (created by post-export)
 
 ### CSV Files

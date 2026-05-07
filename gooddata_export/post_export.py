@@ -31,6 +31,7 @@ def populate_metrics_references(cursor):
         {attr/attribute_id} - stored with reference_type='attribute'
         {label/label_id} - stored with reference_type='label'
         {fact/fact_id} - stored with reference_type='fact'
+        {dataset/dataset_id} - stored with reference_type='dataset'
 
     Note: MAQL comments start with # (including inline). Everything after # on a line
     is stripped before extraction.
@@ -45,6 +46,7 @@ def populate_metrics_references(cursor):
     attr_pattern = re.compile(r"\{attr/([^}]+)\}")
     label_pattern = re.compile(r"\{label/([^}]+)\}")
     fact_pattern = re.compile(r"\{fact/([^}]+)\}")
+    dataset_pattern = re.compile(r"\{dataset/([^}]+)\}")
     references = []
 
     for row in cursor.fetchall():
@@ -72,6 +74,10 @@ def populate_metrics_references(cursor):
         # Extract fact references
         for fact_id in fact_pattern.findall(active_maql):
             references.append((source_metric_id, workspace_id, fact_id, "fact"))
+
+        # Extract dataset references
+        for dataset_id in dataset_pattern.findall(active_maql):
+            references.append((source_metric_id, workspace_id, dataset_id, "dataset"))
 
     cursor.executemany(
         """

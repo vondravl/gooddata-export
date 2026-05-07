@@ -111,7 +111,7 @@ scripts/
 | `metrics` | Metric definitions with MAQL formulas |
 | `visualizations` | Visualization configurations |
 | `dashboards` | Dashboard definitions |
-| `metrics_references` | All metric references from MAQL - metrics, attributes, labels, facts (Python populates) |
+| `metrics_references` | All metric references from MAQL - metrics, attributes, labels, facts, datasets (Python populates) |
 | `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
 
 ### Key Views

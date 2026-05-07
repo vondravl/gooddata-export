@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-05-07
+
+### Fixed
+- **Local-mode `is_valid` did not catch missing dataset references**: Metrics whose MAQL contained a `{dataset/...}` reference to a dataset absent from the LDM were incorrectly marked `is_valid = 1`. `populate_metrics_references` now extracts `{dataset/...}` patterns with `reference_type='dataset'`, and `metrics_is_valid.sql` includes a fifth check that joins `ldm_datasets`. API mode (`X-GDC-VALIDATE-RELATIONS`) was already correct; this only affects local-mode (no live workspace) computation.
+
+### Changed
+- **`v_metrics_datasets_ancestry`**: Resolves direct `{dataset/...}` references via the new `reference_type='dataset'` rows in `metrics_references`.
+
 ## [1.9.1] - 2026-04-27
 
 ### Added

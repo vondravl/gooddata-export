@@ -6,6 +6,7 @@
 --   {attr/attribute_id} - attribute references (reference_type='attribute')
 --   {label/label_id} - label references (reference_type='label')
 --   {fact/fact_id} - fact references (reference_type='fact')
+--   {dataset/dataset_id} - dataset references (reference_type='dataset')
 --
 -- Validation mapping (is_valid computation):
 --   Metric references -> metrics table
@@ -14,6 +15,7 @@
 --   Label references -> ldm_labels OR ldm_columns (type='attribute')
 --     Note: {label/id} in MAQL can reference either an attribute ID (default label)
 --     or a specific label ID, so both tables are checked.
+--   Dataset references -> ldm_datasets table
 
 DROP TABLE IF EXISTS metrics_references;
 
@@ -21,7 +23,7 @@ CREATE TABLE metrics_references (
     source_metric_id TEXT,
     source_workspace_id TEXT,
     referenced_id TEXT,
-    reference_type TEXT,  -- 'metric', 'attribute', 'label', or 'fact'
+    reference_type TEXT,  -- 'metric', 'attribute', 'label', 'fact', or 'dataset'
     PRIMARY KEY (source_metric_id, source_workspace_id, referenced_id, reference_type),
     FOREIGN KEY (source_metric_id, source_workspace_id) REFERENCES metrics(metric_id, workspace_id)
 );

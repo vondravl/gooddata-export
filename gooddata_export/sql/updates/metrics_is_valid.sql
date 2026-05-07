@@ -6,6 +6,7 @@
 -- 2. All attribute references (reference_type='attribute') exist in ldm_columns (type='attribute')
 -- 3. All fact references (reference_type='fact') exist in ldm_columns (type='fact')
 -- 4. All label references (reference_type='label') exist in ldm_labels OR ldm_columns (type='attribute')
+-- 5. All dataset references (reference_type='dataset') exist in ldm_datasets
 --
 -- Label validation checks both tables because {label/id} in MAQL can reference:
 --   - An attribute ID (default label shares attribute ID) -> ldm_columns
@@ -67,6 +68,17 @@ SET is_valid = CASE
           AND ll.id IS NULL
           AND lc.id IS NULL  -- Invalid only if not in EITHER table
     ) THEN 0  -- Invalid: references missing label
+    WHEN EXISTS (
+        -- Check for missing dataset references
+        SELECT 1
+        FROM metrics_references mr
+        LEFT JOIN ldm_datasets ld
+            ON mr.referenced_id = ld.id
+        WHERE mr.source_metric_id = metrics.metric_id
+          AND mr.source_workspace_id = metrics.workspace_id
+          AND mr.reference_type = 'dataset'
+          AND ld.id IS NULL
+    ) THEN 0  -- Invalid: references missing dataset
     ELSE 1    -- Valid: all references exist (or no references)
 END
 WHERE is_valid IS NULL {parent_workspace_filter};
