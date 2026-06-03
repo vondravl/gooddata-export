@@ -129,6 +129,12 @@ views:
     category: usage
     dependencies: []
 
+  v_visualizations_invalid_sorts:
+    sql_file: views/v_visualizations_invalid_sorts.sql
+    description: Visualizations whose sort references a localIdentifier missing from the buckets (dangling sort)
+    category: validation
+    dependencies: []
+
   v_filter_contexts_usage:
     sql_file: views/v_filter_contexts_usage.sql
     description: Shows where filter contexts are used in dashboards

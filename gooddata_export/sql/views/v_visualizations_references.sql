@@ -13,6 +13,7 @@ SELECT
     vr.object_type,
     vr.source,
     vr.label,
+    vr.local_identifier,
     vr.workspace_id
 FROM visualizations_references vr
 JOIN visualizations v

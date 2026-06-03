@@ -6,8 +6,14 @@ DROP TABLE IF EXISTS duplicities;
 CREATE TEMPORARY TABLE duplicities AS
 WITH visualization_columns AS (
     -- Get all references (metrics, facts, labels) per visualization
-    SELECT visualization_id, workspace_id, referenced_id AS col_id
+    -- Exclude sort rows: they carry localIdentifiers (or duplicate object ids)
+    -- that would distort the content signature used for duplicate detection.
+    -- DISTINCT keeps the signature a set of referenced objects: a metric
+    -- referenced under two bucket handles (two rows, since local_identifier is
+    -- part of the PK) must not inflate the signature from "X" to "X,X".
+    SELECT DISTINCT visualization_id, workspace_id, referenced_id AS col_id
     FROM visualizations_references
+    WHERE source != 'sort'
 ),
 same_columns AS (
     SELECT visualization_id, workspace_id, title, visualization_url, columns, tags
