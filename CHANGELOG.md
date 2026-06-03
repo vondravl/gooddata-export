@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-06-03
+
+### Added
+- **`local_identifier` column in `visualizations_references`**: Each measure/attribute/sort reference now records the in-visualization bucket handle (e.g. `m1`/`a1`). It is `NULL` for filter and `attributeFilterConfig` rows, which reference display forms directly. Exposed through `v_visualizations_references`.
+- **Sort references and dangling-sort detection**: `process_visualizations_references` now extracts visualization `sorts` (`measureSortItem` locators and `attributeSortItem`) with `source='sort'`. A sort targeting a `localIdentifier` that is absent from the visualization's buckets — which makes the visualization fail to render — is flagged with `object_type='sort_invalid'`. Derived measures (PoP, arithmetic, inline) that have a `localIdentifier` but no resolvable object id are treated as valid sort targets.
+- **`v_visualizations_invalid_sorts` view**: Lists visualizations whose sort references a missing `localIdentifier`, with the offending handle and `url_link` for quick triage (works in both modes).
+
+### Changed
+- **Local-mode `is_valid` now treats dangling sorts as invalid**: `visualizations_is_valid.sql` adds a fifth check that sets `is_valid = 0` when a visualization has a `sort_invalid` reference. This only applies in local mode (the UPDATE runs `WHERE is_valid IS NULL`); API-mode `is_valid` continues to come straight from GoodData's `areRelationsValid` and is left untouched — the two are not mixed.
+- **`visuals_with_same_content.sql`** excludes `source='sort'` rows so duplicate detection is unaffected by the new sort references.
+
 ## [1.9.2] - 2026-05-07
 
 ### Fixed

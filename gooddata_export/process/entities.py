@@ -216,11 +216,23 @@ def process_visualizations_references(visualization_data, workspace_id=None):
 
     Extracts with two dimensions:
         - object_type: what is being referenced (metric, fact, attribute, label)
-        - source: where in the visualization (measure, attribute, filter, attributeFilterConfig)
+        - source: where in the visualization (measure, attribute, filter,
+          attributeFilterConfig, rankingFilter, measureValueFilter, sort)
+
+    Each row also records the bucket ``local_identifier`` (the in-visualization
+    handle, e.g. ``m1``/``a1``) for measure/attribute/sort rows; it is NULL for
+    filter and attributeFilterConfig rows, which reference display forms directly.
+
+    Sort references are emitted with source='sort'. Sorts point at bucket items by
+    localIdentifier; a sort targeting a localIdentifier that is absent from the
+    buckets is dangling (the visualization fails to render) and is flagged with
+    object_type='sort_invalid'. Valid sort targets get object_type='sort'.
 
     This allows answering questions like:
         - "What metrics does this viz use?" (filter by object_type='metric')
         - "Is this attribute used as a filter or dimension?" (check source)
+        - "Which visualizations sort by a missing localIdentifier?"
+          (filter by object_type='sort_invalid')
     """
     from gooddata_export.process.common import UniqueRelationshipTracker
 
@@ -231,26 +243,51 @@ def process_visualizations_references(visualization_data, workspace_id=None):
             "workspace_id",
             "object_type",
             "source",
+            "local_identifier",
         ]
     )
 
     for viz in visualization_data:
         content = viz.get("content", {})
 
-        # Build lookup: measure localIdentifier → (metric ID, type)
-        # Needed to resolve rankingFilter references which use localIdentifier
-        measure_local_id_map = {}
+        # Build two lookups over bucket items:
+        #   bucket_local_ids: every measure/attribute localIdentifier present in
+        #     the buckets — including derived measures (PoP, arithmetic, inline)
+        #     that have a localIdentifier but no resolvable object id. This is the
+        #     complete set of identifiers a sort is allowed to reference.
+        #   local_id_map: localIdentifier → (object id, type) for items that
+        #     reference a concrete object. Used to resolve rankingFilter,
+        #     measureValueFilter, and sort references back to the real object.
+        bucket_local_ids = set()
+        local_id_map = {}
         for bucket in content.get("buckets", []):
             for item in bucket.get("items", []):
                 measure = item.get("measure", {})
                 local_id = measure.get("localIdentifier")
-                measure_def = measure.get("definition", {}).get("measureDefinition", {})
-                identifier = measure_def.get("item", {}).get("identifier", {})
-                if local_id and identifier.get("id"):
-                    measure_local_id_map[local_id] = {
-                        "id": identifier["id"],
-                        "type": identifier.get("type", "metric"),
-                    }
+                if local_id:
+                    bucket_local_ids.add(local_id)
+                    measure_def = measure.get("definition", {}).get(
+                        "measureDefinition", {}
+                    )
+                    identifier = measure_def.get("item", {}).get("identifier", {})
+                    if identifier.get("id"):
+                        local_id_map[local_id] = {
+                            "id": identifier["id"],
+                            "type": identifier.get("type", "metric"),
+                        }
+
+                attribute = item.get("attribute", {})
+                attr_local_id = attribute.get("localIdentifier")
+                if attr_local_id:
+                    bucket_local_ids.add(attr_local_id)
+                    attr_identifier = attribute.get("displayForm", {}).get(
+                        "identifier", {}
+                    )
+                    if attr_identifier.get("id"):
+                        local_id_map[attr_local_id] = {
+                            "id": attr_identifier["id"],
+                            "type": attr_identifier.get("type", "label"),
+                        }
 
         # Extract references from buckets
         for bucket in content.get("buckets", []):
@@ -272,6 +309,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "object_type": object_type,
                             "source": "measure",
                             "label": measure.get("alias") or measure.get("title"),
+                            "local_identifier": measure.get("localIdentifier"),
                         }
                     )
 
@@ -290,6 +328,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "object_type": label_type,
                             "source": "attribute",
                             "label": attribute_def.get("alias"),
+                            "local_identifier": attribute_def.get("localIdentifier"),
                         }
                     )
 
@@ -311,6 +350,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                         "object_type": label_type,
                         "source": "attributeFilterConfig",
                         "label": None,
+                        "local_identifier": None,
                     }
                 )
 
@@ -333,6 +373,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "object_type": object_type,
                             "source": "filter",
                             "label": None,
+                            "local_identifier": None,
                         }
                     )
 
@@ -348,7 +389,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                     "localIdentifier"
                 )
                 if measure_local_id:
-                    resolved = measure_local_id_map.get(measure_local_id)
+                    resolved = local_id_map.get(measure_local_id)
                     if resolved:
                         tracker.add(
                             {
@@ -358,8 +399,51 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                                 "object_type": resolved["type"],
                                 "source": source_label,
                                 "label": None,
+                                "local_identifier": measure_local_id,
                             }
                         )
+
+        # Extract sort references. Sort items reference bucket measures/attributes
+        # by their localIdentifier (NOT the object id). A sort that targets a
+        # localIdentifier absent from the buckets is dangling — the visualization
+        # fails to render — and is flagged with object_type='sort_invalid'. It is
+        # surfaced via v_visualizations_invalid_sorts and, in local mode (where we
+        # compute validity ourselves), drives is_valid=0. API-mode is_valid comes
+        # from GoodData's areRelationsValid and is left untouched.
+        # Valid sort targets get object_type='sort'; referenced_id resolves to the
+        # real object id when the localIdentifier maps to a concrete object,
+        # otherwise it falls back to the localIdentifier (e.g. derived measures).
+        def add_sort_target(target_local_id):
+            if not target_local_id:
+                return
+            resolved = local_id_map.get(target_local_id)
+            tracker.add(
+                {
+                    "visualization_id": viz["id"],
+                    "referenced_id": resolved["id"] if resolved else target_local_id,
+                    "workspace_id": workspace_id,
+                    "object_type": (
+                        "sort"
+                        if target_local_id in bucket_local_ids
+                        else "sort_invalid"
+                    ),
+                    "source": "sort",
+                    "label": None,
+                    "local_identifier": target_local_id,
+                }
+            )
+
+        for sort_item in content.get("sorts", []) or []:
+            measure_sort = sort_item.get("measureSortItem", {})
+            for locator in measure_sort.get("locators", []):
+                add_sort_target(
+                    locator.get("measureLocatorItem", {}).get("measureIdentifier")
+                )
+                add_sort_target(
+                    locator.get("attributeLocatorItem", {}).get("attributeIdentifier")
+                )
+            attribute_sort = sort_item.get("attributeSortItem", {})
+            add_sort_target(attribute_sort.get("attributeIdentifier"))
 
     return tracker.get_sorted(
         sort_key=lambda x: (
@@ -368,6 +452,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
             x["workspace_id"],
             x["object_type"],
             x["source"],
+            x["local_identifier"] or "",
         )
     )
 

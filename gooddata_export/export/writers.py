@@ -166,12 +166,15 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
     }
     references_columns = {
         "visualization_id": "TEXT",
+        # Object id for resolvable rows; for unresolved sort rows (dangling sorts
+        # and sorts on derived measures) it falls back to the localIdentifier.
         "referenced_id": "TEXT",
         "workspace_id": "TEXT",
-        "object_type": "TEXT",  # 'metric', 'fact', 'attribute', or 'label' (WHAT is referenced)
-        "source": "TEXT",  # 'measure', 'attribute', or 'filter' (WHERE it's used)
+        "object_type": "TEXT",  # 'metric'/'fact'/'attribute'/'label', or 'sort'/'sort_invalid' (WHAT is referenced)
+        "source": "TEXT",  # 'measure', 'attribute', 'filter', 'sort', ... (WHERE it's used)
         "label": "TEXT",
-        "PRIMARY KEY": "(visualization_id, referenced_id, workspace_id, object_type, source)",
+        "local_identifier": "TEXT",  # in-viz handle (e.g. 'm1'/'a1'); NULL for filter rows
+        "PRIMARY KEY": "(visualization_id, referenced_id, workspace_id, object_type, source, local_identifier)",
         "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
 
@@ -248,6 +251,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                     "object_type",
                     "source",
                     "label",
+                    "local_identifier",
                 ],
             )
 
@@ -256,8 +260,8 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                 conn.cursor(),
                 """
                 INSERT INTO visualizations_references
-                (visualization_id, referenced_id, workspace_id, object_type, source, label)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (visualization_id, referenced_id, workspace_id, object_type, source, label, local_identifier)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -267,6 +271,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                         d["object_type"],
                         d["source"],
                         d.get("label"),
+                        d.get("local_identifier"),
                     )
                     for d in all_processed_references
                 ],

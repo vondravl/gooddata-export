@@ -1012,6 +1012,208 @@ class TestMetricsIsValidComputation:
         conn.close()
 
 
+class TestVisualizationSortReferences:
+    """Unit tests for sort extraction in process_visualizations_references."""
+
+    def test_sort_targeting_derived_measure_is_valid(self):
+        """A sort pointing at a derived measure (no object id) is not dangling.
+
+        Derived measures (PoP, arithmetic, inline) carry a localIdentifier but no
+        resolvable object identifier. They are still legitimate sort targets, so
+        the sort must be flagged 'sort' (valid), not 'sort_invalid'.
+        """
+        from gooddata_export.process.entities import (
+            process_visualizations_references,
+        )
+
+        viz = {
+            "id": "viz1",
+            "content": {
+                "buckets": [
+                    {
+                        "localIdentifier": "measures",
+                        "items": [
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_base",
+                                    "definition": {
+                                        "measureDefinition": {
+                                            "item": {
+                                                "identifier": {
+                                                    "id": "metric_base",
+                                                    "type": "metric",
+                                                }
+                                            }
+                                        }
+                                    },
+                                }
+                            },
+                            {
+                                # Derived measure: localIdentifier but no item id
+                                "measure": {
+                                    "localIdentifier": "m_pop",
+                                    "definition": {
+                                        "popMeasureDefinition": {
+                                            "measureIdentifier": "m_base"
+                                        }
+                                    },
+                                }
+                            },
+                        ],
+                    }
+                ],
+                "sorts": [
+                    {
+                        "measureSortItem": {
+                            "direction": "desc",
+                            "locators": [
+                                {"measureLocatorItem": {"measureIdentifier": "m_pop"}}
+                            ],
+                        }
+                    }
+                ],
+            },
+        }
+
+        refs = process_visualizations_references([viz], workspace_id="ws1")
+        sort_rows = [r for r in refs if r["source"] == "sort"]
+
+        assert len(sort_rows) == 1
+        assert sort_rows[0]["object_type"] == "sort"  # valid, not dangling
+        assert sort_rows[0]["local_identifier"] == "m_pop"
+        # Unresolvable target falls back to the localIdentifier
+        assert sort_rows[0]["referenced_id"] == "m_pop"
+
+    def test_attribute_sort_item_dangling(self):
+        """attributeSortItem targeting a missing localIdentifier is flagged."""
+        from gooddata_export.process.entities import (
+            process_visualizations_references,
+        )
+
+        viz = {
+            "id": "viz1",
+            "content": {
+                "buckets": [
+                    {
+                        "localIdentifier": "view",
+                        "items": [
+                            {
+                                "attribute": {
+                                    "localIdentifier": "a_region",
+                                    "displayForm": {
+                                        "identifier": {
+                                            "id": "region.name",
+                                            "type": "label",
+                                        }
+                                    },
+                                }
+                            }
+                        ],
+                    }
+                ],
+                "sorts": [
+                    {
+                        "attributeSortItem": {
+                            "attributeIdentifier": "a_missing",
+                            "direction": "asc",
+                        }
+                    }
+                ],
+            },
+        }
+
+        refs = process_visualizations_references([viz], workspace_id="ws1")
+        sort_rows = [r for r in refs if r["source"] == "sort"]
+
+        assert len(sort_rows) == 1
+        assert sort_rows[0]["object_type"] == "sort_invalid"
+        assert sort_rows[0]["local_identifier"] == "a_missing"
+
+    def test_measure_sort_attribute_locator(self):
+        """attributeLocatorItem inside a measureSortItem locator is validated.
+
+        Sorting a measure within a specific attribute element references both a
+        measure handle (measureLocatorItem) and an attribute handle
+        (attributeLocatorItem). Each handle is validated against the buckets: the
+        present one is 'sort', the missing one is 'sort_invalid'.
+        """
+        from gooddata_export.process.entities import (
+            process_visualizations_references,
+        )
+
+        viz = {
+            "id": "viz1",
+            "content": {
+                "buckets": [
+                    {
+                        "localIdentifier": "measures",
+                        "items": [
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_base",
+                                    "definition": {
+                                        "measureDefinition": {
+                                            "item": {
+                                                "identifier": {
+                                                    "id": "metric_base",
+                                                    "type": "metric",
+                                                }
+                                            }
+                                        }
+                                    },
+                                }
+                            }
+                        ],
+                    },
+                    {
+                        "localIdentifier": "stack",
+                        "items": [
+                            {
+                                "attribute": {
+                                    "localIdentifier": "a_region",
+                                    "displayForm": {
+                                        "identifier": {
+                                            "id": "region.name",
+                                            "type": "label",
+                                        }
+                                    },
+                                }
+                            }
+                        ],
+                    },
+                ],
+                "sorts": [
+                    {
+                        "measureSortItem": {
+                            "direction": "desc",
+                            "locators": [
+                                # Present measure handle -> valid sort
+                                {"measureLocatorItem": {"measureIdentifier": "m_base"}},
+                                # Missing attribute handle -> dangling sort
+                                {
+                                    "attributeLocatorItem": {
+                                        "attributeIdentifier": "a_gone",
+                                        "element": "/elements?id=1",
+                                    }
+                                },
+                            ],
+                        }
+                    }
+                ],
+            },
+        }
+
+        refs = process_visualizations_references([viz], workspace_id="ws1")
+        sort_rows = {r["local_identifier"]: r for r in refs if r["source"] == "sort"}
+
+        assert set(sort_rows) == {"m_base", "a_gone"}
+        # Present measure handle resolves to its metric and is valid
+        assert sort_rows["m_base"]["object_type"] == "sort"
+        assert sort_rows["m_base"]["referenced_id"] == "metric_base"
+        # Missing attribute handle is flagged dangling
+        assert sort_rows["a_gone"]["object_type"] == "sort_invalid"
+
+
 class TestVisualizationsIsValidComputation:
     """Tests for is_valid computation on visualizations in local mode."""
 
@@ -1069,15 +1271,21 @@ class TestVisualizationsIsValidComputation:
         attributes=None,
         filters=None,
         attr_filter_configs=None,
+        sorts=None,
     ):
         """Build a visualization object with specified references.
 
         Args:
             viz_id: Visualization ID
             measures: List of (ref_id, ref_type) tuples for measure buckets
+                (each gets localIdentifier ``m_<ref_id>``)
             attributes: List of (label_id, label_type) tuples for attribute buckets
+                (each gets localIdentifier ``a_<label_id>``)
             filters: List of (filter_id, filter_type, pos_or_neg) tuples
             attr_filter_configs: List of (label_id, label_type) tuples for attributeFilterConfigs
+            sorts: List of localIdentifiers to sort by (measureSortItem). Use an
+                existing measure handle (``m_<ref_id>``) for a valid sort or any
+                other string for a dangling sort.
         """
         items = []
         if measures:
@@ -1148,6 +1356,19 @@ class TestVisualizationsIsValidComputation:
                 }
             content["attributeFilterConfigs"] = configs
 
+        if sorts:
+            content["sorts"] = [
+                {
+                    "measureSortItem": {
+                        "direction": "desc",
+                        "locators": [
+                            {"measureLocatorItem": {"measureIdentifier": local_id}}
+                        ],
+                    }
+                }
+                for local_id in sorts
+            ]
+
         return {
             "id": viz_id,
             "title": viz_id,
@@ -1213,6 +1434,104 @@ class TestVisualizationsIsValidComputation:
             "SELECT is_valid FROM visualizations WHERE visualization_id = 'viz1'"
         )
         assert cursor.fetchone()[0] == 0
+
+        conn.close()
+
+    def test_valid_sort_reference(self, mock_config, tmp_path):
+        """Visualization sorting by an existing measure localIdentifier is valid."""
+        layout = self._make_layout(
+            visualizations=[
+                # Measure handle is 'm_m_exists'; sort targets the same handle.
+                self._make_viz(
+                    "viz1",
+                    measures=[("m_exists", "metric")],
+                    sorts=["m_m_exists"],
+                ),
+            ],
+            metrics=[
+                {
+                    "id": "m_exists",
+                    "title": "Existing Metric",
+                    "content": {"maql": "SELECT 1"},
+                },
+            ],
+        )
+
+        db_path = self._export(mock_config, tmp_path, layout)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT is_valid FROM visualizations WHERE visualization_id = 'viz1'"
+        )
+        assert cursor.fetchone()[0] == 1
+
+        # Valid sort target is recorded with object_type='sort', resolved to the metric
+        cursor.execute(
+            "SELECT referenced_id, local_identifier FROM visualizations_references "
+            "WHERE visualization_id = 'viz1' AND object_type = 'sort'"
+        )
+        assert cursor.fetchone() == ("m_exists", "m_m_exists")
+
+        # No invalid-sort rows for this visualization
+        cursor.execute(
+            "SELECT COUNT(*) FROM v_visualizations_invalid_sorts "
+            "WHERE visualization_id = 'viz1'"
+        )
+        assert cursor.fetchone()[0] == 0
+
+        conn.close()
+
+    def test_dangling_sort_invalid_in_local_mode(self, mock_config, tmp_path):
+        """A dangling sort makes is_valid=0 in local mode, and is surfaced.
+
+        In local mode we compute is_valid ourselves, and a sort that references a
+        localIdentifier absent from the buckets is definitely not valid — the
+        visualization fails to render. (API-mode is_valid comes from GoodData and
+        is left untouched.) The condition is also reported through
+        object_type='sort_invalid' and v_visualizations_invalid_sorts.
+        """
+        layout = self._make_layout(
+            visualizations=[
+                # All references valid, but the sort points at a non-existent handle.
+                self._make_viz(
+                    "viz1",
+                    measures=[("m_exists", "metric")],
+                    sorts=["m_ghost"],
+                ),
+            ],
+            metrics=[
+                {
+                    "id": "m_exists",
+                    "title": "Existing Metric",
+                    "content": {"maql": "SELECT 1"},
+                },
+            ],
+        )
+
+        db_path = self._export(mock_config, tmp_path, layout)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Local-mode is_valid is 0: the dangling sort is invalid
+        cursor.execute(
+            "SELECT is_valid FROM visualizations WHERE visualization_id = 'viz1'"
+        )
+        assert cursor.fetchone()[0] == 0
+
+        # The dangling sort is flagged with object_type='sort_invalid'
+        cursor.execute(
+            "SELECT local_identifier FROM visualizations_references "
+            "WHERE visualization_id = 'viz1' AND object_type = 'sort_invalid'"
+        )
+        assert cursor.fetchone() == ("m_ghost",)
+
+        # And surfaced by the convenience view
+        cursor.execute(
+            "SELECT missing_local_identifier FROM v_visualizations_invalid_sorts "
+            "WHERE visualization_id = 'viz1'"
+        )
+        assert cursor.fetchone() == ("m_ghost",)
 
         conn.close()
 
