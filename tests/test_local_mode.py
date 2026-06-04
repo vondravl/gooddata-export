@@ -728,6 +728,52 @@ class TestLocalModeIntegration:
             "attributeFilterConfig",
         ) in label_refs
 
+    def test_visualization_derived_measure_references(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """Computed measures are recorded with object_type='derived_*'."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT visualization_id, local_identifier, object_type, source, "
+            "referenced_id FROM visualizations_references "
+            "WHERE object_type LIKE 'derived_%' ORDER BY local_identifier"
+        )
+        derived_refs = cursor.fetchall()
+        conn.close()
+
+        # viz_revenue_trend has a PoP measure and an inline MAQL measure.
+        # Derived measures have no catalog object -> referenced_id is NULL.
+        assert derived_refs == [
+            (
+                "viz_revenue_trend",
+                "m_emea_revenue_inline",
+                "derived_inline",
+                "measure",
+                None,
+            ),
+            (
+                "viz_revenue_trend",
+                "m_revenue_pop_year",
+                "derived_pop",
+                "measure",
+                None,
+            ),
+        ]
+
     def test_dashboards_exported_correctly(self, sample_layout, mock_config, tmp_path):
         """Dashboards from fixture are exported to database."""
         from gooddata_export.export import export_all_metadata

@@ -18,6 +18,19 @@ from gooddata_export.process.common import sort_tags
 
 logger = logging.getLogger(__name__)
 
+# Derived (computed) measures carry a localIdentifier but no catalog object id —
+# they are built from other bucket measures (PoP, arithmetic, previous-period) or
+# from raw MAQL (inline). We record them for inventory ("which visuals use
+# computed measures, and of what kind"); object_type carries the flavor and
+# referenced_id falls back to the localIdentifier. Keys match GoodData's
+# declarative visualization object measure definitions.
+DERIVED_MEASURE_TYPES = {
+    "arithmeticMeasureDefinition": "derived_arithmetic",
+    "popMeasureDefinition": "derived_pop",
+    "previousPeriodMeasureDefinition": "derived_previous_period",
+    "inlineDefinition": "derived_inline",
+}
+
 
 def validate_workspace_exists(
     client: dict[str, Any] | None = None,
@@ -215,18 +228,29 @@ def process_visualizations_references(visualization_data, workspace_id=None):
         {"id": "x", "content": {"buckets": [...], "filters": [...]}}
 
     Extracts with two dimensions:
-        - object_type: what is being referenced (metric, fact, attribute, label)
+        - object_type: what is being referenced — a catalog object (metric, fact,
+          attribute, label), a sort ('sort'/'sort_invalid'), or a derived measure
+          with no catalog object ('derived_pop', 'derived_arithmetic',
+          'derived_previous_period', 'derived_inline', 'derived_other')
         - source: where in the visualization (measure, attribute, filter,
           attributeFilterConfig, rankingFilter, measureValueFilter, sort)
 
-    Each row also records the bucket ``local_identifier`` (the in-visualization
-    handle, e.g. ``m1``/``a1``) for measure/attribute/sort rows; it is NULL for
-    filter and attributeFilterConfig rows, which reference display forms directly.
+    ``referenced_id`` holds the catalog object id, or is NULL when the row points
+    at no catalog object (derived measures, and sorts whose target is a derived
+    measure or is missing). ``local_identifier`` is the in-visualization handle
+    (e.g. ``m1``/``a1``) for measure/attribute/sort rows; it is NULL for filter
+    and attributeFilterConfig rows, which reference display forms directly. So for
+    non-catalog rows, local_identifier — not referenced_id — identifies the row.
 
     Sort references are emitted with source='sort'. Sorts point at bucket items by
     localIdentifier; a sort targeting a localIdentifier that is absent from the
     buckets is dangling (the visualization fails to render) and is flagged with
     object_type='sort_invalid'. Valid sort targets get object_type='sort'.
+
+    Derived (computed) measures — PoP, arithmetic, previous-period, inline MAQL —
+    have a localIdentifier but no catalog object id; they are recorded for
+    inventory with object_type='derived_*' (filter by object_type LIKE 'derived_%'
+    to find visualizations using computed measures).
 
     This allows answering questions like:
         - "What metrics does this viz use?" (filter by object_type='metric')
@@ -294,11 +318,13 @@ def process_visualizations_references(visualization_data, workspace_id=None):
             for item in bucket.get("items", []):
                 # Extract metric/fact/attribute references from measures
                 measure = item.get("measure", {})
-                measure_def = measure.get("definition", {}).get("measureDefinition", {})
+                definition = measure.get("definition", {})
+                measure_def = definition.get("measureDefinition", {})
                 identifier = measure_def.get("item", {}).get("identifier", {})
                 ref_id = identifier.get("id")
                 # Default to 'metric' for backwards compatibility with older data
                 object_type = identifier.get("type", "metric")
+                measure_local_id = measure.get("localIdentifier")
 
                 if ref_id:
                     tracker.add(
@@ -309,7 +335,34 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "object_type": object_type,
                             "source": "measure",
                             "label": measure.get("alias") or measure.get("title"),
-                            "local_identifier": measure.get("localIdentifier"),
+                            "local_identifier": measure_local_id,
+                        }
+                    )
+                elif measure_local_id:
+                    # Derived/computed measure (PoP, arithmetic, previous-period,
+                    # inline MAQL): no catalog object id, so referenced_id is NULL
+                    # and local_identifier carries the in-viz handle. Recorded for
+                    # inventory. Classify the flavor by which *Definition key is
+                    # present; unknown variants fall back to 'derived_other' so a
+                    # computed measure is never silently dropped if GoodData adds
+                    # a new kind.
+                    derived_type = next(
+                        (
+                            v
+                            for k, v in DERIVED_MEASURE_TYPES.items()
+                            if k in definition
+                        ),
+                        "derived_other",
+                    )
+                    tracker.add(
+                        {
+                            "visualization_id": viz["id"],
+                            "referenced_id": None,
+                            "workspace_id": workspace_id,
+                            "object_type": derived_type,
+                            "source": "measure",
+                            "label": measure.get("alias") or measure.get("title"),
+                            "local_identifier": measure_local_id,
                         }
                     )
 
@@ -410,9 +463,11 @@ def process_visualizations_references(visualization_data, workspace_id=None):
         # surfaced via v_visualizations_invalid_sorts and, in local mode (where we
         # compute validity ourselves), drives is_valid=0. API-mode is_valid comes
         # from GoodData's areRelationsValid and is left untouched.
-        # Valid sort targets get object_type='sort'; referenced_id resolves to the
-        # real object id when the localIdentifier maps to a concrete object,
-        # otherwise it falls back to the localIdentifier (e.g. derived measures).
+        # Valid sort targets get object_type='sort'. referenced_id holds the real
+        # catalog object id when the localIdentifier maps to a concrete object;
+        # when it doesn't (a derived-measure target, or a dangling sort) there is
+        # no catalog object, so referenced_id is NULL and local_identifier carries
+        # the in-viz handle.
         def add_sort_target(target_local_id):
             if not target_local_id:
                 return
@@ -420,7 +475,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
             tracker.add(
                 {
                     "visualization_id": viz["id"],
-                    "referenced_id": resolved["id"] if resolved else target_local_id,
+                    "referenced_id": resolved["id"] if resolved else None,
                     "workspace_id": workspace_id,
                     "object_type": (
                         "sort"
@@ -448,7 +503,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
     return tracker.get_sorted(
         sort_key=lambda x: (
             x["visualization_id"],
-            x["referenced_id"],
+            x["referenced_id"] or "",  # NULL for derived/unresolved-sort rows
             x["workspace_id"],
             x["object_type"],
             x["source"],
