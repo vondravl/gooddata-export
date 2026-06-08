@@ -792,10 +792,9 @@ class TestLocalModeIntegration:
 
         conn = sqlite3.connect(db_path)
         cursor = conn.execute(
-            "SELECT dashboard_id, title, filter_context_id FROM dashboards ORDER BY dashboard_id"
+            "SELECT dashboard_id, title FROM dashboards ORDER BY dashboard_id"
         )
         dashboards = cursor.fetchall()
-        conn.close()
 
         # 2 dashboards: legacy (executive_overview) and tabbed (tabbed_analytics)
         assert len(dashboards) == 2
@@ -808,7 +807,17 @@ class TestLocalModeIntegration:
             d for d in dashboards if d[0] == "dashboard_executive_overview"
         )
         assert legacy_dash[1] == "Executive Overview"
-        assert legacy_dash[2] == "filter_context_default"
+
+        # Filter context is no longer a dashboards column; it lives in
+        # dashboards_references. The legacy dashboard's top-level filterContextRef
+        # is recorded with tab_id = NULL.
+        fc_ref = conn.execute(
+            "SELECT referenced_id, tab_id FROM dashboards_references "
+            "WHERE dashboard_id = 'dashboard_executive_overview' "
+            "AND object_type = 'filterContext'"
+        ).fetchall()
+        conn.close()
+        assert fc_ref == [("filter_context_default", None)]
 
     def test_dashboard_visualization_relationships(
         self, sample_layout, mock_config, tmp_path
@@ -1367,6 +1376,46 @@ class TestLocalModeIntegration:
             "dataset",
             "dateFilterConfig",
         ) in dataset_refs
+
+    def test_dashboards_references_per_tab_filter_context(self):
+        """Tabbed dashboards record each tab's filterContextRef with its tab_id.
+
+        Top-level (dashboard) refs get tab_id=None; per-tab refs carry the tab's
+        localIdentifier, so a dashboard with different filter contexts per tab
+        produces one row per tab instead of collapsing to a single reference.
+        """
+        from gooddata_export.process.entities import process_dashboards_references
+
+        dashboard = {
+            "id": "dash_tabbed",
+            "content": {
+                "tabs": [
+                    {
+                        "localIdentifier": "tab_a",
+                        "title": "Clearing",
+                        "filterContextRef": {
+                            "identifier": {"id": "fc_a", "type": "filterContext"}
+                        },
+                    },
+                    {
+                        "localIdentifier": "tab_b",
+                        "title": "Authorization",
+                        "filterContextRef": {
+                            "identifier": {"id": "fc_b", "type": "filterContext"}
+                        },
+                    },
+                ]
+            },
+        }
+
+        refs = process_dashboards_references([dashboard], workspace_id="ws1")
+        fc_refs = {
+            (r["referenced_id"], r["tab_id"])
+            for r in refs
+            if r["object_type"] == "filterContext"
+        }
+        # Each tab maps to its own filter context, keyed by tab_id.
+        assert fc_refs == {("fc_a", "tab_a"), ("fc_b", "tab_b")}
 
     def test_dashboards_references_with_invalid_label(self, mock_config, tmp_path):
         """Dashboard with missing label reference should be marked invalid after post-export."""

@@ -1,22 +1,15 @@
 -- View showing where filter contexts are used
--- Joins filter contexts with dashboards via both:
---   1. dashboards.filter_context_id (top-level filterContextRef)
---   2. dashboards_references (tab-level filterContextRef)
+-- Joins filter contexts with dashboards via dashboards_references, which holds
+-- every filterContextRef for both layouts:
+--   - legacy (non-tabbed) dashboards: top-level ref with tab_id = NULL
+--   - tabbed dashboards: one ref per tab with tab_id = the tab localIdentifier
 
 DROP VIEW IF EXISTS v_filter_contexts_usage;
 
 CREATE VIEW v_filter_contexts_usage AS
 WITH all_references AS (
-    -- Top-level filterContextRef (dashboards.filter_context_id column)
-    SELECT
-        filter_context_id,
-        workspace_id,
-        dashboard_id
-    FROM dashboards
-    WHERE filter_context_id IS NOT NULL
-    UNION
-    -- Tab-level filterContextRef (from dashboards_references)
-    SELECT
+    -- Distinct dashboard-level usage (collapses per-tab refs to the dashboard)
+    SELECT DISTINCT
         referenced_id AS filter_context_id,
         workspace_id,
         dashboard_id

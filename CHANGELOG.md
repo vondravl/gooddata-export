@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-06-08
+
+### Added
+- **`tab_id` column in `dashboards_references`**: every dashboard reference (filter contexts, date datasets, attribute-filter labels) now records which tab it came from. `tab_id` is NULL for top-level/legacy (non-tabbed) refs and the tab `localIdentifier` for tabbed dashboards. A tabbed dashboard with a different filter context per tab now produces one row per tab instead of collapsing to a single reference, so "which filter context is used in which tab" is answerable. This makes `dashboards_references` consistent with the other tab-aware dashboard relationship tables (`dashboards_visualizations`, `dashboards_widget_filters`).
+
+### Removed
+- **`filter_context_id` column from `dashboards`** (breaking): the column only captured the legacy top-level `filterContextRef` and was always NULL for tabbed dashboards (whose filter contexts live per-tab). Every dashboard filter context — legacy (`tab_id`=NULL) and per-tab — is now recorded in `dashboards_references` (`object_type='filterContext'`), making it the single, complete, tab-aware source. `v_filter_contexts_usage` and `filter_contexts_usage_check` now read solely from `dashboards_references`.
+
 ## [1.12.0] - 2026-06-08
 
 ### Added

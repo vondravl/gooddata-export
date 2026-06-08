@@ -297,7 +297,7 @@ The SQLite database contains the following tables:
 - **visualizations_references**: Visualization references to metrics, facts, and labels
 - **dashboards_visualizations**: Visualization-to-dashboard relationships
 - **dashboards_metrics**: Metric-to-dashboard relationships (rich text only)
-- **dashboards_references**: Dashboard-level references to labels, datasets, and filter contexts
+- **dashboards_references**: Dashboard references to labels, datasets, and filter contexts, with the originating `tab_id` (NULL for top-level/legacy refs; the tab localIdentifier for tabbed dashboards)
 - **dictionary_metadata**: Export metadata (timestamp, workspace ID, etc.)
 - **metrics_references**: All metric references extracted from MAQL - metrics, attributes, labels, facts, and datasets (created by post-export)
 - **metrics_ancestry**: Full transitive metric ancestry (created by post-export)
