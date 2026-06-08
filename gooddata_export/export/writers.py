@@ -391,9 +391,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "content": "JSON",
         "is_valid": "BOOLEAN",
         "is_hidden": "BOOLEAN",
-        "filter_context_id": "TEXT",
         "PRIMARY KEY": "(dashboard_id, workspace_id)",
-        "FOREIGN KEY (filter_context_id, workspace_id)": "REFERENCES filter_contexts(filter_context_id, workspace_id)",
     }
     relationship_columns = {
         "dashboard_id": "TEXT",
@@ -437,7 +435,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "workspace_id": "TEXT",
         "object_type": "TEXT",  # 'label', 'dataset', 'filterContext'
         "source": "TEXT",  # 'attributeFilterConfig', 'dateFilterConfig', 'filterContextRef'
-        "PRIMARY KEY": "(dashboard_id, referenced_id, workspace_id, object_type, source)",
+        "tab_id": "TEXT",  # Tab localIdentifier; NULL for top-level (dashboard) refs
+        "PRIMARY KEY": "(dashboard_id, referenced_id, workspace_id, object_type, source, tab_id)",
         "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
     }
 
@@ -473,8 +472,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
             conn.cursor(),
             """
             INSERT INTO dashboards
-            (dashboard_id, workspace_id, title, description, tags, version, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (dashboard_id, workspace_id, title, description, tags, version, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -491,7 +490,6 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                     serialize_content(d["content"], config),
                     d["is_valid"],
                     d["is_hidden"],
-                    d.get("filter_context_id"),
                 )
                 for d in all_processed_dashboards
             ],
@@ -629,6 +627,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                     "workspace_id",
                     "object_type",
                     "source",
+                    "tab_id",
                 ],
             )
 
@@ -637,8 +636,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 conn.cursor(),
                 """
                 INSERT INTO dashboards_references
-                (dashboard_id, referenced_id, workspace_id, object_type, source)
-                VALUES (?, ?, ?, ?, ?)
+                (dashboard_id, referenced_id, workspace_id, object_type, source, tab_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -647,6 +646,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                         d["workspace_id"],
                         d["object_type"],
                         d["source"],
+                        d.get("tab_id"),  # NULL for top-level (dashboard) refs
                     )
                     for d in all_processed_references
                 ],

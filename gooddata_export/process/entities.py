@@ -544,9 +544,6 @@ def process_dashboards(data, base_url, workspace_id):
                 "content": content,
                 "is_valid": obj.get("areRelationsValid"),  # None in local mode
                 "is_hidden": obj.get("isHidden", False),
-                "filter_context_id": content.get("filterContextRef", {})
-                .get("identifier", {})
-                .get("id"),
             }
         )
     return processed_data
@@ -980,8 +977,10 @@ def process_dashboards_references(
 
     For tabbed dashboards, each tab can have its own filter configs that override
     the dashboard-level defaults. Both top-level and tab-level configs are
-    processed because tabs may inherit from top-level (UniqueRelationshipTracker
-    deduplicates any overlapping references).
+    processed because tabs may inherit from top-level. Each reference records the
+    originating tab via ``tab_id`` (None for top-level/legacy refs, the tab
+    localIdentifier for tabbed dashboards), so the same reference declared on
+    different tabs is preserved rather than collapsed.
 
     Widget-level references (insight, dateDataSet) are tracked in dashboards_visualizations
     and dashboards_widget_filters tables respectively.
@@ -1003,6 +1002,7 @@ def process_dashboards_references(
             "workspace_id",
             "object_type",
             "source",
+            "tab_id",
         ]
     )
 
@@ -1012,17 +1012,20 @@ def process_dashboards_references(
         if not content:
             continue
 
-        # Collect config sources: top-level content + each tab
+        # Collect config sources as (tab_id, config_source) pairs: top-level
+        # content (tab_id=None) + each tab (tab_id=its localIdentifier).
         # Unlike widget traversal (iterate_dashboard_widgets), we can't use
         # `tabs or [content]` here because tabs may not have their own
         # filterContextRef/attributeFilterConfigs — they can inherit from
         # the top-level content. We must always include top-level content.
-        # UniqueRelationshipTracker deduplicates any overlapping refs.
-        config_sources = [content]
+        # tab_id distinguishes a top-level reference from the same reference
+        # declared on a tab, so per-tab config (e.g. which filter context a
+        # tab uses) is preserved instead of being collapsed.
+        config_sources = [(None, content)]
         for tab in content.get("tabs", []):
-            config_sources.append(tab)
+            config_sources.append((tab.get("localIdentifier"), tab))
 
-        for config_source in config_sources:
+        for tab_id, config_source in config_sources:
             # Extract attributeFilterConfigs[].displayAsLabel references
             # These specify which label to use for displaying attribute filter values
             # In dashboards, attributeFilterConfigs is a list of config objects:
@@ -1040,6 +1043,7 @@ def process_dashboards_references(
                             "workspace_id": workspace_id,
                             "object_type": "label",
                             "source": "attributeFilterConfig",
+                            "tab_id": tab_id,
                         }
                     )
 
@@ -1056,6 +1060,7 @@ def process_dashboards_references(
                         "workspace_id": workspace_id,
                         "object_type": "dataset",
                         "source": "dateFilterConfig",
+                        "tab_id": tab_id,
                     }
                 )
 
@@ -1071,11 +1076,17 @@ def process_dashboards_references(
                         "workspace_id": workspace_id,
                         "object_type": "filterContext",
                         "source": "filterContextRef",
+                        "tab_id": tab_id,
                     }
                 )
 
     return tracker.get_sorted(
-        sort_key=lambda x: (x["dashboard_id"], x["object_type"], x["referenced_id"])
+        sort_key=lambda x: (
+            x["dashboard_id"],
+            x["object_type"],
+            x["referenced_id"],
+            x["tab_id"] or "",  # top-level refs (tab_id=None) sort first
+        )
     )
 
 
