@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-06-04
+
+### Added
+- **Derived (computed) measure inventory in `visualizations_references`**: `process_visualizations_references` now records bucket measures that have a `localIdentifier` but no catalog object id — PoP, arithmetic, previous-period, and inline MAQL measures. Each is emitted with `source='measure'`, `referenced_id=NULL` (no catalog object), and `object_type` carrying the flavor: `derived_pop`, `derived_arithmetic`, `derived_previous_period`, `derived_inline`, or `derived_other` for any future variant (so a computed measure is never silently dropped). Enables answering "which visualizations use computed measures, and of what kind?" with a simple `WHERE object_type LIKE 'derived_%'` query.
+
+### Changed
+- **`referenced_id` now means "catalog object id, or NULL"**: rows that point at no catalog object — derived measures, and sort rows whose target is a derived measure or is missing — now store `referenced_id=NULL` instead of falling back to the `localIdentifier`. `local_identifier` carries the in-visualization handle for those rows. This makes `referenced_id` a single-meaning column (a join to `metrics`/`ldm_columns`/`ldm_labels` no longer matches a handle by accident) and is the one consistent rule across the table. **Behavior change vs 1.10.0**: sort rows on a derived/dangling target previously stored the `localIdentifier` in `referenced_id`; they are now NULL. No SQL view/update consumed `referenced_id` for those rows (sorts are surfaced via `local_identifier`), so downstream views are unaffected.
+
+### Notes
+- `derived_*` rows are inventory-only and intentionally **not** catalog-validated. `visualizations_is_valid.sql` keeps its checks keyed to explicit object types, so a computed measure never marks a visualization invalid. To enumerate all sort references, query `source='sort'`; `object_type` only distinguishes their validity.
+
 ## [1.10.0] - 2026-06-03
 
 ### Added

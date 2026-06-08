@@ -166,11 +166,17 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
     }
     references_columns = {
         "visualization_id": "TEXT",
-        # Object id for resolvable rows; for unresolved sort rows (dangling sorts
-        # and sorts on derived measures) it falls back to the localIdentifier.
+        # Catalog object id, or NULL when the row points at no catalog object:
+        # derived measures, and sorts whose target is a derived measure or is
+        # missing. For those rows local_identifier (not referenced_id) identifies
+        # the row, so referenced_id never holds an in-viz handle.
         "referenced_id": "TEXT",
         "workspace_id": "TEXT",
-        "object_type": "TEXT",  # 'metric'/'fact'/'attribute'/'label', or 'sort'/'sort_invalid' (WHAT is referenced)
+        # WHAT is referenced: 'metric'/'fact'/'attribute'/'label', 'sort'/'sort_invalid',
+        # or 'derived_*' for computed measures with no catalog id (pop/arithmetic/
+        # previous_period/inline/other). For all sorts query source='sort'; object_type
+        # only distinguishes their validity.
+        "object_type": "TEXT",
         "source": "TEXT",  # 'measure', 'attribute', 'filter', 'sort', ... (WHERE it's used)
         "label": "TEXT",
         "local_identifier": "TEXT",  # in-viz handle (e.g. 'm1'/'a1'); NULL for filter rows

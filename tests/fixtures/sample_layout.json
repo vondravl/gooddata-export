@@ -66,6 +66,29 @@
                     },
                     "title": "Total Revenue"
                   }
+                },
+                {
+                  "measure": {
+                    "localIdentifier": "m_revenue_pop_year",
+                    "definition": {
+                      "popMeasureDefinition": {
+                        "measureIdentifier": "m1",
+                        "popAttribute": {"identifier": {"id": "date.year", "type": "attribute"}}
+                      }
+                    },
+                    "title": "Total Revenue - SP year ago"
+                  }
+                },
+                {
+                  "measure": {
+                    "localIdentifier": "m_emea_revenue_inline",
+                    "definition": {
+                      "inlineDefinition": {
+                        "maql": "SELECT {metric/metric_total_revenue} WHERE {label/region.name} = \"EMEA\""
+                      }
+                    },
+                    "title": "EMEA Revenue"
+                  }
                 }
               ]
             },

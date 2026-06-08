@@ -1081,8 +1081,8 @@ class TestVisualizationSortReferences:
         assert len(sort_rows) == 1
         assert sort_rows[0]["object_type"] == "sort"  # valid, not dangling
         assert sort_rows[0]["local_identifier"] == "m_pop"
-        # Unresolvable target falls back to the localIdentifier
-        assert sort_rows[0]["referenced_id"] == "m_pop"
+        # Target is a derived measure (no catalog object) -> referenced_id is NULL
+        assert sort_rows[0]["referenced_id"] is None
 
     def test_attribute_sort_item_dangling(self):
         """attributeSortItem targeting a missing localIdentifier is flagged."""
@@ -1212,6 +1212,140 @@ class TestVisualizationSortReferences:
         assert sort_rows["m_base"]["referenced_id"] == "metric_base"
         # Missing attribute handle is flagged dangling
         assert sort_rows["a_gone"]["object_type"] == "sort_invalid"
+
+
+class TestVisualizationDerivedMeasureReferences:
+    """Derived (computed) measures are recorded for inventory.
+
+    A measure with a localIdentifier but no resolvable catalog object id is a
+    computed measure (PoP, arithmetic, previous-period, inline MAQL). It is
+    emitted with source='measure', object_type='derived_*' (classified by the
+    definition key), and referenced_id=NULL (no catalog object) — the
+    local_identifier carries the in-viz handle.
+    """
+
+    def test_derived_measure_flavors_classified(self):
+        from gooddata_export.process.entities import (
+            process_visualizations_references,
+        )
+
+        viz = {
+            "id": "viz1",
+            "content": {
+                "buckets": [
+                    {
+                        "localIdentifier": "measures",
+                        "items": [
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_base",
+                                    "definition": {
+                                        "measureDefinition": {
+                                            "item": {
+                                                "identifier": {
+                                                    "id": "metric_base",
+                                                    "type": "metric",
+                                                }
+                                            }
+                                        }
+                                    },
+                                }
+                            },
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_pop",
+                                    "definition": {
+                                        "popMeasureDefinition": {
+                                            "measureIdentifier": "m_base",
+                                            "popAttribute": {
+                                                "identifier": {
+                                                    "id": "date.year",
+                                                    "type": "attribute",
+                                                }
+                                            },
+                                        }
+                                    },
+                                }
+                            },
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_yoy",
+                                    "definition": {
+                                        "arithmeticMeasureDefinition": {
+                                            "measureIdentifiers": ["m_base", "m_pop"],
+                                            "operator": "change",
+                                        }
+                                    },
+                                }
+                            },
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_prev",
+                                    "definition": {
+                                        "previousPeriodMeasureDefinition": {
+                                            "measureIdentifier": "m_base",
+                                            "dateDataSets": [
+                                                {
+                                                    "dataSet": {
+                                                        "identifier": {
+                                                            "id": "date",
+                                                            "type": "dataset",
+                                                        }
+                                                    },
+                                                    "periodsAgo": 1,
+                                                }
+                                            ],
+                                        }
+                                    },
+                                }
+                            },
+                            {
+                                "measure": {
+                                    "localIdentifier": "m_inline",
+                                    "definition": {
+                                        "inlineDefinition": {
+                                            "maql": "SELECT {metric/metric_base} WHERE 1=1"
+                                        }
+                                    },
+                                }
+                            },
+                            {
+                                # Unknown future variant -> not silently dropped
+                                "measure": {
+                                    "localIdentifier": "m_future",
+                                    "definition": {"someNewMeasureDefinition": {}},
+                                }
+                            },
+                        ],
+                    }
+                ],
+            },
+        }
+
+        refs = process_visualizations_references([viz], workspace_id="ws1")
+        derived = {
+            r["local_identifier"]: r
+            for r in refs
+            if r["object_type"].startswith("derived_")
+        }
+
+        assert set(derived) == {"m_pop", "m_yoy", "m_prev", "m_inline", "m_future"}
+        assert derived["m_pop"]["object_type"] == "derived_pop"
+        assert derived["m_yoy"]["object_type"] == "derived_arithmetic"
+        assert derived["m_prev"]["object_type"] == "derived_previous_period"
+        assert derived["m_inline"]["object_type"] == "derived_inline"
+        assert derived["m_future"]["object_type"] == "derived_other"
+
+        # All derived rows use source='measure' and have no catalog object id
+        for local_id, row in derived.items():
+            assert row["source"] == "measure"
+            assert row["referenced_id"] is None
+            assert row["local_identifier"] == local_id
+
+        # The concrete base measure is still a normal metric reference
+        metric_rows = [r for r in refs if r["object_type"] == "metric"]
+        assert len(metric_rows) == 1
+        assert metric_rows[0]["referenced_id"] == "metric_base"
 
 
 class TestVisualizationsIsValidComputation:

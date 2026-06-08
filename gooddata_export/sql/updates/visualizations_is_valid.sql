@@ -22,6 +22,11 @@
 --   - Attribute IDs like "date.month" where label shares the attribute ID (in ldm_columns)
 --   - Date granularities like "process_date.day" (only in ldm_columns, not ldm_labels)
 --
+-- Derived-measure rows (object_type='derived_*') are inventory-only: they have no
+-- catalog object id, so they are intentionally NOT catalog-validated here. Keep the
+-- checks below keyed to explicit object_types — a generic "row exists in catalog?"
+-- check would wrongly flag every visualization that uses a computed measure.
+--
 -- Visualizations with is_valid already set (API mode) are unchanged
 
 UPDATE visualizations
