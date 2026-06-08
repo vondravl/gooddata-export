@@ -531,6 +531,11 @@ def process_dashboards(data, base_url, workspace_id):
                 "title": obj.get("title", ""),
                 "description": obj.get("description", ""),
                 "tags": str(sort_tags(obj.get("tags") or [])),
+                # Dashboard layout schema version (content.version, e.g. "2").
+                # Distinct from a dashboard plugin's version, which lives on the
+                # separate dashboardPlugins object and is captured in the plugins
+                # table (see process_plugins).
+                "version": content.get("version", ""),
                 "created_at": obj.get("createdAt", ""),
                 "modified_at": obj.get("modifiedAt", obj.get("createdAt", "")),
                 "dashboard_url": dashboard_url,

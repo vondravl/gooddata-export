@@ -383,6 +383,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "title": "TEXT",
         "description": "TEXT",
         "tags": "TEXT",
+        "version": "TEXT",  # Dashboard layout schema version (not plugin version)
         "created_at": "DATE",
         "modified_at": "DATE",
         "dashboard_url": "TEXT",
@@ -472,8 +473,8 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
             conn.cursor(),
             """
             INSERT INTO dashboards
-            (dashboard_id, workspace_id, title, description, tags, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (dashboard_id, workspace_id, title, description, tags, version, created_at, modified_at, dashboard_url, origin_type, content, is_valid, is_hidden, filter_context_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -482,6 +483,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                     d["title"],
                     d["description"],
                     d["tags"],
+                    d.get("version", ""),
                     d["created_at"],
                     d["modified_at"],
                     d["dashboard_url"],
