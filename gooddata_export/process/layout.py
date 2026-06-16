@@ -170,14 +170,17 @@ def process_ldm(data):
     """Parse logical model data into datasets, columns, and labels.
 
     Returns:
-        tuple: (datasets, columns, labels) where:
+        tuple: (datasets, columns, labels, reference_sources) where:
             - datasets: List of dataset records (including date instances)
             - columns: List of column records (attributes, facts, references, date granularities)
             - labels: List of attribute label records
+            - reference_sources: One record per reference join column (a composite
+              reference produces multiple rows), keyed to its ldm_columns reference row
     """
     datasets = []
     columns = []
     labels = []
+    reference_sources = []
 
     # Process date instances first (they can be referenced by regular datasets)
     # Date instances have granularities like DAY, WEEK, MONTH that become label references
@@ -331,7 +334,14 @@ def process_ldm(data):
         for ref in dataset.get("references", []):
             target_dataset_id = ref["identifier"]["id"]
             target_dataset_info = dataset_map.get(target_dataset_id)
-            source_column = ref["sources"][0]["column"]
+            sources = ref["sources"]
+            # A reference is ONE logical relationship but its join can be a
+            # composite key spanning multiple source columns. The reference is a
+            # single ldm_columns row keyed by the first source column; the full
+            # (joinable) join key lives in ldm_reference_sources, one row per
+            # source column.
+            source_column = sources[0]["column"]
+            reference_id = f"{source_column}__ref__{target_dataset_id}"
 
             columns.append(
                 {
@@ -339,9 +349,9 @@ def process_ldm(data):
                     "dataset_name": dataset["title"],
                     "title": ref["identifier"]["id"],
                     "description": "",
-                    "id": f"{source_column}__ref__{target_dataset_id}",
+                    "id": reference_id,
                     "tags": "",
-                    "data_type": ref["sources"][0]["dataType"],
+                    "data_type": sources[0].get("dataType", ""),
                     "source_column": source_column,
                     "type": "reference",
                     "grain": "No",
@@ -351,6 +361,18 @@ def process_ldm(data):
                     else "",
                 }
             )
+
+            for ordinal, src in enumerate(sources):
+                reference_sources.append(
+                    {
+                        "dataset_id": dataset["id"],
+                        "reference_id": reference_id,
+                        "source_column": src["column"],
+                        "ordinal": ordinal,
+                        "data_type": src.get("dataType", ""),
+                        "reference_to_id": target_dataset_id,
+                    }
+                )
 
         # Add workspace data filter columns
         # These are columns in the underlying table that are not used in the dataset
@@ -373,7 +395,7 @@ def process_ldm(data):
                 }
             )
 
-    return datasets, columns, labels
+    return datasets, columns, labels, reference_sources
 
 
 def process_users(data):

@@ -113,6 +113,7 @@ scripts/
 | `dashboards` | Dashboard definitions |
 | `metrics_references` | All metric references from MAQL - metrics, attributes, labels, facts, datasets (Python populates) |
 | `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
+| `ldm_reference_sources` | Join columns of each dataset→dataset reference, one row per source column (composite keys expand); FK to `ldm_columns(dataset_id, id)` |
 
 ### Key Views
 
@@ -121,6 +122,7 @@ scripts/
 | `v_metrics_relationships` | Direct metric references with titles |
 | `v_metrics_relationships_ancestry` | Full ancestry with titles/tags |
 | `v_metrics_relationships_root` | Root metrics (no outgoing dependencies) |
+| `v_ldm_columns` | `ldm_columns` with composite reference join keys expanded - one row per source column (per-source `data_type`); non-reference columns appear once |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |
 

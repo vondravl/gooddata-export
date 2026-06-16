@@ -731,7 +731,9 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
         raise RuntimeError("No LDM data found in parent workspace")
 
     # Process LDM data (LDM is shared across all workspaces, no workspace_id needed)
-    datasets, column_records, label_records = process_ldm(raw_data)
+    datasets, column_records, label_records, reference_source_records = process_ldm(
+        raw_data
+    )
 
     # Export datasets
     dataset_columns = {
@@ -892,6 +894,53 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
                 ],
             )
 
+        # Export reference source columns (the join key of each reference).
+        # Normalized to one row per source column so a composite-key reference
+        # (e.g. CHILD_ACQUIRER_ICA + CHILD_ISSUER_ICA) is joinable, unlike a
+        # comma-joined string. Keyed back to its ldm_columns reference row.
+        reference_source_columns = {
+            "dataset_id": "TEXT",
+            "reference_id": "TEXT",
+            "source_column": "TEXT",
+            "ordinal": "INTEGER",
+            "data_type": "TEXT",
+            "reference_to_id": "TEXT",
+            "PRIMARY KEY": "(dataset_id, reference_id, ordinal)",
+            "FOREIGN KEY (dataset_id, reference_id)": "REFERENCES ldm_columns(dataset_id, id)",
+        }
+
+        reference_source_count = len(reference_source_records)
+        if export_dir is not None:
+            reference_source_csv = "gooddata_ldm_reference_sources.csv"
+            reference_source_count = write_to_csv(
+                reference_source_records,
+                export_dir,
+                reference_source_csv,
+                fieldnames=reference_source_columns.keys(),
+            )
+
+        cursor = setup_table(conn, "ldm_reference_sources", reference_source_columns)
+        if reference_source_records:
+            execute_with_retry(
+                cursor,
+                """
+                INSERT INTO ldm_reference_sources
+                (dataset_id, reference_id, source_column, ordinal, data_type, reference_to_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["dataset_id"],
+                        d["reference_id"],
+                        d["source_column"],
+                        d["ordinal"],
+                        d["data_type"],
+                        d["reference_to_id"],
+                    )
+                    for d in reference_source_records
+                ],
+            )
+
         conn.commit()
         if export_dir is not None:
             log_export(
@@ -909,10 +958,20 @@ def export_ldm(all_workspace_data, export_dir, _config, db_name) -> None:
                 label_count,
                 Path(export_dir) / "gooddata_ldm_labels.csv",
             )
+            log_export(
+                "reference sources",
+                reference_source_count,
+                Path(export_dir) / "gooddata_ldm_reference_sources.csv",
+            )
         else:
             logger.debug("Exported %d datasets to %s", dataset_count, db_name)
             logger.debug("Exported %d columns to %s", column_count, db_name)
             logger.debug("Exported %d labels to %s", label_count, db_name)
+            logger.debug(
+                "Exported %d reference sources to %s",
+                reference_source_count,
+                db_name,
+            )
 
 
 def export_filter_contexts(all_workspace_data, export_dir, config, db_name) -> None:
