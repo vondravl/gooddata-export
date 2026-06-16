@@ -1134,6 +1134,188 @@ class TestLocalModeIntegration:
         assert column_types.get("order_id") == "attribute"
         assert column_types.get("revenue") == "fact"
 
+    def test_reference_composite_source_columns(self):
+        """A composite-key reference is one ldm_columns row plus one joinable row per source column."""
+        from gooddata_export.process.layout import process_ldm
+
+        data = {
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "dim_member_acquirer",
+                        "title": "Dim Member Acquirer",
+                        "attributes": [],
+                        "facts": [],
+                        "references": [],
+                    },
+                    {
+                        "id": "fact_cuta",
+                        "title": "Fact Cuta",
+                        "attributes": [],
+                        "facts": [],
+                        "references": [
+                            {
+                                "identifier": {"id": "dim_member_acquirer"},
+                                "sources": [
+                                    {
+                                        "column": "childacquirerica",
+                                        "dataType": "STRING",
+                                    },
+                                    {"column": "childissuerica", "dataType": "STRING"},
+                                ],
+                            }
+                        ],
+                    },
+                ]
+            }
+        }
+
+        _, columns, _, reference_sources = process_ldm(data)
+        refs = [c for c in columns if c["type"] == "reference"]
+
+        # One logical relationship -> one ldm_columns row, keyed by the first source column
+        assert len(refs) == 1
+        ref = refs[0]
+        assert ref["id"] == "childacquirerica__ref__dim_member_acquirer"
+        assert ref["source_column"] == "childacquirerica"
+
+        # The full composite join is normalized into ldm_reference_sources:
+        # one joinable row per source column, keyed back to the reference row.
+        rows = [
+            r
+            for r in reference_sources
+            if r["reference_id"] == "childacquirerica__ref__dim_member_acquirer"
+        ]
+        assert [(r["ordinal"], r["source_column"]) for r in rows] == [
+            (0, "childacquirerica"),
+            (1, "childissuerica"),
+        ]
+        assert all(r["dataset_id"] == "fact_cuta" for r in rows)
+        assert all(r["reference_to_id"] == "dim_member_acquirer" for r in rows)
+
+    def test_ldm_reference_sources_and_v_ldm_columns(self, mock_config, tmp_path):
+        """End-to-end: composite reference populates ldm_reference_sources and
+        expands correctly (with per-source data_type) in the v_ldm_columns view."""
+        from pathlib import Path
+
+        from gooddata_export.export.writers import export_ldm
+
+        layout = {
+            "ldm": {
+                "datasets": [
+                    {
+                        "id": "dim_member_acquirer",
+                        "title": "Dim Member Acquirer",
+                        "attributes": [],
+                        "facts": [],
+                        "references": [],
+                    },
+                    {
+                        "id": "fact_cuta",
+                        "title": "Fact Cuta",
+                        # "region" is the dataset grain (primary key)
+                        "grain": [{"id": "region"}],
+                        "attributes": [
+                            {
+                                "id": "region",
+                                "title": "Region",
+                                "sourceColumn": "REGION",
+                                "sourceColumnDataType": "STRING",
+                                "labels": [],
+                            }
+                        ],
+                        "facts": [
+                            {
+                                "id": "amount",
+                                "title": "Amount",
+                                "sourceColumn": "AMT",
+                                "sourceColumnDataType": "NUMERIC",
+                            }
+                        ],
+                        "references": [
+                            {
+                                "identifier": {"id": "dim_member_acquirer"},
+                                # composite key with MIXED data types
+                                "sources": [
+                                    {
+                                        "column": "CHILD_ACQUIRER_ICA",
+                                        "dataType": "STRING",
+                                    },
+                                    {"column": "CHILD_ISSUER_ICA", "dataType": "INT"},
+                                ],
+                            }
+                        ],
+                    },
+                ]
+            }
+        }
+
+        db_path = tmp_path / "test_export.db"
+        export_ldm(
+            [{"workspace_id": "ws", "data": {"ldm": layout}}],
+            None,
+            mock_config,
+            str(db_path),
+        )
+
+        conn = sqlite3.connect(db_path)
+
+        # ldm_reference_sources: one row per source column, mixed types preserved
+        ref_sources = conn.execute(
+            "SELECT source_column, ordinal, data_type FROM ldm_reference_sources "
+            "WHERE dataset_id = 'fact_cuta' ORDER BY ordinal"
+        ).fetchall()
+        assert ref_sources == [
+            ("CHILD_ACQUIRER_ICA", 0, "STRING"),
+            ("CHILD_ISSUER_ICA", 1, "INT"),
+        ]
+
+        # Base table keeps a single reference row
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM ldm_columns "
+                "WHERE dataset_id = 'fact_cuta' AND type = 'reference'"
+            ).fetchone()[0]
+            == 1
+        )
+
+        # Apply the shipped view SQL and check expansion + per-source data_type
+        view_sql = (
+            Path(__file__).parent.parent
+            / "gooddata_export"
+            / "sql"
+            / "views"
+            / "v_ldm_columns.sql"
+        ).read_text()
+        conn.executescript(view_sql)
+
+        expanded = conn.execute(
+            "SELECT id, type, source_column, ordinal, data_type, grain "
+            "FROM v_ldm_columns WHERE dataset_id = 'fact_cuta' "
+            "ORDER BY type, id, ordinal"
+        ).fetchall()
+        assert expanded == [
+            ("region", "attribute", "REGION", None, "STRING", "Yes"),
+            ("amount", "fact", "AMT", None, "NUMERIC", "No"),
+            (
+                "CHILD_ACQUIRER_ICA__ref__dim_member_acquirer",
+                "reference",
+                "CHILD_ACQUIRER_ICA",
+                0,
+                "STRING",
+                "No",
+            ),
+            (
+                "CHILD_ACQUIRER_ICA__ref__dim_member_acquirer",
+                "reference",
+                "CHILD_ISSUER_ICA",
+                1,
+                "INT",
+                "No",
+            ),
+        ]
+        conn.close()
+
     def test_ldm_labels_exported(self, sample_layout, mock_config, tmp_path):
         """LDM labels (attribute display forms) are exported to database."""
         from gooddata_export.export import export_all_metadata

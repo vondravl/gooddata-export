@@ -160,6 +160,12 @@ views:
     category: tagging
     dependencies: []
 
+  v_ldm_columns:
+    sql_file: views/v_ldm_columns.sql
+    description: ldm_columns with composite reference join keys expanded (one row per source column)
+    category: usage
+    dependencies: []  # Queries export-phase base tables (ldm_columns, ldm_reference_sources) which always exist before post-export
+
   v_ldm_labels:
     sql_file: views/v_ldm_labels.sql
     description: LDM labels with dataset_id derived from parent attribute

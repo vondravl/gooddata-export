@@ -75,6 +75,24 @@ def ensure_export_directory(export_dir):
     return export_dir
 
 
+# Table-constraint pseudo-keys used in the schema dicts passed to setup_table
+# (e.g. "PRIMARY KEY", "FOREIGN KEY (a, b)"). They are valid DDL but are not
+# data columns, so they must be dropped before a schema dict's keys() are used
+# as CSV fieldnames - otherwise the CSV gets spurious empty columns.
+_CONSTRAINT_CLAUSE_PREFIXES = (
+    "PRIMARY KEY",
+    "FOREIGN KEY",
+    "UNIQUE",
+    "CHECK",
+    "CONSTRAINT",
+)
+
+
+def is_constraint_clause(field: str) -> bool:
+    """True if a schema-dict key is a table constraint, not a data column."""
+    return field.startswith(_CONSTRAINT_CLAUSE_PREFIXES)
+
+
 def write_to_csv(data, export_dir, filename, fieldnames, exclude_fields=None):
     """Write data to CSV file in specified directory"""
     ensure_export_directory(export_dir)
@@ -82,7 +100,9 @@ def write_to_csv(data, export_dir, filename, fieldnames, exclude_fields=None):
 
     if exclude_fields is None:
         exclude_fields = set()
-    csv_fieldnames = [f for f in fieldnames if f not in exclude_fields]
+    csv_fieldnames = [
+        f for f in fieldnames if f not in exclude_fields and not is_constraint_clause(f)
+    ]
 
     with open(filepath, "w", encoding="utf-8-sig", newline="\n") as csvfile:
         writer = csv.DictWriter(

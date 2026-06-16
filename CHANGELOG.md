@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-06-16
+
+### Added
+- **`ldm_reference_sources` table**: the complete, joinable join key of every dataset→dataset reference. A reference is a single logical relationship (one `ldm_columns` row, one arrow in the modeler) but its join can be a composite key spanning multiple source columns. Previously only the first column (`sources[0]`) was captured in `ldm_columns.source_column`; the rest were silently dropped. The new table normalizes the join to **one row per source column** — `dataset_id`, `reference_id` (FK to `ldm_columns(dataset_id, id)`), `source_column`, `ordinal`, `data_type`, `reference_to_id` — keyed `(dataset_id, reference_id, ordinal)`, so the columns are usable in a relational `JOIN` (a comma-joined string would not be). `ldm_columns` is unchanged: still one row per reference, keyed by the first source column.
+- **`v_ldm_columns` view**: `ldm_columns` re-joined to `ldm_reference_sources` so each composite reference appears once **per source column** (duplicated by the number of join columns), while every non-reference column appears exactly once. `source_column` is the individual join column for reference rows (`ordinal` gives its position) and the column's own source otherwise; `data_type` is the per-source type for reference rows. Row duplication is invalid in the base table (breaks the `(dataset_id, id)` PK) but fine in a read-only view.
+
+### Fixed
+- **Spurious constraint columns in exported CSVs**: every `*.csv` produced from a table with a `PRIMARY KEY`/`FOREIGN KEY` clause (e.g. `gooddata_ldm_columns.csv`, `gooddata_dashboards.csv`, `gooddata_users.csv`) had extra empty columns named `PRIMARY KEY` and `FOREIGN KEY (...)`, because the table-constraint pseudo-keys in the schema dict were passed through as CSV fieldnames. `write_to_csv` now filters table-constraint clauses, so CSV headers contain only real data columns. SQLite output is unaffected.
+
 ## [1.13.0] - 2026-06-08
 
 ### Added
