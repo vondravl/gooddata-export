@@ -29,6 +29,7 @@ from gooddata_export.process import (
     process_user_groups,
     process_users,
     process_visualizations,
+    process_visualizations_filters,
     process_visualizations_references,
     process_workspaces,
 )
@@ -129,6 +130,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
     client = get_api_client(config=config)
     all_processed_visualizations = []
     all_processed_references = []
+    all_processed_filters = []
 
     # Process visualizations from all workspaces
     for workspace_info in all_workspace_data:
@@ -143,9 +145,11 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             raw_data, client["base_url"], workspace_id
         )
         processed_references = process_visualizations_references(raw_data, workspace_id)
+        processed_filters = process_visualizations_filters(raw_data, workspace_id)
 
         all_processed_visualizations.extend(processed_visualizations)
         all_processed_references.extend(processed_references)
+        all_processed_filters.extend(processed_filters)
 
     # Define column schemas
     visualization_columns = {
@@ -183,6 +187,23 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
         "PRIMARY KEY": "(visualization_id, referenced_id, workspace_id, object_type, source, local_identifier)",
         "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
+    # One row per attribute filter on a visualization (positive and negative
+    # filters on the same attribute stay distinct). element_count > 0 means the
+    # filter actively constrains results; 0 is a no-op placeholder (e.g. a
+    # negativeAttributeFilter with empty notIn). elements is a JSON array of the
+    # selected element values/uris. See process_visualizations_filters.
+    filters_columns = {
+        "visualization_id": "TEXT",
+        "workspace_id": "TEXT",
+        "filter_index": "INTEGER",  # position in content["filters"]
+        "display_form_id": "TEXT",  # the attribute/label being filtered
+        "object_type": "TEXT",  # 'label' / 'attribute'
+        "filter_type": "TEXT",  # 'positiveAttributeFilter' / 'negativeAttributeFilter'
+        "element_count": "INTEGER",
+        "elements": "JSON",  # JSON array of selected element values/uris
+        "PRIMARY KEY": "(visualization_id, workspace_id, filter_index)",
+        "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
+    }
 
     # Always create all tables (even if empty) for consistency
     with database_connection(db_name) as conn:
@@ -191,6 +212,7 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             [
                 ("visualizations", visualization_columns),
                 ("visualizations_references", references_columns),
+                ("visualizations_filters", filters_columns),
             ],
         )
 
@@ -283,6 +305,48 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                 ],
             )
 
+        # Export visualization filters
+        filter_count = len(all_processed_filters)
+        if export_dir is not None and all_processed_filters:
+            filter_count = write_to_csv(
+                all_processed_filters,
+                export_dir,
+                "gooddata_visualizations_filters.csv",
+                fieldnames=[
+                    "visualization_id",
+                    "workspace_id",
+                    "filter_index",
+                    "display_form_id",
+                    "object_type",
+                    "filter_type",
+                    "element_count",
+                    "elements",
+                ],
+            )
+
+        if all_processed_filters:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO visualizations_filters
+                (visualization_id, workspace_id, filter_index, display_form_id, object_type, filter_type, element_count, elements)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["visualization_id"],
+                        d["workspace_id"],
+                        d["filter_index"],
+                        d["display_form_id"],
+                        d["object_type"],
+                        d["filter_type"],
+                        d["element_count"],
+                        d["elements"],
+                    )
+                    for d in all_processed_filters
+                ],
+            )
+
         conn.commit()
 
     if export_dir is not None:
@@ -296,11 +360,21 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
             ref_count,
             Path(export_dir) / "gooddata_visualizations_references.csv",
         )
+        log_export(
+            "visualization filters",
+            filter_count,
+            Path(export_dir) / "gooddata_visualizations_filters.csv",
+        )
     else:
         logger.debug("Exported %d visualizations to %s", vis_count, db_name)
         logger.debug(
             "Exported %d visualization references to %s",
             ref_count,
+            db_name,
+        )
+        logger.debug(
+            "Exported %d visualization filters to %s",
+            filter_count,
             db_name,
         )
 

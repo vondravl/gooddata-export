@@ -32,6 +32,21 @@ DERIVED_MEASURE_TYPES = {
 }
 
 
+def _filter_elements(attr_filter: dict) -> list:
+    """Return the selected elements of a visualization attribute filter.
+
+    The selected elements live under ``in`` (positiveAttributeFilter) or
+    ``notIn`` (negativeAttributeFilter), each as ``{"values": [...]}`` or
+    ``{"uris": [...]}`` (or, in legacy data, a bare list). Returns [] when the
+    selection is empty — which for a negative filter means it constrains
+    nothing (a no-op placeholder).
+    """
+    elements = attr_filter.get("in") or attr_filter.get("notIn") or {}
+    if isinstance(elements, dict):
+        elements = elements.get("values") or elements.get("uris") or []
+    return elements if isinstance(elements, list) else []
+
+
 def validate_workspace_exists(
     client: dict[str, Any] | None = None,
     config: "ExportConfig | None" = None,
@@ -251,6 +266,11 @@ def process_visualizations_references(visualization_data, workspace_id=None):
     have a localIdentifier but no catalog object id; they are recorded for
     inventory with object_type='derived_*' (filter by object_type LIKE 'derived_%'
     to find visualizations using computed measures).
+
+    Filter rows (source='filter') record only that an attribute is *used* as a
+    filter. The filter's direction and selected elements (and whether it
+    actually constrains anything) live in the separate visualizations_filters
+    table — see process_visualizations_filters.
 
     This allows answering questions like:
         - "What metrics does this viz use?" (filter by object_type='metric')
@@ -510,6 +530,62 @@ def process_visualizations_references(visualization_data, workspace_id=None):
             x["local_identifier"] or "",
         )
     )
+
+
+def process_visualizations_filters(visualization_data, workspace_id=None):
+    """Extract attribute filters from visualizations — one row per filter.
+
+    Accepts layout format where content is at top level:
+        {"id": "x", "content": {"filters": [...]}}
+
+    visualizations_references records only that an attribute is *used* as a
+    filter (one deduped reference edge). This function captures each filter as
+    its own entity so a positive and a negative filter on the same attribute
+    stay distinct, recording:
+        - filter_index: position in content["filters"] (the per-viz key)
+        - display_form_id / object_type: the attribute/label being filtered
+        - filter_type: 'positiveAttributeFilter' / 'negativeAttributeFilter'
+        - element_count: number of selected elements
+        - elements: JSON array of the selected element values/uris
+
+    The element_count distinguishes an active filter (count > 0, constrains the
+    result) from a no-op placeholder (count == 0, e.g. a negativeAttributeFilter
+    with empty notIn — filters nothing). Mirrors process_filter_context_fields
+    for dashboard filter contexts.
+
+    Only attribute filters carry element selections; ranking/measure-value/date
+    filters are out of scope here (their references live in
+    visualizations_references). filter_index reflects the true position in the
+    filters array, so it may be non-contiguous when such filters are present.
+    """
+    processed = []
+    for viz in visualization_data:
+        content = viz.get("content", {})
+        for filter_index, filter_def in enumerate(content.get("filters", []) or []):
+            for filter_type in ("negativeAttributeFilter", "positiveAttributeFilter"):
+                attr_filter = filter_def.get(filter_type)
+                if not attr_filter:
+                    continue
+                identifier = attr_filter.get("displayForm", {}).get("identifier", {})
+                display_form_id = identifier.get("id")
+                if not display_form_id:
+                    continue
+                elements = _filter_elements(attr_filter)
+                processed.append(
+                    {
+                        "visualization_id": viz["id"],
+                        "workspace_id": workspace_id,
+                        "filter_index": filter_index,
+                        "display_form_id": display_form_id,
+                        "object_type": identifier.get("type", "label"),
+                        "filter_type": filter_type,
+                        "element_count": len(elements),
+                        # ensure_ascii=False keeps non-ASCII members (e.g. a
+                        # "€1000" price band) readable rather than \u-escaped.
+                        "elements": json.dumps(elements, ensure_ascii=False),
+                    }
+                )
+    return processed
 
 
 def process_dashboards(data, base_url, workspace_id):
