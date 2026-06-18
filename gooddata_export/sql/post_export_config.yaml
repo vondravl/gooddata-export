@@ -125,7 +125,13 @@ views:
 
   v_visualizations_references:
     sql_file: views/v_visualizations_references.sql
-    description: Visualization references with visualization and metric titles
+    description: Visualization references with titles; filter rows carry filter_active (any active filter on the attribute)
+    category: usage
+    dependencies: []
+
+  v_visualizations_filters:
+    sql_file: views/v_visualizations_filters.sql
+    description: Attribute filters per visualization with element_count and selected elements (active vs no-op placeholder)
     category: usage
     dependencies: []
 

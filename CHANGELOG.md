@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-06-18
+
+### Added
+- **`visualizations_filters` table**: one row per attribute filter on a visualization, so you can tell an **active** filter (`element_count > 0`, actually constrains the result — e.g. a `positiveAttributeFilter` locked to `['10000']`) from a **no-op placeholder** (`element_count = 0` — e.g. a `negativeAttributeFilter` with empty `notIn`, which filters nothing). Columns: `filter_index` (the per-viz key, position in `content["filters"]`), `display_form_id`, `object_type`, `filter_type` (`positiveAttributeFilter`/`negativeAttributeFilter`), `element_count`, and `elements` (JSON array of the selected values/uris). A positive **and** a negative filter on the same attribute stay distinct rows — unlike `visualizations_references`, which collapses them to a single reference edge. Mirrors `filter_context_fields` for dashboard filter contexts. Element extraction covers both `in`/`notIn` and both `values`/`uris` formats.
+- **`v_visualizations_filters` view**: `visualizations_filters` joined to the visualization title.
+- **`filter_active` column in `v_visualizations_references`**: for filter rows (`source='filter'`), a 1/0 flag answering "is this attribute actively filtered" at a glance — `1` if any filter on the attribute selects elements, `0` if every filter is an empty placeholder, `NULL` for non-filter rows. ORs over a positive + negative filter on the same attribute (any active → 1); the per-filter detail lives in `visualizations_filters`.
+
 ## [1.14.0] - 2026-06-16
 
 ### Added

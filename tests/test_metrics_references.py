@@ -1348,6 +1348,166 @@ class TestVisualizationDerivedMeasureReferences:
         assert metric_rows[0]["referenced_id"] == "metric_base"
 
 
+class TestVisualizationFilters:
+    """Unit tests for process_visualizations_filters."""
+
+    def _filters(self, content):
+        import json
+
+        from gooddata_export.process.entities import (
+            process_visualizations_filters,
+        )
+
+        viz = {"id": "viz1", "content": content}
+        rows = process_visualizations_filters([viz], workspace_id="ws1")
+        # Decode the JSON elements column for easy assertions.
+        for r in rows:
+            r["elements_decoded"] = json.loads(r["elements"])
+        return rows
+
+    def test_positive_filter_with_values(self):
+        """A positiveAttributeFilter records its direction, count, and elements."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "positiveAttributeFilter": {
+                            "displayForm": {
+                                "identifier": {"id": "region", "type": "label"}
+                            },
+                            "in": {"values": ["10000", "20000"]},
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["display_form_id"] == "region"
+        assert row["filter_type"] == "positiveAttributeFilter"
+        assert row["element_count"] == 2
+        assert row["elements_decoded"] == ["10000", "20000"]
+        assert row["filter_index"] == 0
+
+    def test_negative_filter_empty_notin_is_noop(self):
+        """A negativeAttributeFilter with empty notIn constrains nothing (count 0)."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "negativeAttributeFilter": {
+                            "displayForm": {
+                                "identifier": {"id": "region", "type": "label"}
+                            },
+                            "notIn": {"values": []},
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["filter_type"] == "negativeAttributeFilter"
+        assert rows[0]["element_count"] == 0
+        assert rows[0]["elements_decoded"] == []
+
+    def test_counts_uris(self):
+        """Element selections expressed as uris are counted and recorded too."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "negativeAttributeFilter": {
+                            "displayForm": {
+                                "identifier": {"id": "region", "type": "label"}
+                            },
+                            "notIn": {"uris": ["/u/1", "/u/2", "/u/3"]},
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert rows[0]["element_count"] == 3
+        assert rows[0]["elements_decoded"] == ["/u/1", "/u/2", "/u/3"]
+
+    def test_non_ascii_members_kept_readable(self):
+        """Non-ASCII members are stored as real characters, not \\u-escaped."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "positiveAttributeFilter": {
+                            "displayForm": {
+                                "identifier": {"id": "band", "type": "label"}
+                            },
+                            "in": {"values": ["€1000 - 2500"]},
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert "€" in rows[0]["elements"]
+        assert "\\u20ac" not in rows[0]["elements"]
+        assert rows[0]["elements_decoded"] == ["€1000 - 2500"]
+
+    def test_positive_and_negative_on_same_attribute_stay_distinct(self):
+        """Both filters on one attribute are kept as separate rows (no collision).
+
+        This is the case visualizations_references collapses to a single edge;
+        the dedicated table must keep them apart so an active positive lock is
+        not masked by an empty negative placeholder.
+        """
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "negativeAttributeFilter": {
+                            "displayForm": {
+                                "identifier": {"id": "region", "type": "label"}
+                            },
+                            "notIn": {"values": []},
+                        }
+                    },
+                    {
+                        "positiveAttributeFilter": {
+                            "displayForm": {
+                                "identifier": {"id": "region", "type": "label"}
+                            },
+                            "in": {"values": ["10000"]},
+                        }
+                    },
+                ]
+            }
+        )
+
+        assert len(rows) == 2
+        by_type = {r["filter_type"]: r for r in rows}
+        assert by_type["negativeAttributeFilter"]["element_count"] == 0
+        assert by_type["negativeAttributeFilter"]["filter_index"] == 0
+        assert by_type["positiveAttributeFilter"]["element_count"] == 1
+        assert by_type["positiveAttributeFilter"]["filter_index"] == 1
+
+    def test_non_attribute_filters_ignored(self):
+        """Ranking/measure-value filters produce no rows (no element selection)."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {"rankingFilter": {"measure": {"localIdentifier": "m1"}}},
+                    {
+                        "measureValueFilter": {
+                            "measure": {"localIdentifier": "m1"},
+                        }
+                    },
+                ]
+            }
+        )
+
+        assert rows == []
+
+
 class TestVisualizationsIsValidComputation:
     """Tests for is_valid computation on visualizations in local mode."""
 

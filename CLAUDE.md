@@ -114,6 +114,7 @@ scripts/
 | `metrics_references` | All metric references from MAQL - metrics, attributes, labels, facts, datasets (Python populates) |
 | `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
 | `ldm_reference_sources` | Join columns of each dataset→dataset reference, one row per source column (composite keys expand); FK to `ldm_columns(dataset_id, id)` |
+| `visualizations_filters` | One row per attribute filter on a visualization: `filter_type` (positive/negative), `element_count`, `elements` (JSON). `element_count > 0` = active filter, `0` = no-op placeholder. Positive+negative on the same attribute stay distinct (unlike `visualizations_references`). Mirrors `filter_context_fields` |
 
 ### Key Views
 
@@ -123,6 +124,8 @@ scripts/
 | `v_metrics_relationships_ancestry` | Full ancestry with titles/tags |
 | `v_metrics_relationships_root` | Root metrics (no outgoing dependencies) |
 | `v_ldm_columns` | `ldm_columns` with composite reference join keys expanded - one row per source column (per-source `data_type`); non-reference columns appear once |
+| `v_visualizations_references` | Visualization references with titles; filter rows carry `filter_active` (1/0/NULL — any active filter on the attribute) |
+| `v_visualizations_filters` | `visualizations_filters` with the visualization title |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |
 
