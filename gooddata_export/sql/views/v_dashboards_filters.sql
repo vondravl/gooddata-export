@@ -10,7 +10,10 @@
 --
 -- The filter's title/selection live in its filter context, joined by
 -- local_identifier. Scalar subqueries are used (instead of a JOIN) so a row
--- can never fan out if a local_identifier recurs across filter contexts.
+-- can never fan out if a local_identifier recurs across filter contexts. The
+-- match is constrained by filter_type (so a 'date' row never picks up an
+-- 'attribute' filter's title) and skips the empty local_identifier of the
+-- common date filter (which would otherwise match any unkeyed filter).
 
 DROP VIEW IF EXISTS v_dashboards_filters;
 
@@ -31,6 +34,11 @@ SELECT
         FROM filter_context_fields fcf
         WHERE fcf.workspace_id = df.workspace_id
           AND fcf.local_identifier = df.local_identifier
+          AND df.local_identifier <> ''
+          AND fcf.filter_type = CASE df.filter_type
+                                    WHEN 'date' THEN 'dateFilter'
+                                    ELSE 'attributeFilter'
+                                END
         LIMIT 1
     ) AS filter_title,
     (
@@ -38,6 +46,11 @@ SELECT
         FROM filter_context_fields fcf
         WHERE fcf.workspace_id = df.workspace_id
           AND fcf.local_identifier = df.local_identifier
+          AND df.local_identifier <> ''
+          AND fcf.filter_type = CASE df.filter_type
+                                    WHEN 'date' THEN 'dateFilter'
+                                    ELSE 'attributeFilter'
+                                END
         LIMIT 1
     ) AS display_form_id
 FROM dashboards_filters df
