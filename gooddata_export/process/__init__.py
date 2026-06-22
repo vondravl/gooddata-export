@@ -19,6 +19,7 @@ from gooddata_export.process.common import (
 from gooddata_export.process.entities import (
     fetch_child_workspaces,
     process_dashboards,
+    process_dashboards_filters,
     process_dashboards_plugins,
     process_dashboards_references,
     process_dashboards_visualizations,
@@ -71,6 +72,7 @@ __all__ = [
     "process_visualizations_filters",
     "process_visualizations_references",
     "process_dashboards",
+    "process_dashboards_filters",
     "process_dashboards_plugins",
     "process_dashboards_references",
     "process_dashboards_visualizations",

@@ -74,6 +74,12 @@ views:
     category: usage
     dependencies: []
 
+  v_dashboards_filters:
+    sql_file: views/v_dashboards_filters.sql
+    description: Per-dashboard filter config with visibility (filter_visible derived from mode hidden/readwrite/readonly)
+    category: usage
+    dependencies: []
+
   v_dashboards_tags:
     sql_file: views/v_dashboards_tags.sql
     description: Unnests dashboard tags into individual rows

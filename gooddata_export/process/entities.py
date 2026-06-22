@@ -1166,6 +1166,137 @@ def process_dashboards_references(
     )
 
 
+def process_dashboards_filters(
+    dashboard_data: list[dict], workspace_id: str | None = None
+) -> list[dict]:
+    """Extract per-dashboard filter config (the visibility overlay).
+
+    A dashboard's filter *selections* live in its filter context (see
+    process_filter_context_fields). This function captures the per-dashboard
+    *config* layered on top of those filters - most importantly each filter's
+    ``mode`` (visibility): one of 'readwrite', 'readonly', or 'hidden'. A
+    missing ``mode`` means the platform default (visible). This is the piece
+    dashboards_references can't represent: references only emit a row when an
+    object id is referenced, so a hidden filter with no ``displayAsLabel`` would
+    otherwise leave no trace.
+
+    Extracts one row per config entry, keyed by ``local_identifier`` (which
+    joins to filter_context_fields.local_identifier):
+        - attributeFilterConfigs[]: filter_type='attribute', mode, displayAsLabel
+        - dateFilterConfig:         filter_type='date' (the common date filter)
+        - dateFilterConfigs[]:      filter_type='date' (additional date filters)
+
+    Like process_dashboards_references, both top-level content (tab_id=None) and
+    each tab are processed, since tabs can override the dashboard-level config.
+
+    Args:
+        dashboard_data: List of dashboard objects with "id" and "content" fields
+        workspace_id: Workspace ID to include in output
+
+    Returns:
+        List of filter-config dictionaries with dashboard_id, workspace_id,
+        tab_id, local_identifier, filter_type, mode, display_as_label_id, and
+        date_dataset_id fields.
+    """
+    from gooddata_export.process.common import UniqueRelationshipTracker
+
+    tracker = UniqueRelationshipTracker(
+        key_fields=[
+            "dashboard_id",
+            "workspace_id",
+            "tab_id",
+            "local_identifier",
+            "filter_type",
+        ]
+    )
+
+    for dash in dashboard_data:
+        dashboard_id = dash["id"]
+        content = dash.get("content", {})
+        if not content:
+            continue
+
+        # Top-level content (tab_id=None) + each tab. See the matching comment
+        # in process_dashboards_references for why both are always included.
+        config_sources = [(None, content)]
+        for tab in content.get("tabs", []):
+            config_sources.append((tab.get("localIdentifier"), tab))
+
+        for tab_id, config_source in config_sources:
+            # Attribute filter configs (list of {localIdentifier, mode,
+            # displayAsLabel}). Keyed by localIdentifier, so skip entries
+            # without one - they can't be tied to a filter.
+            for cfg in config_source.get("attributeFilterConfigs", []):
+                local_id = cfg.get("localIdentifier")
+                if not local_id:
+                    continue
+                display_as_label_id = (
+                    cfg.get("displayAsLabel", {}).get("identifier", {}).get("id")
+                )
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "workspace_id": workspace_id,
+                        "tab_id": tab_id,
+                        "local_identifier": local_id,
+                        "filter_type": "attribute",
+                        "mode": cfg.get("mode"),
+                        "display_as_label_id": display_as_label_id,
+                        "date_dataset_id": None,
+                    }
+                )
+
+            # Common date filter config (singular). It may have no
+            # localIdentifier - fall back to "" to match the convention in
+            # process_filter_context_fields so the join can still line up.
+            date_cfg = config_source.get("dateFilterConfig")
+            if date_cfg:
+                dataset_id = (
+                    date_cfg.get("dateDataSet", {}).get("identifier", {}).get("id")
+                )
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "workspace_id": workspace_id,
+                        "tab_id": tab_id,
+                        "local_identifier": date_cfg.get("localIdentifier") or "",
+                        "filter_type": "date",
+                        "mode": date_cfg.get("mode"),
+                        "display_as_label_id": None,
+                        "date_dataset_id": dataset_id,
+                    }
+                )
+
+            # Additional date filter configs (plural), each with its own
+            # localIdentifier.
+            for cfg in config_source.get("dateFilterConfigs", []):
+                local_id = cfg.get("localIdentifier")
+                if not local_id:
+                    continue
+                dataset_id = cfg.get("dateDataSet", {}).get("identifier", {}).get("id")
+                tracker.add(
+                    {
+                        "dashboard_id": dashboard_id,
+                        "workspace_id": workspace_id,
+                        "tab_id": tab_id,
+                        "local_identifier": local_id,
+                        "filter_type": "date",
+                        "mode": cfg.get("mode"),
+                        "display_as_label_id": None,
+                        "date_dataset_id": dataset_id,
+                    }
+                )
+
+    return tracker.get_sorted(
+        sort_key=lambda x: (
+            x["dashboard_id"],
+            x["tab_id"] or "",  # top-level configs (tab_id=None) sort first
+            x["filter_type"],
+            x["local_identifier"],
+        )
+    )
+
+
 def process_dashboards_widget_filters(
     dashboard_data: list[dict], workspace_id: str | None = None
 ) -> list[dict]:

@@ -223,14 +223,29 @@
               "displayAsLabel": {
                 "identifier": {"id": "region.name", "type": "label"}
               },
-              "localIdentifier": "filter_region"
+              "localIdentifier": "filter_region",
+              "mode": "hidden"
+            },
+            {
+              "localIdentifier": "product_type_name_7_attributeFilter",
+              "mode": "readwrite"
             }
           ],
           "dateFilterConfig": {
+            "mode": "readonly",
             "dateDataSet": {
               "identifier": {"id": "date", "type": "dataset"}
             }
           },
+          "dateFilterConfigs": [
+            {
+              "localIdentifier": "fiscal_date_filter",
+              "mode": "hidden",
+              "dateDataSet": {
+                "identifier": {"id": "fiscal_date", "type": "dataset"}
+              }
+            }
+          ],
           "layout": {
             "sections": [
               {

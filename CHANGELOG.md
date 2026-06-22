@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-06-22
+
+### Added
+- **`dashboards_filters` table**: the per-dashboard filter-config overlay, capturing each filter's **visibility**. Previously `dashboards_references` could tell you a filter was *present* on a dashboard, but a **hidden** filter looked identical to a visible one — and a hidden filter with no `displayAsLabel` left no trace at all, because references only emit a row when an object id is referenced. The new table records one row per filter config — from `attributeFilterConfigs[]`, the common `dateFilterConfig`, and `dateFilterConfigs[]` — keyed by `local_identifier` (joins to `filter_context_fields.local_identifier`). The key column is `mode` (`hidden`/`readwrite`/`readonly`; `NULL` = platform default, visible), alongside `filter_type` (`attribute`/`date`), `tab_id`, `display_as_label_id`, and `date_dataset_id`. This lets you check that a filter is present **and visible** on every dashboard, rather than just present.
+- **`v_dashboards_filters` view**: `dashboards_filters` joined to the dashboard title, with a derived `filter_visible` flag (`0` only when `mode='hidden'`, else `1`) and the filter's `filter_title`/`display_form_id` resolved from its filter context (via scalar subqueries, so a row never fans out if a `local_identifier` recurs across filter contexts).
+
 ## [1.15.0] - 2026-06-18
 
 ### Added

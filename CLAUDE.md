@@ -115,6 +115,7 @@ scripts/
 | `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
 | `ldm_reference_sources` | Join columns of each dataset→dataset reference, one row per source column (composite keys expand); FK to `ldm_columns(dataset_id, id)` |
 | `visualizations_filters` | One row per attribute filter on a visualization: `filter_type` (positive/negative), `element_count`, `elements` (JSON). `element_count > 0` = active filter, `0` = no-op placeholder. Positive+negative on the same attribute stay distinct (unlike `visualizations_references`). Mirrors `filter_context_fields` |
+| `dashboards_filters` | Per-dashboard filter-config overlay (visibility). One row per filter config from `attributeFilterConfigs[]`/`dateFilterConfig`/`dateFilterConfigs[]`, keyed by `local_identifier` (joins `filter_context_fields.local_identifier`). `mode` = `hidden`/`readwrite`/`readonly` (NULL = default, visible); also `filter_type` (attribute/date), `tab_id`, `display_as_label_id`, `date_dataset_id`. Captures whether a filter is *visible* — which `dashboards_references` (presence only) can't, since a hidden filter with no `displayAsLabel` has no reference row at all |
 
 ### Key Views
 
@@ -126,6 +127,7 @@ scripts/
 | `v_ldm_columns` | `ldm_columns` with composite reference join keys expanded - one row per source column (per-source `data_type`); non-reference columns appear once |
 | `v_visualizations_references` | Visualization references with titles; filter rows carry `filter_active` (1/0/NULL — any active filter on the attribute) |
 | `v_visualizations_filters` | `visualizations_filters` with the visualization title |
+| `v_dashboards_filters` | `dashboards_filters` with dashboard title + derived `filter_visible` (0 only when `mode='hidden'`); `filter_title`/`display_form_id` resolved from the filter context |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |
 
@@ -328,6 +330,8 @@ Benefits:
 
 - SQL files use `DROP ... IF EXISTS` then `CREATE`
 - SQL comments explain purpose at top of file
+- **Always define PRIMARY KEY and FOREIGN KEY constraints** on tables so relationships are modeled explicitly. Every table needs a primary key (single or composite); every column that references another table must declare a `FOREIGN KEY (...) REFERENCES parent_table(col)`. This documents the schema and makes joins/relationships self-describing (e.g. `ldm_reference_sources` → `ldm_columns(dataset_id, id)`).
+- **FK constraints are documentary, not enforced — by design.** SQLite ignores `FOREIGN KEY` constraints unless each connection sets `PRAGMA foreign_keys = ON`, and we intentionally **do not** set it (`connect_database` in `db.py` sets WAL/synchronous/temp_store/cache pragmas only). This is deliberate: the export must capture **orphan/dangling references** (metrics referencing deleted attributes, invalid label references, etc.) — surfacing those is a core purpose of the tool (see "Label Reference Validation"). Enabling enforcement would make the export reject exactly the data we want to analyze. So FK declarations serve as schema documentation and analysis aids, not runtime guards. Do not turn on the pragma without accounting for this.
 - **Table naming convention**: Use plural form for grouping
   - Main tables: `dashboards`, `metrics`, `visualizations`
   - Junction tables: `dashboards_visualizations`, `dashboards_metrics`, `dashboards_permissions`
