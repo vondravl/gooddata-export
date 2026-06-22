@@ -1559,6 +1559,54 @@ class TestLocalModeIntegration:
             "dateFilterConfig",
         ) in dataset_refs
 
+    def test_dashboards_filters_table_created(
+        self, sample_layout, mock_config, tmp_path
+    ):
+        """dashboards_filters captures per-filter visibility (mode) per dashboard."""
+        from gooddata_export.export import export_all_metadata
+
+        db_path = tmp_path / "test_export.db"
+
+        with patch("gooddata_export.export.run_post_export_sql"):
+            with patch("gooddata_export.export.store_workspace_metadata"):
+                export_all_metadata(
+                    mock_config,
+                    db_path=str(db_path),
+                    export_formats=["sqlite"],
+                    run_post_export=False,
+                    layout_json=sample_layout,
+                )
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            """SELECT local_identifier, filter_type, mode,
+                      display_as_label_id, date_dataset_id
+               FROM dashboards_filters
+               WHERE dashboard_id = 'dashboard_executive_overview'
+                 AND tab_id IS NULL
+               ORDER BY filter_type, local_identifier"""
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        # dashboard_executive_overview top-level config:
+        # - attributeFilterConfigs: filter_region (hidden, displayAsLabel region.name),
+        #   product_type_name_7_attributeFilter (readwrite, no displayAsLabel)
+        # - dateFilterConfig (common date filter): local_identifier "", readonly, dataset=date
+        # - dateFilterConfigs: fiscal_date_filter (hidden, dataset=fiscal_date)
+        assert rows == [
+            ("filter_region", "attribute", "hidden", "region.name", None),
+            (
+                "product_type_name_7_attributeFilter",
+                "attribute",
+                "readwrite",
+                None,
+                None,
+            ),
+            ("", "date", "readonly", None, "date"),
+            ("fiscal_date_filter", "date", "hidden", None, "fiscal_date"),
+        ]
+
     def test_dashboards_references_per_tab_filter_context(self):
         """Tabbed dashboards record each tab's filterContextRef with its tab_id.
 

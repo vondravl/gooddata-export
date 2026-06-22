@@ -13,6 +13,7 @@ from gooddata_export.export.utils import (
 )
 from gooddata_export.process import (
     process_dashboards,
+    process_dashboards_filters,
     process_dashboards_metrics_from_rich_text,
     process_dashboards_permissions_from_analytics_model,
     process_dashboards_plugins,
@@ -388,6 +389,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
     all_processed_plugin_relationships = []
     all_processed_widget_filters = []
     all_processed_references = []
+    all_processed_filters = []
 
     # Build known insights once from all workspaces before the loop
     # Parent insights come first, then child-specific insights are added (duplicates ignored by set)
@@ -444,11 +446,15 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         # Process dashboard-level references (labels, datasets, filter contexts)
         processed_references = process_dashboards_references(raw_data, workspace_id)
 
+        # Process per-dashboard filter config (visibility/mode overlay)
+        processed_filters = process_dashboards_filters(raw_data, workspace_id)
+
         all_processed_dashboards.extend(processed_dashboards)
         all_processed_relationships.extend(processed_relationships)
         all_processed_plugin_relationships.extend(processed_plugin_relationships)
         all_processed_widget_filters.extend(processed_widget_filters)
         all_processed_references.extend(processed_references)
+        all_processed_filters.extend(processed_filters)
 
     # Define column schemas
     dashboard_columns = {
@@ -513,6 +519,23 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
         "PRIMARY KEY": "(dashboard_id, referenced_id, workspace_id, object_type, source, tab_id)",
         "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
     }
+    # One row per dashboard filter config (the visibility overlay on the
+    # dashboard's filter context). `mode` is the visibility flag: 'hidden' means
+    # the filter is not shown on the dashboard; 'readwrite'/'readonly' (or NULL =
+    # platform default) mean visible. `local_identifier` joins to
+    # filter_context_fields.local_identifier. See process_dashboards_filters.
+    filters_columns = {
+        "dashboard_id": "TEXT",
+        "workspace_id": "TEXT",
+        "tab_id": "TEXT",  # Tab localIdentifier; NULL for top-level/legacy
+        "local_identifier": "TEXT",  # joins filter_context_fields.local_identifier
+        "filter_type": "TEXT",  # 'attribute' / 'date'
+        "mode": "TEXT",  # 'readwrite'/'readonly'/'hidden'; NULL = default (visible)
+        "display_as_label_id": "TEXT",  # attribute filters' displayAsLabel id; else NULL
+        "date_dataset_id": "TEXT",  # date filters' dateDataSet id; else NULL
+        "PRIMARY KEY": "(dashboard_id, workspace_id, tab_id, local_identifier, filter_type)",
+        "FOREIGN KEY (dashboard_id, workspace_id)": "REFERENCES dashboards(dashboard_id, workspace_id)",
+    }
 
     # Always create all tables (even if empty) for consistency
     with database_connection(db_name) as conn:
@@ -524,6 +547,7 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 ("dashboards_plugins", plugin_relationship_columns),
                 ("dashboards_widget_filters", widget_filters_columns),
                 ("dashboards_references", references_columns),
+                ("dashboards_filters", filters_columns),
             ],
         )
 
@@ -726,6 +750,49 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 ],
             )
 
+        # Export per-dashboard filter config (visibility/mode overlay)
+        filters_count = len(all_processed_filters)
+        if export_dir is not None and all_processed_filters:
+            filters_count = write_to_csv(
+                all_processed_filters,
+                export_dir,
+                "gooddata_dashboards_filters.csv",
+                fieldnames=[
+                    "dashboard_id",
+                    "workspace_id",
+                    "tab_id",
+                    "local_identifier",
+                    "filter_type",
+                    "mode",
+                    "display_as_label_id",
+                    "date_dataset_id",
+                ],
+            )
+
+        if all_processed_filters:
+            execute_with_retry(
+                conn.cursor(),
+                """
+                INSERT INTO dashboards_filters
+                (dashboard_id, workspace_id, tab_id, local_identifier, filter_type,
+                 mode, display_as_label_id, date_dataset_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d["dashboard_id"],
+                        d["workspace_id"],
+                        d.get("tab_id"),  # NULL for top-level/legacy
+                        d["local_identifier"],
+                        d["filter_type"],
+                        d.get("mode"),  # NULL = default (visible)
+                        d.get("display_as_label_id"),
+                        d.get("date_dataset_id"),
+                    )
+                    for d in all_processed_filters
+                ],
+            )
+
         conn.commit()
 
     if export_dir is not None:
@@ -756,6 +823,12 @@ def export_dashboards(all_workspace_data, export_dir, config, db_name) -> None:
                 "dashboard references",
                 ref_count,
                 Path(export_dir) / "gooddata_dashboards_references.csv",
+            )
+        if filters_count > 0:
+            log_export(
+                "dashboard filter configurations",
+                filters_count,
+                Path(export_dir) / "gooddata_dashboards_filters.csv",
             )
     else:
         logger.debug("Exported %d dashboards to %s", dash_count, db_name)
