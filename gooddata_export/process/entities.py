@@ -47,6 +47,56 @@ def _filter_elements(attr_filter: dict) -> list:
     return elements if isinstance(elements, list) else []
 
 
+def _measure_ref_local_id(filter_body: dict) -> str | None:
+    """Return the localIdentifier of a rankingFilter/measureValueFilter's measure.
+
+    Normally under a "measure" key (singular object, the shape used in stored
+    insight content), but some payloads use a plural "measures" array instead
+    — both are accepted, using the first entry.
+    """
+    if not isinstance(filter_body, dict):
+        return None
+    measure_ref = filter_body.get("measure") or next(
+        iter(filter_body.get("measures") or []),
+        None,
+    )
+    return measure_ref.get("localIdentifier") if isinstance(measure_ref, dict) else None
+
+
+def _visualization_filter_row(
+    visualization_id: str,
+    workspace_id: str | None,
+    filter_index: int,
+    filter_type: str,
+    **fields,
+) -> dict:
+    """Return a complete visualizations_filters row with shared NULL defaults."""
+    row = {
+        "visualization_id": visualization_id,
+        "workspace_id": workspace_id,
+        "filter_index": filter_index,
+        "display_form_id": None,
+        "object_type": None,
+        "filter_type": filter_type,
+        "element_count": None,
+        "elements": None,
+        "measure_local_identifier": None,
+        "ranking_operator": None,
+        "ranking_value": None,
+        "ranking_strict": None,
+        "condition_type": None,
+        "condition_operator": None,
+        "condition_value": None,
+    }
+    unknown_fields = set(fields) - set(row)
+    if unknown_fields:
+        raise KeyError(
+            f"Unknown visualizations_filters fields: {sorted(unknown_fields)}"
+        )
+    row.update(fields)
+    return row
+
+
 def validate_workspace_exists(
     client: dict[str, Any] | None = None,
     config: "ExportConfig | None" = None,
@@ -244,23 +294,33 @@ def process_visualizations_references(visualization_data, workspace_id=None):
 
     Extracts with two dimensions:
         - object_type: what is being referenced — a catalog object (metric, fact,
-          attribute, label), a sort ('sort'/'sort_invalid'), or a derived measure
-          with no catalog object ('derived_pop', 'derived_arithmetic',
-          'derived_previous_period', 'derived_inline', 'derived_other')
+          attribute, label), a sort ('sort'/'sort_invalid'), a dangling
+          rankingFilter/measureValueFilter target ('rankingFilter_invalid'/
+          'measureValueFilter_invalid'), or a derived measure with no catalog
+          object ('derived_pop', 'derived_arithmetic', 'derived_previous_period',
+          'derived_inline', 'derived_other')
         - source: where in the visualization (measure, attribute, filter,
           attributeFilterConfig, rankingFilter, measureValueFilter, sort)
 
     ``referenced_id`` holds the catalog object id, or is NULL when the row points
-    at no catalog object (derived measures, and sorts whose target is a derived
-    measure or is missing). ``local_identifier`` is the in-visualization handle
-    (e.g. ``m1``/``a1``) for measure/attribute/sort rows; it is NULL for filter
-    and attributeFilterConfig rows, which reference display forms directly. So for
-    non-catalog rows, local_identifier — not referenced_id — identifies the row.
+    at no catalog object (derived measures, sorts whose target is a derived
+    measure or is missing, and dangling rankingFilter/measureValueFilter
+    targets). ``local_identifier`` is the in-visualization handle (e.g.
+    ``m1``/``a1``) for measure/attribute/sort/rankingFilter/measureValueFilter
+    rows; it is NULL for filter and attributeFilterConfig rows, which reference
+    display forms directly. So for non-catalog rows, local_identifier — not
+    referenced_id — identifies the row.
 
     Sort references are emitted with source='sort'. Sorts point at bucket items by
     localIdentifier; a sort targeting a localIdentifier that is absent from the
     buckets is dangling (the visualization fails to render) and is flagged with
     object_type='sort_invalid'. Valid sort targets get object_type='sort'.
+
+    rankingFilter/measureValueFilter references follow the same dangling check:
+    a localIdentifier absent from the buckets entirely gets
+    object_type='{source}_invalid' (surfaced via v_visualizations_invalid_filters);
+    one present but resolving to a derived measure (valid, just no catalog
+    object) produces no row, since there is nothing broken to flag.
 
     Derived (computed) measures — PoP, arithmetic, previous-period, inline MAQL —
     have a localIdentifier but no catalog object id; they are recorded for
@@ -277,6 +337,8 @@ def process_visualizations_references(visualization_data, workspace_id=None):
         - "Is this attribute used as a filter or dimension?" (check source)
         - "Which visualizations sort by a missing localIdentifier?"
           (filter by object_type='sort_invalid')
+        - "Which visualizations have a dangling ranking/measure-value filter?"
+          (filter by object_type IN ('rankingFilter_invalid', 'measureValueFilter_invalid'))
     """
     from gooddata_export.process.common import UniqueRelationshipTracker
 
@@ -294,22 +356,24 @@ def process_visualizations_references(visualization_data, workspace_id=None):
     for viz in visualization_data:
         content = viz.get("content", {})
 
-        # Build two lookups over bucket items:
-        #   bucket_local_ids: every measure/attribute localIdentifier present in
-        #     the buckets — including derived measures (PoP, arithmetic, inline)
-        #     that have a localIdentifier but no resolvable object id. This is the
-        #     complete set of identifiers a sort is allowed to reference.
-        #   local_id_map: localIdentifier → (object id, type) for items that
-        #     reference a concrete object. Used to resolve rankingFilter,
-        #     measureValueFilter, and sort references back to the real object.
+        # Build lookups over bucket items:
+        #   bucket_local_ids/local_id_map cover every measure/attribute
+        #     localIdentifier a sort is allowed to reference.
+        #   measure_local_ids/measure_id_map cover only bucket measures. Ranking
+        #     and measure-value filters target measures, so an attribute bucket
+        #     handle with the same spelling should be flagged as invalid rather
+        #     than surfaced as a referenced_metric_id.
         bucket_local_ids = set()
+        measure_local_ids = set()
         local_id_map = {}
+        measure_id_map = {}
         for bucket in content.get("buckets", []):
             for item in bucket.get("items", []):
                 measure = item.get("measure", {})
                 local_id = measure.get("localIdentifier")
                 if local_id:
                     bucket_local_ids.add(local_id)
+                    measure_local_ids.add(local_id)
                     measure_def = measure.get("definition", {}).get(
                         "measureDefinition", {}
                     )
@@ -319,6 +383,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "id": identifier["id"],
                             "type": identifier.get("type", "metric"),
                         }
+                        measure_id_map[local_id] = local_id_map[local_id]
 
                 attribute = item.get("attribute", {})
                 attr_local_id = attribute.get("localIdentifier")
@@ -332,6 +397,56 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "id": attr_identifier["id"],
                             "type": attr_identifier.get("type", "label"),
                         }
+
+        def add_local_id_target(
+            target_local_id,
+            source,
+            valid_local_ids,
+            resolved_by_local_id,
+            invalid_object_type,
+            valid_object_type=None,
+            emit_valid_unresolved=False,
+        ):
+            """Record a localIdentifier target or its dangling-reference marker."""
+            if not target_local_id:
+                return
+            resolved = resolved_by_local_id.get(target_local_id)
+            if resolved:
+                tracker.add(
+                    {
+                        "visualization_id": viz["id"],
+                        "referenced_id": resolved["id"],
+                        "workspace_id": workspace_id,
+                        "object_type": valid_object_type or resolved["type"],
+                        "source": source,
+                        "label": None,
+                        "local_identifier": target_local_id,
+                    }
+                )
+            elif target_local_id not in valid_local_ids:
+                tracker.add(
+                    {
+                        "visualization_id": viz["id"],
+                        "referenced_id": None,
+                        "workspace_id": workspace_id,
+                        "object_type": invalid_object_type,
+                        "source": source,
+                        "label": None,
+                        "local_identifier": target_local_id,
+                    }
+                )
+            elif emit_valid_unresolved and valid_object_type:
+                tracker.add(
+                    {
+                        "visualization_id": viz["id"],
+                        "referenced_id": None,
+                        "workspace_id": workspace_id,
+                        "object_type": valid_object_type,
+                        "source": source,
+                        "label": None,
+                        "local_identifier": target_local_id,
+                    }
+                )
 
         # Extract references from buckets
         for bucket in content.get("buckets", []):
@@ -452,29 +567,27 @@ def process_visualizations_references(visualization_data, workspace_id=None):
 
             # Handle ranking filters (TOP/BOTTOM N by measure) and measure-value
             # filters (filter rows by a measure's value). Both reference a bucket
-            # measure via measure.localIdentifier — same resolution path.
+            # measure via measure.localIdentifier (or measures[0].localIdentifier)
+            # — same resolution path.
+            # A localIdentifier absent from the buckets entirely is dangling —
+            # the visualization fails to render — and is flagged with
+            # object_type='{source}_invalid' (mirrors sort_invalid; surfaced via
+            # v_visualizations_invalid_filters). A localIdentifier present in the
+            # buckets but with no catalog object (a derived measure) is a valid
+            # config with nothing to flag, so it produces no row here.
             for filter_key, source_label in (
                 ("rankingFilter", "rankingFilter"),
                 ("measureValueFilter", "measureValueFilter"),
             ):
                 measure_filter = filter_def.get(filter_key, {})
-                measure_local_id = measure_filter.get("measure", {}).get(
-                    "localIdentifier"
+                measure_local_id = _measure_ref_local_id(measure_filter)
+                add_local_id_target(
+                    measure_local_id,
+                    source_label,
+                    measure_local_ids,
+                    measure_id_map,
+                    f"{source_label}_invalid",
                 )
-                if measure_local_id:
-                    resolved = local_id_map.get(measure_local_id)
-                    if resolved:
-                        tracker.add(
-                            {
-                                "visualization_id": viz["id"],
-                                "referenced_id": resolved["id"],
-                                "workspace_id": workspace_id,
-                                "object_type": resolved["type"],
-                                "source": source_label,
-                                "label": None,
-                                "local_identifier": measure_local_id,
-                            }
-                        )
 
         # Extract sort references. Sort items reference bucket measures/attributes
         # by their localIdentifier (NOT the object id). A sort that targets a
@@ -488,37 +601,37 @@ def process_visualizations_references(visualization_data, workspace_id=None):
         # when it doesn't (a derived-measure target, or a dangling sort) there is
         # no catalog object, so referenced_id is NULL and local_identifier carries
         # the in-viz handle.
-        def add_sort_target(target_local_id):
-            if not target_local_id:
-                return
-            resolved = local_id_map.get(target_local_id)
-            tracker.add(
-                {
-                    "visualization_id": viz["id"],
-                    "referenced_id": resolved["id"] if resolved else None,
-                    "workspace_id": workspace_id,
-                    "object_type": (
-                        "sort"
-                        if target_local_id in bucket_local_ids
-                        else "sort_invalid"
-                    ),
-                    "source": "sort",
-                    "label": None,
-                    "local_identifier": target_local_id,
-                }
-            )
-
         for sort_item in content.get("sorts", []) or []:
             measure_sort = sort_item.get("measureSortItem", {})
             for locator in measure_sort.get("locators", []):
-                add_sort_target(
-                    locator.get("measureLocatorItem", {}).get("measureIdentifier")
+                add_local_id_target(
+                    locator.get("measureLocatorItem", {}).get("measureIdentifier"),
+                    "sort",
+                    bucket_local_ids,
+                    local_id_map,
+                    "sort_invalid",
+                    valid_object_type="sort",
+                    emit_valid_unresolved=True,
                 )
-                add_sort_target(
-                    locator.get("attributeLocatorItem", {}).get("attributeIdentifier")
+                add_local_id_target(
+                    locator.get("attributeLocatorItem", {}).get("attributeIdentifier"),
+                    "sort",
+                    bucket_local_ids,
+                    local_id_map,
+                    "sort_invalid",
+                    valid_object_type="sort",
+                    emit_valid_unresolved=True,
                 )
             attribute_sort = sort_item.get("attributeSortItem", {})
-            add_sort_target(attribute_sort.get("attributeIdentifier"))
+            add_local_id_target(
+                attribute_sort.get("attributeIdentifier"),
+                "sort",
+                bucket_local_ids,
+                local_id_map,
+                "sort_invalid",
+                valid_object_type="sort",
+                emit_valid_unresolved=True,
+            )
 
     return tracker.get_sorted(
         sort_key=lambda x: (
@@ -533,30 +646,59 @@ def process_visualizations_references(visualization_data, workspace_id=None):
 
 
 def process_visualizations_filters(visualization_data, workspace_id=None):
-    """Extract attribute filters from visualizations — one row per filter.
+    """Extract attribute, ranking, and measure-value filters from visualizations.
 
     Accepts layout format where content is at top level:
         {"id": "x", "content": {"filters": [...]}}
 
-    visualizations_references records only that an attribute is *used* as a
-    filter (one deduped reference edge). This function captures each filter as
-    its own entity so a positive and a negative filter on the same attribute
-    stay distinct, recording:
+    visualizations_references records only that an attribute/measure is *used*
+    in a filter (one deduped reference edge). This function captures each
+    filter as its own entity, recording:
         - filter_index: position in content["filters"] (the per-viz key)
+        - filter_type: 'positiveAttributeFilter' / 'negativeAttributeFilter' /
+          'rankingFilter' / 'measureValueFilter'
+
+    Attribute filters (positive/negative) additionally record:
         - display_form_id / object_type: the attribute/label being filtered
-        - filter_type: 'positiveAttributeFilter' / 'negativeAttributeFilter'
         - element_count: number of selected elements
         - elements: JSON array of the selected element values/uris
 
     The element_count distinguishes an active filter (count > 0, constrains the
     result) from a no-op placeholder (count == 0, e.g. a negativeAttributeFilter
     with empty notIn — filters nothing). Mirrors process_filter_context_fields
-    for dashboard filter contexts.
+    for dashboard filter contexts. display_form_id/object_type/element_count/
+    elements are NULL on rankingFilter/measureValueFilter rows (not applicable).
 
-    Only attribute filters carry element selections; ranking/measure-value/date
-    filters are out of scope here (their references live in
-    visualizations_references). filter_index reflects the true position in the
-    filters array, so it may be non-contiguous when such filters are present.
+    Ranking filters (TOP/BOTTOM N by measure) additionally record:
+        - measure_local_identifier: the ranked measure's in-viz handle; resolve
+          the actual metric via visualizations_references (source='rankingFilter')
+        - ranking_operator: 'TOP' / 'BOTTOM'
+        - ranking_value: N
+        - ranking_strict: strictLimitOfRows — True cuts off at exactly N rows,
+          False (the default when the field is absent) includes ties at the
+          N-th rank even if that exceeds N rows
+
+    Measure-value filters (filter rows by a measure's value) additionally record:
+        - measure_local_identifier: the filtered measure's in-viz handle;
+          resolve the actual metric via visualizations_references
+          (source='measureValueFilter')
+        - condition_type: 'comparison' (single operator + value) or 'range'
+          (operator + from/to) — whichever key is present under "condition"
+        - condition_operator: e.g. 'GREATER_THAN' (comparison) / 'BETWEEN'
+          (range)
+        - condition_value: JSON object of whatever the condition carries
+          besides its operator (e.g. {"value": 0} for comparison,
+          {"from": 10, "to": 20} for range) — kept as JSON, not separate
+          columns, so an unrecognized condition shape isn't dropped
+        ranking_operator/ranking_value/ranking_strict are NULL on these rows.
+
+    The measure reference (rankingFilter/measureValueFilter) is resolved via
+    _measure_ref_local_id — see its docstring for the "measure"/"measures"
+    shapes accepted.
+
+    Date filters remain out of scope. filter_index reflects the true position
+    in the filters array, so it may be non-contiguous when such filters are
+    present.
     """
     processed = []
     for viz in visualization_data:
@@ -572,19 +714,67 @@ def process_visualizations_filters(visualization_data, workspace_id=None):
                     continue
                 elements = _filter_elements(attr_filter)
                 processed.append(
-                    {
-                        "visualization_id": viz["id"],
-                        "workspace_id": workspace_id,
-                        "filter_index": filter_index,
-                        "display_form_id": display_form_id,
-                        "object_type": identifier.get("type", "label"),
-                        "filter_type": filter_type,
-                        "element_count": len(elements),
+                    _visualization_filter_row(
+                        viz["id"],
+                        workspace_id,
+                        filter_index,
+                        filter_type,
+                        display_form_id=display_form_id,
+                        object_type=identifier.get("type", "label"),
+                        element_count=len(elements),
                         # ensure_ascii=False keeps non-ASCII members (e.g. a
                         # "€1000" price band) readable rather than \u-escaped.
-                        "elements": json.dumps(elements, ensure_ascii=False),
-                    }
+                        elements=json.dumps(elements, ensure_ascii=False),
+                    )
                 )
+
+            ranking_filter = filter_def.get("rankingFilter")
+            if ranking_filter:
+                measure_local_id = _measure_ref_local_id(ranking_filter)
+                if measure_local_id:
+                    processed.append(
+                        _visualization_filter_row(
+                            viz["id"],
+                            workspace_id,
+                            filter_index,
+                            "rankingFilter",
+                            measure_local_identifier=measure_local_id,
+                            ranking_operator=ranking_filter.get("operator"),
+                            ranking_value=ranking_filter.get("value"),
+                            ranking_strict=bool(
+                                ranking_filter.get("strictLimitOfRows", False)
+                            ),
+                        )
+                    )
+
+            measure_value_filter = filter_def.get("measureValueFilter")
+            if measure_value_filter:
+                measure_local_id = _measure_ref_local_id(measure_value_filter)
+                if measure_local_id:
+                    condition = measure_value_filter.get("condition") or {}
+                    condition_type = next(iter(condition), None)
+                    condition_body = (
+                        condition.get(condition_type, {}) if condition_type else {}
+                    )
+                    condition_value = {
+                        k: v for k, v in condition_body.items() if k != "operator"
+                    }
+                    processed.append(
+                        _visualization_filter_row(
+                            viz["id"],
+                            workspace_id,
+                            filter_index,
+                            "measureValueFilter",
+                            measure_local_identifier=measure_local_id,
+                            condition_type=condition_type,
+                            condition_operator=condition_body.get("operator"),
+                            condition_value=(
+                                json.dumps(condition_value, ensure_ascii=False)
+                                if condition_value
+                                else None
+                            ),
+                        )
+                    )
     return processed
 
 

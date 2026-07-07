@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-07-07
+
+### Added
+- **Ranking and measure-value filter detail in `visualizations_filters`**: `rankingFilter` (TOP/BOTTOM N by measure) and `measureValueFilter` (filter rows by a measure's value) entries now get their own row, alongside the existing attribute-filter rows. `rankingFilter` rows capture `measure_local_identifier`, `ranking_operator` (`TOP`/`BOTTOM`), `ranking_value` (N), and `ranking_strict` (`strictLimitOfRows` — whether ties at the N-th rank are cut off or all included; defaults to `false` when the field is absent). `measureValueFilter` rows capture `measure_local_identifier`, `condition_type` (`comparison`/`range`), `condition_operator` (e.g. `GREATER_THAN`/`BETWEEN`), and `condition_value` (JSON, e.g. `{"value": 0}` or `{"from": 10, "to": 20}`). Previously only the reference to the measure was captured (`visualizations_references`, `source='rankingFilter'`/`'measureValueFilter'`), with no way to tell a strict TOP 10 from a non-strict one, TOP from BOTTOM, or the actual comparison threshold, without inspecting raw JSON.
+- **Dangling `rankingFilter`/`measureValueFilter` detection**: a filter targeting a measure `localIdentifier` no longer present in any bucket (e.g. the measure was removed but the filter was left behind) is now flagged in `visualizations_references` with `object_type='rankingFilter_invalid'`/`'measureValueFilter_invalid'`, mirroring the existing `sort_invalid` handling for dangling sorts. Previously these references were silently dropped — indistinguishable from a visualization that simply has no such filter.
+- **`v_visualizations_invalid_filters` view**: lists visualizations with a dangling `rankingFilter`/`measureValueFilter`, mirroring `v_visualizations_invalid_sorts`.
+- **`v_visualizations_filters` view**: resolves `referenced_metric_id` for ranking/measure-value rows via `visualizations_references`, so the referenced metric doesn't need a separate join.
+
 ## [1.16.1] - 2026-07-07
 
 ### Fixed
