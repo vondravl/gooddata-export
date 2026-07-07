@@ -188,21 +188,32 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
         "PRIMARY KEY": "(visualization_id, referenced_id, workspace_id, object_type, source, local_identifier)",
         "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
-    # One row per attribute filter on a visualization (positive and negative
-    # filters on the same attribute stay distinct). element_count > 0 means the
-    # filter actively constrains results; 0 is a no-op placeholder (e.g. a
-    # negativeAttributeFilter with empty notIn). elements is a JSON array of the
-    # selected element values/uris. See process_visualizations_filters.
+    # One row per attribute, ranking, or measure-value filter on a
+    # visualization (positive and negative filters on the same attribute stay
+    # distinct). element_count > 0 means the filter actively constrains
+    # results; 0 is a no-op placeholder (e.g. a negativeAttributeFilter with
+    # empty notIn). elements is a JSON array of the selected element
+    # values/uris. display_form_id/object_type/element_count/elements are NULL
+    # on rankingFilter/measureValueFilter rows; measure_local_identifier is
+    # shared by both; ranking_*/condition_* are each NULL outside their own
+    # filter_type. See process_visualizations_filters.
     filters_columns = {
         "visualization_id": "TEXT",
         "workspace_id": "TEXT",
         "filter_index": "INTEGER",  # position in content["filters"]
         "display_form_id": "TEXT",  # the attribute/label being filtered
         "object_type": "TEXT",  # 'label' / 'attribute'
-        "filter_type": "TEXT",  # 'positiveAttributeFilter' / 'negativeAttributeFilter'
+        "filter_type": "TEXT",  # 'positiveAttributeFilter' / 'negativeAttributeFilter' / 'rankingFilter' / 'measureValueFilter'
         "element_count": "INTEGER",
         "elements": "JSON",  # JSON array of selected element values/uris
-        "PRIMARY KEY": "(visualization_id, workspace_id, filter_index)",
+        "measure_local_identifier": "TEXT",  # rankingFilter/measureValueFilter: ranked/filtered measure's in-viz handle
+        "ranking_operator": "TEXT",  # rankingFilter: 'TOP' / 'BOTTOM'
+        "ranking_value": "INTEGER",  # rankingFilter: N
+        "ranking_strict": "BOOLEAN",  # rankingFilter: strictLimitOfRows (default False)
+        "condition_type": "TEXT",  # measureValueFilter: 'comparison' / 'range'
+        "condition_operator": "TEXT",  # measureValueFilter: e.g. 'GREATER_THAN' / 'BETWEEN'
+        "condition_value": "JSON",  # measureValueFilter: e.g. {"value": 0} or {"from": 10, "to": 20}
+        "PRIMARY KEY": "(visualization_id, workspace_id, filter_index, filter_type)",
         "FOREIGN KEY (visualization_id, workspace_id)": "REFERENCES visualizations(visualization_id, workspace_id)",
     }
 
@@ -322,6 +333,13 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                     "filter_type",
                     "element_count",
                     "elements",
+                    "measure_local_identifier",
+                    "ranking_operator",
+                    "ranking_value",
+                    "ranking_strict",
+                    "condition_type",
+                    "condition_operator",
+                    "condition_value",
                 ],
             )
 
@@ -330,8 +348,8 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                 conn.cursor(),
                 """
                 INSERT INTO visualizations_filters
-                (visualization_id, workspace_id, filter_index, display_form_id, object_type, filter_type, element_count, elements)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (visualization_id, workspace_id, filter_index, display_form_id, object_type, filter_type, element_count, elements, measure_local_identifier, ranking_operator, ranking_value, ranking_strict, condition_type, condition_operator, condition_value)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -343,6 +361,13 @@ def export_visualizations(all_workspace_data, export_dir, config, db_name) -> No
                         d["filter_type"],
                         d["element_count"],
                         d["elements"],
+                        d["measure_local_identifier"],
+                        d["ranking_operator"],
+                        d["ranking_value"],
+                        d["ranking_strict"],
+                        d["condition_type"],
+                        d["condition_operator"],
+                        d["condition_value"],
                     )
                     for d in all_processed_filters
                 ],

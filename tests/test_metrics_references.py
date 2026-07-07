@@ -1214,6 +1214,231 @@ class TestVisualizationSortReferences:
         assert sort_rows["a_gone"]["object_type"] == "sort_invalid"
 
 
+class TestVisualizationRankingMeasureValueFilterReferences:
+    """Unit tests for rankingFilter/measureValueFilter extraction in
+    process_visualizations_references, mirroring the sort dangling-target checks.
+    """
+
+    def _refs(self, buckets, filters, source):
+        from gooddata_export.process.entities import (
+            process_visualizations_references,
+        )
+
+        viz = {"id": "viz1", "content": {"buckets": buckets, "filters": filters}}
+        refs = process_visualizations_references([viz], workspace_id="ws1")
+        return [r for r in refs if r["source"] == source]
+
+    def _measure_bucket(self):
+        return [
+            {
+                "localIdentifier": "measures",
+                "items": [
+                    {
+                        "measure": {
+                            "localIdentifier": "m_base",
+                            "definition": {
+                                "measureDefinition": {
+                                    "item": {
+                                        "identifier": {
+                                            "id": "metric_base",
+                                            "type": "metric",
+                                        }
+                                    }
+                                }
+                            },
+                        }
+                    },
+                    {
+                        # Derived measure: localIdentifier but no item id
+                        "measure": {
+                            "localIdentifier": "m_pop",
+                            "definition": {
+                                "popMeasureDefinition": {"measureIdentifier": "m_base"}
+                            },
+                        }
+                    },
+                ],
+            }
+        ]
+
+    def test_ranking_filter_resolves_concrete_measure(self):
+        """A rankingFilter targeting a bucket measure resolves to its metric."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"rankingFilter": {"measure": {"localIdentifier": "m_base"}}}],
+            "rankingFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "metric"
+        assert rows[0]["referenced_id"] == "metric_base"
+        assert rows[0]["local_identifier"] == "m_base"
+
+    def test_ranking_filter_accepts_plural_measures_array(self):
+        """A rankingFilter can reference its target via a measures array."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"rankingFilter": {"measures": [{"localIdentifier": "m_base"}]}}],
+            "rankingFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "metric"
+        assert rows[0]["referenced_id"] == "metric_base"
+        assert rows[0]["local_identifier"] == "m_base"
+
+    def test_empty_singular_measure_falls_back_to_plural_array(self):
+        """An empty singular measure object falls back to measures[0]."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {},
+                        "measures": [{"localIdentifier": "m_base"}],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "metric"
+        assert rows[0]["referenced_id"] == "metric_base"
+        assert rows[0]["local_identifier"] == "m_base"
+
+    def test_malformed_measure_reference_is_ignored(self):
+        """Malformed measure refs don't abort visualization reference extraction."""
+        ranking_rows = self._refs(
+            self._measure_bucket(),
+            [{"rankingFilter": {"measure": "m_base"}}],
+            "rankingFilter",
+        )
+        mvf_rows = self._refs(
+            self._measure_bucket(),
+            [{"measureValueFilter": {"measures": ["m_base"]}}],
+            "measureValueFilter",
+        )
+
+        assert ranking_rows == []
+        assert mvf_rows == []
+
+    def test_ranking_filter_dangling_target_flagged(self):
+        """A rankingFilter targeting a localIdentifier absent from buckets is flagged."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"rankingFilter": {"measure": {"localIdentifier": "m_gone"}}}],
+            "rankingFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "rankingFilter_invalid"
+        assert rows[0]["referenced_id"] is None
+        assert rows[0]["local_identifier"] == "m_gone"
+
+    def test_ranking_filter_targeting_attribute_local_id_is_invalid(self):
+        """Ranking filters target bucket measures, not attribute localIdentifiers."""
+        buckets = self._measure_bucket() + [
+            {
+                "localIdentifier": "rows",
+                "items": [
+                    {
+                        "attribute": {
+                            "localIdentifier": "a_region",
+                            "displayForm": {
+                                "identifier": {
+                                    "id": "region.name",
+                                    "type": "label",
+                                }
+                            },
+                        }
+                    }
+                ],
+            }
+        ]
+
+        rows = self._refs(
+            buckets,
+            [{"rankingFilter": {"measure": {"localIdentifier": "a_region"}}}],
+            "rankingFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "rankingFilter_invalid"
+        assert rows[0]["referenced_id"] is None
+        assert rows[0]["local_identifier"] == "a_region"
+
+    def test_ranking_filter_targeting_derived_measure_produces_no_row(self):
+        """A rankingFilter targeting a derived measure is valid — nothing to flag."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"rankingFilter": {"measure": {"localIdentifier": "m_pop"}}}],
+            "rankingFilter",
+        )
+
+        assert rows == []
+
+    def test_measure_value_filter_dangling_target_flagged(self):
+        """A measureValueFilter targeting a missing localIdentifier is flagged."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"measureValueFilter": {"measure": {"localIdentifier": "m_gone"}}}],
+            "measureValueFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "measureValueFilter_invalid"
+        assert rows[0]["referenced_id"] is None
+
+    def test_measure_value_filter_accepts_plural_measures_array(self):
+        """A measureValueFilter can reference its target via a measures array."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "measureValueFilter": {
+                        "measures": [{"localIdentifier": "m_base"}],
+                    }
+                }
+            ],
+            "measureValueFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "metric"
+        assert rows[0]["referenced_id"] == "metric_base"
+        assert rows[0]["local_identifier"] == "m_base"
+
+    def test_measure_value_filter_plural_measures_dangling_target_flagged(self):
+        """Plural-measures measureValueFilter targets are still checked for dangling refs."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "measureValueFilter": {
+                        "measures": [{"localIdentifier": "m_gone"}],
+                    }
+                }
+            ],
+            "measureValueFilter",
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["object_type"] == "measureValueFilter_invalid"
+        assert rows[0]["referenced_id"] is None
+        assert rows[0]["local_identifier"] == "m_gone"
+
+    def test_measure_value_filter_targeting_derived_measure_produces_no_row(self):
+        """A measureValueFilter targeting a derived measure is valid — nothing to flag."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"measureValueFilter": {"measure": {"localIdentifier": "m_pop"}}}],
+            "measureValueFilter",
+        )
+
+        assert rows == []
+
+
 class TestVisualizationDerivedMeasureReferences:
     """Derived (computed) measures are recorded for inventory.
 
@@ -1360,9 +1585,12 @@ class TestVisualizationFilters:
 
         viz = {"id": "viz1", "content": content}
         rows = process_visualizations_filters([viz], workspace_id="ws1")
-        # Decode the JSON elements column for easy assertions.
+        # Decode the JSON elements column for easy assertions (NULL on
+        # rankingFilter rows, so nothing to decode there).
         for r in rows:
-            r["elements_decoded"] = json.loads(r["elements"])
+            r["elements_decoded"] = (
+                json.loads(r["elements"]) if r["elements"] is not None else None
+            )
         return rows
 
     def test_positive_filter_with_values(self):
@@ -1490,17 +1718,166 @@ class TestVisualizationFilters:
         assert by_type["positiveAttributeFilter"]["element_count"] == 1
         assert by_type["positiveAttributeFilter"]["filter_index"] == 1
 
-    def test_non_attribute_filters_ignored(self):
-        """Ranking/measure-value filters produce no rows (no element selection)."""
+    def test_measure_value_filter_comparison_condition(self):
+        """A comparison measureValueFilter records operator and value."""
+        import json
+
         rows = self._filters(
             {
                 "filters": [
-                    {"rankingFilter": {"measure": {"localIdentifier": "m1"}}},
                     {
                         "measureValueFilter": {
                             "measure": {"localIdentifier": "m1"},
+                            "condition": {
+                                "comparison": {
+                                    "operator": "GREATER_THAN",
+                                    "value": 0,
+                                }
+                            },
                         }
-                    },
+                    }
+                ]
+            }
+        )
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["filter_type"] == "measureValueFilter"
+        assert row["measure_local_identifier"] == "m1"
+        assert row["condition_type"] == "comparison"
+        assert row["condition_operator"] == "GREATER_THAN"
+        assert json.loads(row["condition_value"]) == {"value": 0}
+        assert row["display_form_id"] is None
+        assert row["element_count"] is None
+        assert row["ranking_operator"] is None
+
+    def test_measure_value_filter_range_condition(self):
+        """A range measureValueFilter records operator and from/to."""
+        import json
+
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "measureValueFilter": {
+                            "measure": {"localIdentifier": "m1"},
+                            "condition": {
+                                "range": {
+                                    "operator": "BETWEEN",
+                                    "from": 10,
+                                    "to": 20,
+                                }
+                            },
+                        }
+                    }
+                ]
+            }
+        )
+
+        row = rows[0]
+        assert row["condition_type"] == "range"
+        assert row["condition_operator"] == "BETWEEN"
+        assert json.loads(row["condition_value"]) == {"from": 10, "to": 20}
+
+    def test_measure_value_filter_without_local_id_skipped(self):
+        """A measureValueFilter with no resolvable measure produces no row."""
+        rows = self._filters({"filters": [{"measureValueFilter": {}}]})
+
+        assert rows == []
+
+    def test_ranking_filter_captures_operator_and_strictness(self):
+        """A rankingFilter records the ranked measure, operator, value, and strictness."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "rankingFilter": {
+                            "measure": {"localIdentifier": "m1"},
+                            "operator": "TOP",
+                            "value": 10,
+                            "strictLimitOfRows": True,
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["filter_type"] == "rankingFilter"
+        assert row["measure_local_identifier"] == "m1"
+        assert row["ranking_operator"] == "TOP"
+        assert row["ranking_value"] == 10
+        assert row["ranking_strict"] is True
+        assert row["display_form_id"] is None
+        assert row["element_count"] is None
+        assert row["elements_decoded"] is None
+
+    def test_ranking_filter_strict_defaults_to_false(self):
+        """strictLimitOfRows is optional; its absence means non-strict (ties included)."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "rankingFilter": {
+                            "measure": {"localIdentifier": "m1"},
+                            "operator": "BOTTOM",
+                            "value": 5,
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert rows[0]["ranking_strict"] is False
+
+    def test_ranking_filter_accepts_plural_measures_array(self):
+        """Some payloads use a `measures` array instead of a singular `measure` object."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "rankingFilter": {
+                            "measures": [{"localIdentifier": "m1"}],
+                            "operator": "TOP",
+                            "value": 10,
+                            "strictLimitOfRows": True,
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert rows[0]["measure_local_identifier"] == "m1"
+        assert rows[0]["ranking_strict"] is True
+
+    def test_empty_singular_measure_falls_back_to_plural_array(self):
+        """The filter table uses the same tolerant measure-ref extraction."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {
+                        "rankingFilter": {
+                            "measure": {},
+                            "measures": [{"localIdentifier": "m1"}],
+                            "operator": "TOP",
+                            "value": 10,
+                        }
+                    }
+                ]
+            }
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["measure_local_identifier"] == "m1"
+
+    def test_malformed_measure_reference_is_skipped(self):
+        """Malformed measure refs don't abort filter extraction."""
+        rows = self._filters(
+            {
+                "filters": [
+                    {"rankingFilter": {"measure": "m1"}},
+                    {"measureValueFilter": {"measures": ["m1"]}},
                 ]
             }
         )
@@ -1826,6 +2203,115 @@ class TestVisualizationsIsValidComputation:
             "WHERE visualization_id = 'viz1'"
         )
         assert cursor.fetchone() == ("m_ghost",)
+
+        conn.close()
+
+    def test_dangling_filter_invalid_in_local_mode(self, mock_config, tmp_path):
+        """Dangling ranking/measure-value filters make is_valid=0 in local mode."""
+        viz = self._make_viz(
+            "viz1",
+            measures=[("m_exists", "metric")],
+        )
+        viz["content"]["filters"] = [
+            {"rankingFilter": {"measure": {"localIdentifier": "m_ghost_rank"}}},
+            {
+                "measureValueFilter": {
+                    "measures": [{"localIdentifier": "m_ghost_value"}],
+                    "condition": {
+                        "comparison": {"operator": "GREATER_THAN", "value": 0}
+                    },
+                }
+            },
+        ]
+        layout = self._make_layout(
+            visualizations=[viz],
+            metrics=[
+                {
+                    "id": "m_exists",
+                    "title": "Existing Metric",
+                    "content": {"maql": "SELECT 1"},
+                },
+            ],
+        )
+
+        db_path = self._export(mock_config, tmp_path, layout)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT is_valid FROM visualizations WHERE visualization_id = 'viz1'"
+        )
+        assert cursor.fetchone()[0] == 0
+
+        cursor.execute(
+            "SELECT object_type, local_identifier FROM visualizations_references "
+            "WHERE visualization_id = 'viz1' "
+            "AND object_type IN ('rankingFilter_invalid', 'measureValueFilter_invalid') "
+            "ORDER BY object_type"
+        )
+        assert cursor.fetchall() == [
+            ("measureValueFilter_invalid", "m_ghost_value"),
+            ("rankingFilter_invalid", "m_ghost_rank"),
+        ]
+
+        cursor.execute(
+            "SELECT filter_type, missing_local_identifier "
+            "FROM v_visualizations_invalid_filters "
+            "WHERE visualization_id = 'viz1' "
+            "ORDER BY filter_type"
+        )
+        assert cursor.fetchall() == [
+            ("measureValueFilter", "m_ghost_value"),
+            ("rankingFilter", "m_ghost_rank"),
+        ]
+
+        conn.close()
+
+    def test_multi_key_filter_entry_keeps_rows_distinct(self, mock_config, tmp_path):
+        """Malformed filter entries with multiple recognized keys don't collide."""
+        viz = self._make_viz(
+            "viz1",
+            measures=[("m_exists", "metric")],
+        )
+        viz["content"]["filters"] = [
+            {
+                "positiveAttributeFilter": {
+                    "displayForm": {
+                        "identifier": {"id": "region.name", "type": "label"}
+                    },
+                    "in": {"values": ["North"]},
+                },
+                "rankingFilter": {
+                    "measure": {"localIdentifier": "m_m_exists"},
+                    "operator": "TOP",
+                    "value": 5,
+                },
+            }
+        ]
+        layout = self._make_layout(
+            visualizations=[viz],
+            metrics=[
+                {
+                    "id": "m_exists",
+                    "title": "Existing Metric",
+                    "content": {"maql": "SELECT 1"},
+                },
+            ],
+        )
+
+        db_path = self._export(mock_config, tmp_path, layout)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT filter_index, filter_type FROM visualizations_filters "
+            "WHERE visualization_id = 'viz1' "
+            "ORDER BY filter_type"
+        )
+        assert cursor.fetchall() == [
+            (0, "positiveAttributeFilter"),
+            (0, "rankingFilter"),
+        ]
 
         conn.close()
 

@@ -114,7 +114,7 @@ scripts/
 | `metrics_references` | All metric references from MAQL - metrics, attributes, labels, facts, datasets (Python populates) |
 | `metrics_ancestry` | Transitive metric-to-metric ancestry (recursive CTE) |
 | `ldm_reference_sources` | Join columns of each dataset→dataset reference, one row per source column (composite keys expand); FK to `ldm_columns(dataset_id, id)` |
-| `visualizations_filters` | One row per attribute filter on a visualization: `filter_type` (positive/negative), `element_count`, `elements` (JSON). `element_count > 0` = active filter, `0` = no-op placeholder. Positive+negative on the same attribute stay distinct (unlike `visualizations_references`). Mirrors `filter_context_fields` |
+| `visualizations_filters` | One row per attribute, ranking, or measure-value filter on a visualization: `filter_type` (positive/negative/rankingFilter/measureValueFilter), `element_count`, `elements` (JSON) for attribute filters. `element_count > 0` = active filter, `0` = no-op placeholder. Positive+negative on the same attribute stay distinct (unlike `visualizations_references`). Mirrors `filter_context_fields`. `rankingFilter`/`measureValueFilter` rows instead carry `measure_local_identifier` plus either `ranking_operator` (TOP/BOTTOM) + `ranking_value` (N) + `ranking_strict` (`strictLimitOfRows`, default false), or `condition_type` (comparison/range) + `condition_operator` + `condition_value` (JSON) |
 | `dashboards_filters` | Per-dashboard filter-config overlay (visibility). One row per filter config from `attributeFilterConfigs[]`/`dateFilterConfig`/`dateFilterConfigs[]`, keyed by `local_identifier` (joins `filter_context_fields.local_identifier`). `mode` = `hidden`/`readwrite`/`readonly` (NULL = default, visible); also `filter_type` (attribute/date), `tab_id`, `display_as_label_id`, `date_dataset_id`. Captures whether a filter is *visible* — which `dashboards_references` (presence only) can't, since a hidden filter with no `displayAsLabel` has no reference row at all |
 
 ### Key Views
@@ -126,7 +126,9 @@ scripts/
 | `v_metrics_relationships_root` | Root metrics (no outgoing dependencies) |
 | `v_ldm_columns` | `ldm_columns` with composite reference join keys expanded - one row per source column (per-source `data_type`); non-reference columns appear once |
 | `v_visualizations_references` | Visualization references with titles; filter rows carry `filter_active` (1/0/NULL — any active filter on the attribute) |
-| `v_visualizations_filters` | `visualizations_filters` with the visualization title |
+| `v_visualizations_filters` | `visualizations_filters` with the visualization title; ranking/measure-value rows also resolve `referenced_metric_id` via `visualizations_references` |
+| `v_visualizations_invalid_sorts` | Visualizations whose sort targets a localIdentifier missing from the buckets (dangling sort) |
+| `v_visualizations_invalid_filters` | Visualizations whose `rankingFilter`/`measureValueFilter` targets a localIdentifier missing from the buckets (dangling filter) |
 | `v_dashboards_filters` | `dashboards_filters` with dashboard title + derived `filter_visible` (0 only when `mode='hidden'`); `filter_title`/`display_form_id` resolved from the filter context |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |

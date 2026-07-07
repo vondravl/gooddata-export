@@ -137,13 +137,19 @@ views:
 
   v_visualizations_filters:
     sql_file: views/v_visualizations_filters.sql
-    description: Attribute filters per visualization with element_count and selected elements (active vs no-op placeholder)
+    description: Attribute, ranking, and measure-value filters per visualization (element selections, TOP/BOTTOM N + strictness, comparison/range conditions)
     category: usage
     dependencies: []
 
   v_visualizations_invalid_sorts:
     sql_file: views/v_visualizations_invalid_sorts.sql
     description: Visualizations whose sort references a localIdentifier missing from the buckets (dangling sort)
+    category: validation
+    dependencies: []
+
+  v_visualizations_invalid_filters:
+    sql_file: views/v_visualizations_invalid_filters.sql
+    description: Visualizations whose rankingFilter/measureValueFilter references a localIdentifier missing from the buckets (dangling filter)
     category: validation
     dependencies: []
 
