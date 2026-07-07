@@ -411,9 +411,12 @@ def process_users(data):
 
     users = data.get("users", [])
     for user in users:
-        # Extract user group memberships
+        # Extract user group memberships; the API tolerates duplicate group
+        # entries in userGroups, so dedupe (order-preserving)
         user_groups = user.get("userGroups", [])
-        user_group_ids = [ug.get("id", "") for ug in user_groups if ug.get("id")]
+        user_group_ids = list(
+            dict.fromkeys(ug.get("id", "") for ug in user_groups if ug.get("id"))
+        )
 
         processed_data.append(
             {
@@ -468,9 +471,11 @@ def process_user_group_members(data):
         data: Raw API response from /api/v1/layout/usersAndUserGroups
 
     Returns:
-        List of user-group membership dictionaries (junction table)
+        List of unique user-group membership dictionaries (junction table)
     """
-    relationships = []
+    # The API tolerates duplicate group entries in a user's userGroups; dedupe
+    # so the (user_id, user_group_id) PRIMARY KEY insert can't fail
+    pairs = set()
 
     users = data.get("users", [])
     for user in users:
@@ -480,14 +485,12 @@ def process_user_group_members(data):
         for group in user_groups:
             group_id = group.get("id", "")
             if user_id and group_id:
-                relationships.append(
-                    {
-                        "user_id": user_id,
-                        "user_group_id": group_id,
-                    }
-                )
+                pairs.add((user_id, group_id))
 
-    return sorted(relationships, key=lambda x: (x["user_id"], x["user_group_id"]))
+    return [
+        {"user_id": user_id, "user_group_id": group_id}
+        for user_id, group_id in sorted(pairs)
+    ]
 
 
 def process_dashboards_permissions_from_analytics_model(analytics_model, workspace_id):

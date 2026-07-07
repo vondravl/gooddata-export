@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-07-07
+
+### Fixed
+- **`UNIQUE constraint failed: user_group_members.user_id, user_group_members.user_group_id`**: the `/api/v1/layout/usersAndUserGroups` API tolerates the same group listed more than once in a user's `userGroups`, but `process_user_group_members` passed the duplicates straight into the `user_group_members` table, whose `PRIMARY KEY (user_id, user_group_id)` then aborted the whole export. Membership pairs are now deduplicated, and `users.user_group_ids`/`user_group_count` (derived from the same list) are deduplicated to match.
+
 ## [1.16.0] - 2026-06-22
 
 ### Added
