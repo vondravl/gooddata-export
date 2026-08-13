@@ -130,6 +130,8 @@ scripts/
 | `v_visualizations_invalid_sorts` | Visualizations whose sort targets a localIdentifier missing from the buckets (dangling sort) |
 | `v_visualizations_invalid_filters` | Visualizations whose `rankingFilter`/`measureValueFilter` targets a localIdentifier missing from the buckets (dangling filter) |
 | `v_dashboards_filters` | `dashboards_filters` with dashboard title + derived `filter_visible` (0 only when `mode='hidden'`); `filter_title`/`display_form_id` resolved from the filter context |
+| `v_objects_not_comparable` | Visualizations pairing a measure with a slicing attribute/date its fact dataset cannot reach in the LDM reference graph (AFM "object is not comparable to" early warning); policy-free — consumers filter service-computed measures downstream via `measure_datasets` |
+| `v_dashboard_widget_date_not_comparable` | Dashboard tiles bound via `widget.dateDataSet` to a date dimension the tile insight's measures cannot reach (the widget-layer counterpart of `v_objects_not_comparable`) |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |
 
@@ -183,7 +185,7 @@ BEARER_TOKEN=your_api_token
 Each entry has:
 - `sql_file`: Path to SQL file
 - `dependencies`: List of items that must run first
-- `category`: Grouping (tagging/usage/deduplication/procedures)
+- `category`: Grouping (tagging/usage/validation/deduplication/procedures)
 
 ## Common Patterns
 

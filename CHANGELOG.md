@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-08-13
+
+### Added
+- **`v_objects_not_comparable` view**: visualizations that pair a measure with a slicing attribute/date the measure's fact dataset cannot reach in the LDM. The AFM error `"object is not comparable to X"` is *not* a broken reference — every target exists — but a join-reachability gap, classically caused by swapping a date dimension on a visualization whose metric aggregates a fact that only references the old one. The view is a recursive transitive closure over `ldm_reference_sources` (`fact → dim`, `dim → dim`, `fact → date`): measures anchor to their fact dataset(s) (metrics transitively via `v_metrics_datasets_ancestry`, direct `{dataset}.{fact}` measures by id split), axis/filter labels resolve to their owning dataset (attribute id, specific label, or `{date}.{granularity}` date instance). A row is emitted only when **none** of a measure's fact datasets equals or reaches the slice dataset — "none reach" rather than "any" keeps multi-fact metrics from false-positiving. Reports `measure_datasets` (the anchoring datasets) and `slice_attribute_id` (keyed to match AFM `computeValidObjects` output).
+- **`v_dashboard_widget_date_not_comparable` view**: the same failure at the dashboard **widget** layer. The sibling view only sees slices/filters stored inside the insight, so it cannot catch a date bound by the tile via `widget.dateDataSet` — a headline KPI with `filters: []` is comparable in isolation yet breaks the moment a tile binds an unreachable date to it (GoodData raises "this date can no longer be applied to the visualization" in the tile config, not the insight editor). Same reachability model, applied to `dashboards_widget_filters` (`filter_type = 'dateDataSet'`, `visualizationSwitcher` children included).
+- Both views are deliberately **policy-free**: where an external conforming service (e.g. FlexConnect) computes measures, its joins are invisible to the LDM graph, so consumers filter those hits downstream via `measure_datasets` rather than this package hardcoding anyone's naming patterns. Date dimensions are not service-rewritten, so the widget view needs no such exclusions. Neither view replaces the MAQL join planner: measures with no concrete fact anchor (inline-MAQL/derived, or a bare-id fact on a measure shelf) go **unchecked**, so a clean result means "no reachable-graph violation found", not "every measure proven comparable".
+
 ## [1.17.0] - 2026-07-07
 
 ### Added

@@ -20,7 +20,9 @@ jobs:
 
       # Use action for linting - output-format=github enables annotations
       - name: Check Python linting (ruff check)
-        uses: astral-sh/ruff-action@v3
+        # Pinned exactly: v4+ releases are immutable, so there is no floating
+        # `v4` tag to track. v4 moved the action off deprecated Node 20.
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           version: "latest"
           args: check
