@@ -132,6 +132,7 @@ scripts/
 | `v_dashboards_filters` | `dashboards_filters` with dashboard title + derived `filter_visible` (0 only when `mode='hidden'`); `filter_title`/`display_form_id` resolved from the filter context |
 | `v_objects_not_comparable` | Visualizations pairing a measure with a slicing attribute/date its fact dataset cannot reach in the LDM reference graph (AFM "object is not comparable to" early warning); policy-free — consumers filter service-computed measures downstream via `measure_datasets` |
 | `v_dashboard_widget_date_not_comparable` | Dashboard tiles bound via `widget.dateDataSet` to a date dimension the tile insight's measures cannot reach (the widget-layer counterpart of `v_objects_not_comparable`) |
+| `v_ldm_date_instances_tags` | Tags for LDM date instances (`v_ldm_datasets_tags` rows without a `data_source_id`) |
 | `v_*_tags` | Unnested tags for each entity type |
 | `v_*_usage` | Usage tracking views |
 
