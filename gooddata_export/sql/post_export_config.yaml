@@ -115,6 +115,13 @@ views:
     dependencies:
       - metrics_references
 
+  v_ldm_date_instances_tags:
+    sql_file: views/v_ldm_date_instances_tags.sql
+    description: Tags for LDM date instances (filters v_ldm_datasets_tags to rows without a data_source_id)
+    category: tagging
+    dependencies:
+      - v_ldm_datasets_tags
+
   v_metrics_datasets_ancestry:
     sql_file: views/v_metrics_datasets_ancestry.sql
     description: Maps each metric to LDM datasets it depends on, including transitive dependencies via ancestry

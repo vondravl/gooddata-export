@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-08-13
+
+### Added
+- **`v_ldm_date_instances_tags` view**: tags for LDM **date instance** datasets, one row per `(dataset_id, tag)`. A schema-adjacent companion to `v_ldm_datasets_tags` — restricted to the datasets that live in `ldm/date_instances/*.yaml`, whose distinguishing trait in `ldm_datasets` is the **absence of a `data_source_id`** (regular datasets always carry one, date instances never do). Previously, isolating date-instance tags meant re-deriving that `data_source_id IS NULL OR = ''` predicate at every call site. Contributed back from the consuming toolkit, which now ships no SQL of its own: a view is either generic and schema-adjacent (here) or workspace-specific (a consumer project's plugin).
+
 ## [1.18.0] - 2026-08-13
 
 ### Added
