@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gooddata-export"
-version = "1.17.0"
+version = "1.18.0"
 description = "Export GoodData workspace metadata to SQLite and CSV"
 readme = "README.md"
 license = {text = "MIT"}
@@ -73,6 +73,10 @@ exclude = [
 line-length = 88
 
 [tool.ruff.format]
+# Ruff >=0.16 formats Python code blocks inside Markdown. Our docs use aligned
+# trailing comments to show "do this / not that" side by side, which the
+# formatter breaks apart — so docs are hand-maintained, not formatted.
+exclude = ["*.md"]
 # Use double quotes for strings
 quote-style = "double"
 

@@ -123,6 +123,20 @@ views:
       - metrics_references
       - metrics_ancestry
 
+  v_objects_not_comparable:
+    sql_file: views/v_objects_not_comparable.sql
+    description: Visualizations pairing a measure with a slicing attribute/date its fact dataset cannot reach in the LDM graph (AFM "object is not comparable" early warning; policy-free — consumers filter service-computed measures via measure_datasets)
+    category: validation
+    dependencies:
+      - v_metrics_datasets_ancestry
+
+  v_dashboard_widget_date_not_comparable:
+    sql_file: views/v_dashboard_widget_date_not_comparable.sql
+    description: Dashboard tiles bound (widget.dateDataSet) to a date dimension the tile insight's measures cannot reach in the LDM graph
+    category: validation
+    dependencies:
+      - v_metrics_datasets_ancestry
+
   v_visualizations_usage:
     sql_file: views/v_visualizations_usage.sql
     description: Shows where visualizations are used in dashboards
