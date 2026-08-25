@@ -132,7 +132,7 @@ views:
 
   v_objects_not_comparable:
     sql_file: views/v_objects_not_comparable.sql
-    description: Visualizations pairing a measure with a slicing attribute/date its fact dataset cannot reach in the LDM graph (AFM "object is not comparable" early warning; policy-free — consumers filter service-computed measures via measure_datasets)
+    description: Visualizations pairing a measure with a slicing attribute/date its fact dataset cannot reach in the LDM graph, incl. rankingFilter/measureValueFilter dimensions scoped to the measure their filter names (AFM "object is not comparable" early warning; policy-free — consumers filter service-computed measures via measure_datasets)
     category: validation
     dependencies:
       - v_metrics_datasets_ancestry
@@ -170,7 +170,7 @@ views:
 
   v_visualizations_invalid_filters:
     sql_file: views/v_visualizations_invalid_filters.sql
-    description: Visualizations whose rankingFilter/measureValueFilter references a localIdentifier missing from the buckets (dangling filter)
+    description: Visualizations whose rankingFilter/measureValueFilter references a localIdentifier missing from the buckets (dangling filter); invalid_target distinguishes a missing measure handle from a missing ranking dimension
     category: validation
     dependencies: []
 

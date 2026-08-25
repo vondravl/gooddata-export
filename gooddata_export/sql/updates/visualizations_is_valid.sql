@@ -13,7 +13,9 @@
 -- 3. All attributes (object_type='attribute') exist in ldm_columns table
 -- 4. All labels (object_type='label') exist in ldm_labels OR ldm_columns (type='attribute')
 -- 5. No dangling sorts/filters (object_type='sort_invalid',
---    'rankingFilter_invalid', 'measureValueFilter_invalid'): a sort or
+--    'rankingFilter_invalid', 'measureValueFilter_invalid', and the
+--    '*_dimension_invalid' pair for a ranking/measure-value filter whose
+--    DIMENSION handle is missing rather than its measure): a sort or
 --    ranking/measure-value filter referencing a localIdentifier absent from the
 --    visualization's buckets makes it fail to render. Flagged at export time by
 --    process_visualizations_references and surfaced (in both modes) via
@@ -95,7 +97,9 @@ SET is_valid = CASE
           AND vr.object_type IN (
               'sort_invalid',
               'rankingFilter_invalid',
-              'measureValueFilter_invalid'
+              'measureValueFilter_invalid',
+              'rankingFilter_dimension_invalid',
+              'measureValueFilter_dimension_invalid'
           )
     ) THEN 0  -- Invalid: sort/filter references a missing localIdentifier
     ELSE 1    -- Valid: all references exist (or no references)

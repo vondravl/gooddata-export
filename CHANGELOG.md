@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-08-25
+
+### Added
+- **Ranking/measure-value filter dimensions in `visualizations_references`**: the extractor recorded only the measure a `rankingFilter`/`measureValueFilter` ranks *by*, never the dimension it ranks *over*. That dimension appeared in no table — `visualizations_filters` stores the operator, N and strictness but leaves `display_form_id` empty — so nothing offline could see it. Both spellings are read (`attributes` in stored insight content, `dimensionality` in the AFM API; both occur in the wild). Only what nothing else records is emitted: a **direct identifier** (`{identifier: {id, type}}`) becomes a row with `local_identifier` NULL, keeping the payload's type verbatim — an `AfmObjectIdentifier` here is legally a `label` **or** an `attribute`. A **bucket handle** is recorded too, so the table answers "what does this filter rank over?" as it already does for sorts; because that attribute also has a `source='attribute'` row, de-duplication is the *view's* job — dropping a real reference to suit one consumer would cost every other consumer the inventory.
+- **`v_visualizations_invalid_filters.invalid_target`** (`'measure'` / `'dimension'`) — which half of the filter is dangling. Both break rendering but the fixes differ, so they must be distinguishable.
+
+### Changed
+- **A dangling *dimension* handle is a new way for a visualization to be invalid.** It gets its own `object_type` — `rankingFilter_dimension_invalid` / `measureValueFilter_dimension_invalid`, apart from the existing `*_invalid` for a missing measure handle — and both are added to `visualizations_is_valid` (local mode) and `v_visualizations_invalid_filters`. A workspace with such a filter will see `is_valid` flip to 0 where it previously stayed 1.
+- Dimension handles resolve against **attribute-only** bucket lookups. Validating them against the shared bucket maps (which also hold measures) would let a dimension naming a measure handle be recorded as a valid metric reference instead of flagged.
+
+### Fixed
+- **`v_objects_not_comparable` missed ranking dimensions**, which carry the same join-reachability requirement as an axis attribute — one the measure's fact cannot reach fails the visualization outright with `Aggregation dimension='[attribute/X]' is not comparable to the dimensionality='[dataset/Y]' of the subtree`. The slice CTE admitted only `source IN ('attribute','filter')` and, restricting to `object_type = 'label'`, would also have dropped every `attribute`-typed dimension. Both widened. Found via 8 insights in a consuming workspace that ranked a benchmark dimension by a non-benchmark label (and vice versa) behind a green check.
+- **A dimension already covered by an axis slice is not reported twice.** `v_objects_not_comparable` admits ranking/measure-value rows only in their direct-identifier form (`local_identifier IS NULL`), and suppresses even those when the same visualization carries an axis or filter slice resolving to the same owning attribute. The axis row wins: it is the broader claim, holding for every measure rather than only the ranked one.
+- **Dimension rows are scoped to the measure their filter names.** An axis attribute applies to the whole result and correctly pairs with every measure; a ranking dimension does not — AFM raises the incomparability for that subtree alone. Pairing it with every measure manufactured a violation for any sibling measure that legitimately never touches the dimension, the same false-positive class the "none reach" rule was chosen to avoid. Scoping resolves the filter's measure handle through `visualizations_filters`, and only when the visualization has exactly **one** filter of that type; an ambiguous handle drops the row, erring toward a false negative as this view does elsewhere.
+
 ## [1.19.0] - 2026-08-13
 
 ### Added
