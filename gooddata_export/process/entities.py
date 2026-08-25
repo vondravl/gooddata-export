@@ -63,6 +63,20 @@ def _measure_ref_local_id(filter_body: dict) -> str | None:
     return measure_ref.get("localIdentifier") if isinstance(measure_ref, dict) else None
 
 
+def _ranking_dimension_refs(filter_body: dict) -> list[dict]:
+    """Return a rankingFilter/measureValueFilter's ranking-dimension entries.
+
+    The stored insight content spells this ``attributes``; the AFM API spells it
+    ``dimensionality``. Both occur in the wild, so both are accepted. Each entry
+    is either a bucket handle (``{localIdentifier}``) or a direct label
+    (``{identifier: {id, type}}``).
+    """
+    if not isinstance(filter_body, dict):
+        return []
+    dims = filter_body.get("attributes") or filter_body.get("dimensionality")
+    return [d for d in dims or [] if isinstance(d, dict)]
+
+
 def _visualization_filter_row(
     visualization_id: str,
     workspace_id: str | None,
@@ -322,6 +336,21 @@ def process_visualizations_references(visualization_data, workspace_id=None):
     one present but resolving to a derived measure (valid, just no catalog
     object) produces no row, since there is nothing broken to flag.
 
+    Both filter types emit a second kind of row for the dimension they rank/filter
+    over (``attributes`` in stored content, ``dimensionality`` in AFM). A bucket
+    handle resolves like any other localIdentifier target, but against the
+    attribute-only lookups — a dimension naming a measure handle is not a valid
+    dimension — and a missing one is flagged ``{source}_dimension_invalid``,
+    distinct from the ``{source}_invalid`` of a missing measure handle because the
+    fixes differ. A direct label/attribute identifier emits a row with
+    local_identifier NULL; that is the form nothing else in the export records.
+    The dimension carries the same reachability requirement as a slice — one the
+    measure's fact cannot reach makes the visualization fail to load — so
+    recording it lets a reachability check see it. A bucket handle is recorded
+    for inventory even though its attribute also has a source='attribute' row;
+    reachability consumers de-duplicate by taking ranking sources only where
+    local_identifier IS NULL.
+
     Derived (computed) measures — PoP, arithmetic, previous-period, inline MAQL —
     have a localIdentifier but no catalog object id; they are recorded for
     inventory with object_type='derived_*' (filter by object_type LIKE 'derived_%'
@@ -365,8 +394,10 @@ def process_visualizations_references(visualization_data, workspace_id=None):
         #     than surfaced as a referenced_metric_id.
         bucket_local_ids = set()
         measure_local_ids = set()
+        attribute_local_ids = set()
         local_id_map = {}
         measure_id_map = {}
+        attribute_id_map = {}
         for bucket in content.get("buckets", []):
             for item in bucket.get("items", []):
                 measure = item.get("measure", {})
@@ -389,6 +420,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                 attr_local_id = attribute.get("localIdentifier")
                 if attr_local_id:
                     bucket_local_ids.add(attr_local_id)
+                    attribute_local_ids.add(attr_local_id)
                     attr_identifier = attribute.get("displayForm", {}).get(
                         "identifier", {}
                     )
@@ -397,6 +429,7 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                             "id": attr_identifier["id"],
                             "type": attr_identifier.get("type", "label"),
                         }
+                        attribute_id_map[attr_local_id] = local_id_map[attr_local_id]
 
         def add_local_id_target(
             target_local_id,
@@ -588,6 +621,53 @@ def process_visualizations_references(visualization_data, workspace_id=None):
                     measure_id_map,
                     f"{source_label}_invalid",
                 )
+
+                # The dimension the filter ranks/filters OVER (as opposed to the
+                # measure it ranks BY, handled above). It carries the same
+                # join-reachability requirement as an axis attribute: a dimension
+                # the measure's fact cannot reach fails the visualization outright
+                # ("Aggregation dimension ... is not comparable to the
+                # dimensionality ... of the subtree").
+                #
+                # Every dimension is recorded, bucket handle included, so the
+                # table answers "what does this filter rank over?" the way it
+                # already does for sorts. A bucket handle also has a
+                # source='attribute' row, so a reachability consumer must not
+                # count both — that de-duplication belongs in the view (which
+                # admits ranking sources only where local_identifier IS NULL),
+                # not here: dropping a real reference to suit one consumer would
+                # cost every other consumer the inventory.
+                #
+                # Validity is checked against the ATTRIBUTE-only lookups — a
+                # dimension naming a measure handle is not a valid dimension, and
+                # resolving it through the shared bucket maps would silently
+                # record it as a metric reference.
+                for dim in _ranking_dimension_refs(measure_filter):
+                    if dim_local_id := dim.get("localIdentifier"):
+                        add_local_id_target(
+                            dim_local_id,
+                            source_label,
+                            attribute_local_ids,
+                            attribute_id_map,
+                            f"{source_label}_dimension_invalid",
+                        )
+                        continue
+                    dim_identifier = dim.get("identifier") or {}
+                    if dim_id := dim_identifier.get("id"):
+                        tracker.add(
+                            {
+                                "visualization_id": viz["id"],
+                                "referenced_id": dim_id,
+                                "workspace_id": workspace_id,
+                                # Verbatim: an AfmObjectIdentifier here is a
+                                # 'label' or an 'attribute'; consumers must accept
+                                # both.
+                                "object_type": dim_identifier.get("type", "label"),
+                                "source": source_label,
+                                "label": None,
+                                "local_identifier": None,
+                            }
+                        )
 
         # Extract sort references. Sort items reference bucket measures/attributes
         # by their localIdentifier (NOT the object id). A sort that targets a

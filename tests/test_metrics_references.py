@@ -1261,6 +1261,193 @@ class TestVisualizationRankingMeasureValueFilterReferences:
             }
         ]
 
+    def _attribute_bucket(self):
+        return self._measure_bucket() + [
+            {
+                "localIdentifier": "view",
+                "items": [
+                    {
+                        "attribute": {
+                            "localIdentifier": "a_view",
+                            "displayForm": {
+                                "identifier": {"id": "label_view", "type": "label"}
+                            },
+                        }
+                    }
+                ],
+            }
+        ]
+
+    def test_ranking_dimension_direct_label_recorded(self):
+        """A ranking dimension given as a direct label is recorded.
+
+        This is the shape that shipped broken insights: the dimension is not a
+        bucket item, so no other row in the export named it, and a reachability
+        check had nothing to test against the measure's fact.
+        """
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "attributes": [
+                            {"identifier": {"id": "label_other", "type": "label"}}
+                        ],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        dim = [r for r in rows if r["referenced_id"] == "label_other"]
+        assert len(dim) == 1
+        assert dim[0]["object_type"] == "label"
+        assert dim[0]["local_identifier"] is None
+
+    def test_ranking_dimension_accepts_afm_dimensionality_key(self):
+        """``dimensionality`` (the AFM spelling) is read like ``attributes``."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "dimensionality": [
+                            {"identifier": {"id": "label_other", "type": "label"}}
+                        ],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        assert any(r["referenced_id"] == "label_other" for r in rows)
+
+    def test_ranking_dimension_bucket_handle_recorded_for_inventory(self):
+        """A dimension naming a bucket attribute is still recorded.
+
+        The table's job is the reference inventory — "what does this filter rank
+        over?" — as it already is for sorts. The attribute also has a
+        source='attribute' row, so a reachability consumer must not count both,
+        but that de-duplication is the view's job, not the extractor's.
+        """
+        rows = self._refs(
+            self._attribute_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "attributes": [{"localIdentifier": "a_view"}],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        dim = [r for r in rows if r["local_identifier"] == "a_view"]
+        assert len(dim) == 1
+        assert dim[0]["referenced_id"] == "label_view"
+
+    def test_ranking_dimension_dangling_handle_flagged_distinctly(self):
+        """A missing dimension handle is flagged apart from a missing measure.
+
+        Both break rendering, but the fix differs, so they must not collapse into
+        one object_type — consumers could otherwise not tell them apart.
+        """
+        rows = self._refs(
+            self._attribute_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "attributes": [{"localIdentifier": "a_gone"}],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        dim = [r for r in rows if r["local_identifier"] == "a_gone"]
+        assert len(dim) == 1
+        assert dim[0]["object_type"] == "rankingFilter_dimension_invalid"
+
+    def test_ranking_dimension_naming_measure_handle_is_invalid(self):
+        """A dimension pointing at a MEASURE handle is not a valid dimension.
+
+        Resolving it through the shared bucket maps would silently record it as a
+        metric reference; validity is checked against attribute-only lookups.
+        """
+        rows = self._refs(
+            self._attribute_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "attributes": [{"localIdentifier": "m_base"}],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        dim = [r for r in rows if r["object_type"] == "rankingFilter_dimension_invalid"]
+        assert len(dim) == 1
+        assert dim[0]["local_identifier"] == "m_base"
+
+    def test_ranking_dimension_attribute_typed_identifier_recorded(self):
+        """An AfmObjectIdentifier dimension may be type 'attribute', not 'label'."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "rankingFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "attributes": [
+                            {"identifier": {"id": "attr_x", "type": "attribute"}}
+                        ],
+                    }
+                }
+            ],
+            "rankingFilter",
+        )
+
+        dim = [r for r in rows if r["referenced_id"] == "attr_x"]
+        assert len(dim) == 1
+        assert dim[0]["object_type"] == "attribute"
+
+    def test_measure_value_filter_dimensionality_recorded(self):
+        """measureValueFilter carries a dimension too, and the AFM spelling works."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [
+                {
+                    "measureValueFilter": {
+                        "measure": {"localIdentifier": "m_base"},
+                        "dimensionality": [
+                            {"identifier": {"id": "label_other", "type": "label"}}
+                        ],
+                    }
+                }
+            ],
+            "measureValueFilter",
+        )
+
+        dim = [r for r in rows if r["referenced_id"] == "label_other"]
+        assert len(dim) == 1
+        assert dim[0]["object_type"] == "label"
+        assert dim[0]["local_identifier"] is None
+
+    def test_ranking_filter_without_dimension_emits_only_measure(self):
+        """No dimension key means no extra rows (the pre-existing behaviour)."""
+        rows = self._refs(
+            self._measure_bucket(),
+            [{"rankingFilter": {"measure": {"localIdentifier": "m_base"}}}],
+            "rankingFilter",
+        )
+
+        assert len(rows) == 1
+
     def test_ranking_filter_resolves_concrete_measure(self):
         """A rankingFilter targeting a bucket measure resolves to its metric."""
         rows = self._refs(
